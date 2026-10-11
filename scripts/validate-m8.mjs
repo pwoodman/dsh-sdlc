@@ -157,7 +157,8 @@ const checks = [
     fn() {
       const layers = ['tests/unit', 'tests/fault', 'tests/adversarial', 'tests/e2e']
         .filter((d) => existsSync(join(ROOT, d)));
-      const res = run('node', ['--test', ...testGlobs(layers)], { cwd: ROOT, timeoutMs: 900000 });
+      const globs = testGlobs(layers);
+      const res = run('node', ['--test', ...globs], { cwd: ROOT, timeoutMs: 900000 });
       const out = `${res.stdout}${res.stderr}`;
       // Keep the whole run: when the gate fails, this is the evidence that says
       // WHICH test died and why, and the Release workflow uploads .validation/.
@@ -165,29 +166,30 @@ const checks = [
         mkdirSync(join(ROOT, '.validation'), { recursive: true });
         writeFileSync(join(ROOT, '.validation', 'm8-full-suite.log'), out);
       }
-      if (!res.ok) {
-        // `node --test` can exit non-zero WITHOUT reporting a failing test: a
-        // crashed worker, an unhandled 'error' event or an import-time throw
-        // leaves `ℹ fail 0` behind while the exit code stays 1. The old message
-        // showed `fail=?` (the regex found no summary) and threw away the cause,
-        // so name the failure AND keep the whole log for the evidence bundle.
-        const failed = out.split('\n').filter((l) => /^\s*(not ok |✖)/.test(l)).slice(0, 5);
-        const firstError = out.split('\n').find((l) => /^\s*(Error|TypeError|RangeError|ReferenceError|AssertionError)/.test(l));
-        const summary = out.split('\n').filter((l) => /^ℹ (tests|pass|fail|skipped|cancelled)/.test(l)).join(' | ');
-        const reason = failed.length
-          ? `failed tests: ${failed.map((l) => l.trim()).join(' ; ')}`
-          : 'no test was reported as failed — the runner exited non-zero anyway (crashed worker, unhandled error, or import-time throw)';
-        throw new Error(
-          `a test layer failed: ${reason}` +
-          `${firstError ? `\n  ${firstError.trim()}` : ''}` +
-          `${summary ? `\n  ${summary}` : '\n  (the run produced no summary at all — it aborted early)'}` +
-          `\n  full output: .validation/m8-full-suite.log`,
-        );
-      }
       const pass = (out.match(/ℹ pass (\d+)/) ?? [])[1] ?? '?';
       const fail = (out.match(/ℹ fail (\d+)/) ?? [])[1] ?? '?';
       const skipped = (out.match(/ℹ skipped (\d+)/) ?? [])[1] ?? '0';
-      if (fail !== '0') throw new Error(`fail=${fail}`);
+      if (!res.ok || fail !== '0') {
+        // Every branch below reported a bare `fail=?` before: that means the
+        // summary line never matched, which happens when the run aborts before
+        // printing it. Include the exact command, the runner's own fail count
+        // and the tail of the output, so a CI-only abort is diagnosable without
+        // a second round trip.
+        const failed = out.split('\n').filter((l) => /^\s*(not ok |✖)/.test(l)).slice(0, 5);
+        const firstError = out.split('\n').find((l) => /^\s*(Error|TypeError|RangeError|ReferenceError|AssertionError)/.test(l));
+        const summary = out.split('\n').filter((l) => /^ℹ /.test(l)).join(' | ');
+        const tail = out.split('\n').filter(Boolean).slice(-6).join(' | ');
+        throw new Error(
+          `node --test ${globs.join(' ')} → status=${res.status ?? 'null'} signal=${res.signal ?? 'none'}` +
+          `${res.error ? ` error=${res.error.message}` : ''}` +
+          `\n  reported: pass=${pass} fail=${fail} skipped=${skipped} (process ${res.ok ? 'exited 0' : 'exited non-zero'})` +
+          `${failed.length ? `\n  failed tests: ${failed.map((l) => l.trim()).join(' ; ')}` : ''}` +
+          `${firstError ? `\n  first error: ${firstError.trim()}` : ''}` +
+          `${summary ? `\n  summary: ${summary}` : '\n  (no ℹ summary line at all — the run aborted early)'}` +
+          `${tail ? `\n  tail: ${tail}` : '\n  (no output captured)'}` +
+          `\n  full output: .validation/m8-full-suite.log`,
+        );
+      }
       return { detail: `${layers.join(', ')}: ${pass} passed, ${fail} failed, ${skipped} skipped` };
     },
   },
