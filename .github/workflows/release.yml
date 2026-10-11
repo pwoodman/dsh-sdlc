@@ -7,7 +7,7 @@ name: Release
 # dsh-context / dsh-proactive.
 #
 #   node scripts/set-scope.mjs @your-npm-username   # once, if you do not own the scope
-#   git tag v0.4.0-beta.2 && git push origin v0.4.0-beta.2
+#   git tag v0.4.0-beta.3 && git push origin v0.4.0-beta.3
 #
 # The tag must match package.json's version (checked below), so the release name,
 # the tarball name and the npm versions can never drift apart.
@@ -81,7 +81,13 @@ jobs:
         with:
           files: dist/*.tgz
           generate_release_notes: true
-          prerelease: true
+          # NOT a GitHub "prerelease", deliberately. `releases/latest` skips
+          # prereleases, and the whole point of this artifact is the stable
+          # one-command URL below — marking it prerelease made that URL 404 for
+          # every tester (verified: /releases/latest/... 404, /releases/download/
+          # vX/... 200). The version string already says `beta`, and npm keeps its
+          # own `beta` dist-tag, so nothing is promoted by accident.
+          prerelease: false
           body: |
             **Beta installer - no clone, no build:**
 
@@ -115,6 +121,14 @@ jobs:
           set -euo pipefail
           export NODE_AUTH_TOKEN="$NPM_TOKEN"
           version="$(node -p "require('./package.json').version")"
+          # A prerelease must never take the `latest` dist-tag: `npm install
+          # @patwoodman/orchestrator` would then hand a beta to everyone. Betas
+          # publish under `beta`; only a stable version moves `latest`.
+          case "$version" in
+            *-*) dist_tag=beta ;;
+            *)   dist_tag=latest ;;
+          esac
+          echo "publishing $version under the $dist_tag dist-tag"
           # Dependency order: the meta-bundle is published last.
           for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
             name="$(node -p "require('./packages/$dir/package.json').name")"
@@ -126,7 +140,7 @@ jobs:
               echo "skip $name@$version (already published)"; continue
             fi
             echo "publishing $name@$version"
-            ( cd "packages/$dir" && npm publish --access public )
+            ( cd "packages/$dir" && npm publish --access public --tag "$dist_tag" )
           done
 
       - name: explain an npm refusal

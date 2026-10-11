@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/orchestrator",
-  "version": "0.4.0-beta.2",
+  "version": "0.4.0-beta.3",
   "type": "module",
   "description": "SDLC Orchestrator lead-profile bundle: task engine, tools, role presets, and web UI in one install.",
   "main": "lib/index.js",
@@ -25,10 +25,10 @@
     "prepare": "node ./build.cjs"
   },
   "dependencies": {
-    "@patwoodman/orchestrator-core": "0.4.0-beta.2",
-    "@patwoodman/orchestrator-tools": "0.4.0-beta.2",
-    "@patwoodman/orchestrator-presets": "0.4.0-beta.2",
-    "@patwoodman/orchestrator-ui": "0.4.0-beta.2"
+    "@patwoodman/orchestrator-core": "0.4.0-beta.3",
+    "@patwoodman/orchestrator-tools": "0.4.0-beta.3",
+    "@patwoodman/orchestrator-presets": "0.4.0-beta.3",
+    "@patwoodman/orchestrator-ui": "0.4.0-beta.3"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"

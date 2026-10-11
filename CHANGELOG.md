@@ -2,12 +2,100 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
-## [0.4.0-beta.2] — install works from a fresh clone, one spec for the lead
+## [0.4.0-beta.3] — first public release (2026-10-11)
+
+The first tag that actually publishes. Everything below the fold was written
+before the tree had ever been pushed, so the release path itself had never run.
+
+**Install (no clone, no build):**
+
+```sh
+curl -fsSLO https://github.com/pwoodman/dsh-sdlc/releases/latest/download/dsh-sdlc-beta.tgz
+tar xzf dsh-sdlc-beta.tgz && cd dsh-sdlc-*/ && ./install.sh
+```
+
+### Fixed (release path — found by running it for real)
+
+- **The GitHub Release was marked `prerelease: true`, which made the documented
+  install URL 404.** `releases/latest` skips prereleases, so
+  `/releases/latest/download/dsh-sdlc-beta.tgz` answered 404 while
+  `/releases/download/v0.4.0-beta.2/...` answered 200 — every tester following
+  the README would have hit the 404. The stable alias URL is the whole point of
+  the artifact, so the Release is published with `prerelease: false`; the version
+  string already says `beta`, and npm keeps its own `beta` dist-tag.
+- **`pnpm/action-setup@v4` aborted before any build step.** Supplying both
+  `version: 9` and `package.json`'s `packageManager: pnpm@9.12.0` makes the action
+  fail with "Multiple versions of pnpm specified"; the input is gone from both
+  workflows and the pinned `packageManager` wins.
+- **Gate M8-05 read `fail=?` from a green 553-test suite and blocked the
+  release.** The gate matched only Node's `ℹ pass 553` reporter shape; the GitHub
+  runner prints the plain `# pass 553` form, so no count matched and the gate
+  declared failure. `summaryOf()` in `scripts/lib/harness.mjs` accepts both shapes
+  (and ANSI colour), returns `null` — never zeros — when a run printed no summary,
+  and is now used by M8 (01 and 05) and the coverage gate.
+  `tests/unit/runner-summary.test.mjs` pins it. Both M8 sub-checks also write
+  their full output to `.validation/` and name the failing test, instead of the
+  truncated excerpt that made the first two failures undiagnosable from CI.
+- **`npm test` failed on the release runner's Node 22.** A zstd unit test
+  asserted that a whole-buffer `zstdDecompressSync` returns only the first frame;
+  that is Node 22/24 behaviour, while Node 26 keeps decoding. The test now pins
+  what is guaranteed (a whole-buffer decode is not a concatenation-safe reader;
+  `splitZstdFrames` reconstructs the log) and passes on both.
+- **The installer accepted a `dsh` that cannot work.** A wrapper that answers
+  `dsh --version` — the common `npx @deepseek-ai/dsh` shim, a shell function, a
+  hand-written script — has no package directory, so `PLAT-08` failed *after* the
+  bundles were installed with a message about shutdown templates that named no
+  cause. A preflight step now resolves `dsh` to an installed
+  `@deepseek-ai/dsh` package and fails up front with the fix
+  (`npm install -g @deepseek-ai/dsh@0.2.0-rc.2`).
+- **The npm publish step would have moved `latest` onto a beta.** It published
+  with the default dist-tag; a prerelease version now publishes under `beta` and
+  only a stable version moves `latest`.
+
+
+- `scripts/set-repository.mjs` (`npm run set-repository`): fills
+  `repository.url`/`homepage`/`bugs` in every manifest — they carried `type: git`
+  and a directory but no URL, which npm publishes as-is — and `--check` guards
+  drift in `gen:check` and CI.
+- **A live, verified install path.** `v0.4.0-beta.2` publishes the tarball on
+  GitHub Releases and is rehearsed end to end from the public URL: download →
+  `install.sh` → `dsh --profile sdlc-probe` reports 7 tools, 20 commands, 9
+  services and 26 presets.
+- **A re-install over an older scope composed every row twice.** The installer
+  recognised its own entries in `dsh.profile.bundles` and `dependencies` by a
+  literal `@patwoodman/` prefix. `scripts/set-scope.mjs` renames the whole suite
+  in one pass, so a tree re-scoped from `@sdlc` still had the old scope selected
+  in the profiles the previous install created: the loader mounted both layers,
+  M0-02 failed with 39 duplicate row ids, and `dsh plugin add` failed outright
+  because pnpm was asked to resolve a dead `@old-scope`/`link:` dependency. Both
+  checks now derive ownership from the workspace manifests
+  (`ownScope`/`ownBundlePrefix`/`isOwnBundleName` in `scripts/lib/composition.mjs`,
+  covered by `tests/unit/composition-ownership.test.mjs`), so no rename can
+  desynchronise them, and a **repair** step ahead of the preflight drops
+  own-suite dependencies that no longer resolve (a missing link target, or a
+  scope the tree no longer publishes) before pnpm ever sees them.
+- **A moved checkout failed every install with `ERR_PNPM_UNEXPECTED_STORE`.**
+  `node_modules/.modules.yaml` records the absolute pnpm store a profile was
+  linked from; when that path no longer exists (the checkout moved, or a
+  different `XDG_DATA_HOME`), pnpm aborts before installing anything and never
+  repairs itself. The repair step now removes such a `node_modules` so the
+  profile is re-linked from the current store — the same remedy `pnpm install`
+  would demand, applied automatically.
+- **The installer's step log truncated pnpm output mid-word** (`…ependencies
+  from the target node_modules.`) because it sliced the last 200 characters of
+  multi-line stdout. It now prints the last complete line.
+- **The release tarball could ship any untracked directory in the tree.** The
+  exclusions were a hand-kept list, so a new scratch `$DSH_HOME` doubled the
+  artifact (0.7 → 1.4 MiB, 484 → 1034 entries) and would have travelled to every
+  tester. `build-release.mjs` now takes its exclusions from `.gitignore` itself
+  (`git status --ignored=matching`), keeping only the build output the artifact
+  exists to carry (`packages/*/lib`, `lib`) — the list is a documented fallback
+  for hosts without git.
+
+### Fixed (source checkout — the beta.2 body of work)
 
 **Install:** `npm run install:local` (one command, idempotent), or the registry
 form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published.
-
-### Fixed
 - **A fresh clone could not run anything.** `.gitignore` had a bare `lib/`
   pattern, which (in gitignore syntax) matches a directory named `lib` **at any
   depth**. It therefore excluded `scripts/lib/`, `tests/lib/` and `eval/lib/` —
@@ -102,6 +190,10 @@ form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published
   every package.
 
 ### Added
+
+**Install:** `npm run install:local` (one command, idempotent), or the registry
+form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published.
+
 - **A no-clone beta install.** `node scripts/build-release.mjs` produces
   `dist/dsh-sdlc-<version>.tgz` (+ a stable `dsh-sdlc-beta.tgz` alias): the whole
   tree with prebuilt `lib/`, the generated patches and an `install.sh` that copies

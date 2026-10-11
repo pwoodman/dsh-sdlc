@@ -1,6 +1,6 @@
 # dsh-plugin-sdlc — Universal SDLC Orchestrator (DSH plugin suite)
 
-> **Beta (0.4.0-beta.2).** Install with one command from a source checkout
+> **Beta (0.4.0-beta.3).** Install with one command from a source checkout
 > (`npm run install:local`), or the registry form
 > (`dsh plugin --profile sdlc-web add @patwoodman/orchestrator`) once published — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -59,7 +59,12 @@ delete the download), then creates the `sdlc-web`, `sdlc-worker` and `sdlc-probe
 profiles, installs the bundles, verifies the composed lead and runs `gate:M0`. It
 is idempotent — re-run it any time.
 
-Prerequisites: `dsh` and `pnpm` on `PATH`, Node ≥ 22.5.
+Prerequisites: `dsh` **installed as a package** (`npm install -g
+@deepseek-ai/dsh@0.2.0-rc.2`), `pnpm` on `PATH`, Node ≥ 22.5. A wrapper that
+merely answers `dsh --version` — an `npx @deepseek-ai/dsh` shim, a shell
+function, a hand-written script — is not enough: the platform gate reads the
+installed package's own files, and the installer now refuses that setup with
+this reason instead of failing later inside `gate:M0`.
 
 ```sh
 dsh --profile sdlc-web          # the interactive lead (web GUI)
@@ -125,7 +130,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.2 && git push origin v0.4.0-beta.2
+git tag v0.4.0-beta.3 && git push origin v0.4.0-beta.3
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
@@ -146,7 +151,9 @@ dependencies, offline), creates the three profiles from their shipped templates,
 installs the bundles, verifies the composed lead and runs `gate:M0`. It is
 idempotent and safe to re-run.
 
-Prerequisites: `dsh` and `pnpm` on `PATH`, Node ≥ 22.5, a POSIX host with git.
+Prerequisites: `dsh` installed as a package (`npm install -g
+@deepseek-ai/dsh@0.2.0-rc.2`), `pnpm` on `PATH`, Node ≥ 22.5, a POSIX host with
+git.
 
 ### Building a release artifact
 

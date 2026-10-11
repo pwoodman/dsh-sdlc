@@ -35,6 +35,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { run } from './lib/harness.mjs';
 import { dshPeerSatisfied } from './lib/semver-lite.mjs';
 import { ownBundlePrefix, isOwnBundleName } from './lib/composition.mjs';
@@ -208,6 +209,38 @@ step('preflight: package directories present', () => {
   return `${wanted.size} packages`;
 });
 step('preflight: dsh CLI on PATH', () => sh('dsh', ['--version']).stdout.trim());
+
+/**
+ * A `dsh` that RUNS is not enough — the platform suite has to find the installed
+ * `@deepseek-ai/dsh` package directory next to the executable (PLAT-08 reads its
+ * shutdown templates; PLAT-13/14/16 skip without it). A wrapper on PATH — the
+ * common `npx @deepseek-ai/dsh` shim, a hand-written script, a shell function —
+ * satisfies `--version` and then fails the post-install M0 gate with a message
+ * about shutdown templates that says nothing about the real cause. Fail here
+ * instead, before anything is installed.
+ */
+step('preflight: dsh resolves to an installed @deepseek-ai/dsh package', () => {
+  const which = run('sh', ['-c', 'command -v dsh']);
+  const found = which.stdout.trim();
+  if (!found) throw new Error('dsh is not on PATH');
+  let resolved = found;
+  try { resolved = execFileSync('realpath', [found], { encoding: 'utf8' }).trim(); } catch { /* keep */ }
+  // npm/pnpm global bin links point straight at the package's bin entry.
+  const parts = resolved.split('/');
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const pkg = join(parts.slice(0, i).join('/'), 'package.json');
+    if (!existsSync(pkg)) continue;
+    try {
+      if (JSON.parse(readFileSync(pkg, 'utf8')).name === '@deepseek-ai/dsh') return resolved;
+    } catch { /* not a manifest we can read */ }
+  }
+  throw new Error(
+    `dsh on PATH (${found}) is not an installed @deepseek-ai/dsh package.\n` +
+      `  A wrapper (npx, a shim, a shell function) runs --version but has no package\n` +
+      `  directory, so the post-install M0 gate fails on PLAT-08 shutdown templates.\n` +
+      `  Fix: npm install -g @deepseek-ai/dsh@0.2.0-rc.2`,
+  );
+});
 step('preflight: DSH runtime within the declared peer range', () => {
   const actual = sh('dsh', ['--version']).stdout.trim().replace(/^v/, '');
   const want = JSON.parse(readFileSync(join(ROOT, 'packages', 'sdlc-core', 'package.json'), 'utf8')).peerDependencies['@deepseek-ai/dsh'];
@@ -333,7 +366,7 @@ step(`install: lead bundle into ${LEAD} (the single spec)`, () => {
   if (deps.length === 0) return `${bundle} (no member modules)`;
   const pnpmRes = run('pnpm', ['add', '--dir', join(HOME, 'profiles', LEAD), ...specsFor(deps)], { timeoutMs: 900_000 });
   if (!pnpmRes.ok) {
-    const detail = (pnpmRes.stderr || pnpmRes.stdout || String(pnpmRes.error ?? '')).trim().slice(0, 1500);
+    const detail = (pnpmRes.stderr || pnpmRes.stdout || String(pnpmRes.error ?? '')).trim().slice(0, 2000);
     throw new Error(`pnpm add (member modules) exited ${pnpmRes.code}\n${detail}`);
   }
   return `${bundle} + ${deps.length} member modules as plain dependencies`;
