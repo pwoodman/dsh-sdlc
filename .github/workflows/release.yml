@@ -34,9 +34,10 @@ jobs:
           node-version: '22.18'
           registry-url: 'https://registry.npmjs.org'
 
+      # No `version:` here: the version lives in package.json's `packageManager`
+      # field, and specifying both makes pnpm/action-setup fail with
+      # "Multiple versions of pnpm specified" (observed on the first real tag).
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: install the DSH runtime (needed by gate:P and gate:M0)
         run: npm install -g @deepseek-ai/dsh@$DSH_VERSION

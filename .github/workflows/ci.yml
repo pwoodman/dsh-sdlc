@@ -65,9 +65,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
+      # No `version:` here: the version lives in package.json's `packageManager`
+      # field, and specifying both makes pnpm/action-setup fail with
+      # "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
       - run: node scripts/build.mjs && node scripts/build-ui.mjs
       - name: install profiles + bundles
