@@ -33,6 +33,7 @@ import { parseJsonl, sumUsage, usageFromSessionLog } from './lib/usage.mjs';
 import { defaultDshHome, findSessionForRun } from './lib/session.mjs';
 import { collectEnvironment } from './lib/env.mjs';
 import { writeModelPatch } from './lib/model-patch.mjs';
+import { isOwnBundleName } from '../scripts/lib/composition.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 
@@ -92,9 +93,12 @@ export function preflightProfiles({ baselineProfile, treatmentProfile, dshHome =
     if (!bundles.some((b) => /dsh-headless/.test(b))) {
       problems.push(`${label} profile "${name}" is not headless-template (bundles: ${bundles.join(', ') || 'none'}) — a one-shot \`--json\` run needs the headless app`);
     }
-    const sdlc = bundles.filter((b) => b.startsWith('@sdlc/'));
+    // Ownership from the workspace manifests, not a scope literal: a re-scoped
+    // tree would otherwise read the treatment arm as the baseline (and the
+    // control as contaminated) while every profile is actually correct.
+    const sdlc = bundles.filter((b) => isOwnBundleName(b));
     if (label === 'treatment' && sdlc.length === 0) {
-      problems.push(`treatment profile "${name}" composes no @sdlc/* bundle — the treatment arm would be the baseline`);
+      problems.push(`treatment profile "${name}" composes no SDLC-orchestrator bundle — the treatment arm would be the baseline`);
     }
     if (label === 'baseline' && sdlc.length > 0) {
       problems.push(`baseline profile "${name}" already composes ${sdlc.join(', ')} — the control would not be a control`);

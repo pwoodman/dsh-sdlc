@@ -29,6 +29,8 @@ jobs:
         run: node scripts/gen-bundle-patch.mjs --check
       - name: every package version matches the root
         run: node scripts/bump-version.mjs --check
+      - name: npm repository metadata is complete (registry page, npm repo, provenance)
+        run: node scripts/set-repository.mjs --check
       - name: UI bundle is in sync with client sources
         run: node scripts/build-ui.mjs --check
       - name: unit tests (L2)

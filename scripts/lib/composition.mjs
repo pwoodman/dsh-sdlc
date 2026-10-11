@@ -25,7 +25,9 @@ import { parseYaml } from '../../packages/sdlc-core/src/yaml-lite.js';
 
 export const ROOT = join(import.meta.dirname, '..', '..');
 
-const WORKER_FORBIDDEN = ['@sdlc/orchestrator-core'];
+// E6 is checked on the BASENAME, so a re-scoped tree is still caught. See
+// `isOwnBundleName` for why the basename (not the current prefix) is the right key.
+const WORKER_FORBIDDEN_BASENAME = 'orchestrator-core';
 
 /** Every package directory with a package.json, keyed by package name. */
 export function loadPackages(root = ROOT) {
@@ -38,6 +40,56 @@ export function loadPackages(root = ROOT) {
     out.set(pkg.name, { dir: join(dir, name), pkg, name: pkg.name });
   }
   return out;
+}
+
+/**
+ * The npm scope THIS tree's packages live under (e.g. `@patwoodman`).
+ *
+ * Derived from the workspace manifests, never a constant: `scripts/set-scope.mjs`
+ * renames the whole suite in one pass, so any consumer that hardcoded the old
+ * scope would silently stop recognising the suite's own bundles after a rename.
+ * That is not hypothetical — the installer's bundle-sync step used to filter on
+ * a literal `@patwoodman/`, so after a rename it left the previous scope in
+ * `dsh.profile.bundles` and composed every row twice (M0-02). The majority
+ * scope of `packages/*` is used, and pinned to the meta-bundle when present.
+ */
+export function ownScope(packages = loadPackages()) {
+  const counts = new Map();
+  for (const name of packages.keys()) {
+    const m = /^(@[^/]+)\//.exec(name);
+    if (m) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+  }
+  for (const name of packages.keys()) {
+    if (!/-orchestrator$/.test(name)) continue;
+    const m = /^(@[^/]+)\//.exec(name);
+    if (m && counts.get(m[1]) === Math.max(...counts.values())) return m[1];
+  }
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '@sdlc';
+}
+
+/** `@scope/` — the prefix that marks a bundle as this suite's own. */
+export function ownBundlePrefix(packages = loadPackages()) {
+  return `${ownScope(packages)}/`;
+}
+
+/**
+ * Is `bundleName` one of THIS suite's bundles, whatever scope it carries?
+ *
+ * Matches on the slash-free basename against the workspace manifests, so a
+ * bundle left behind under a scope the tree no longer uses (`@old-scope/...`,
+ * `@new-scope/...`) is still recognised as ours. Filtering on the *current*
+ * prefix alone would miss exactly the entries an upgrade has to clean up.
+ */
+export function isOwnBundleName(bundleName, packages = loadPackages()) {
+  if (typeof bundleName !== 'string') return false;
+  const m = /^@[^/]+\/(.+)$/.exec(bundleName);
+  if (!m) return false;
+  const base = m[1];
+  for (const name of packages.keys()) {
+    const own = /^@[^/]+\/(.+)$/.exec(name);
+    if (own && own[1] === base) return true;
+  }
+  return false;
 }
 
 /** The patch files a package declares, normalized to an array (P1/C1). */
@@ -118,10 +170,10 @@ export function resolveRowName(name, packages = loadPackages()) {
  *
  * An earlier version recursed into dependencies "so the static composition
  * matches what pnpm + the loader compose live". That was wrong and expensive:
- * it let the static gate report a complete lead for the `['@sdlc/orchestrator']`
+ * it let the static gate report a complete lead for the `['@patwoodman/orchestrator']`
  * recipe while a live single-spec install composed only the meta-bundle's own
  * row. A bundle that is meant to supply rows must declare them in its own
- * patch — see `@sdlc/orchestrator`, whose patch is generated as the union of
+ * patch — see `@patwoodman/orchestrator`, whose patch is generated as the union of
  * its members' rows by scripts/gen-bundle-patch.mjs.
  */
 export function composeProfile(profile, { packages = loadPackages(), seen = new Set() } = {}) {
@@ -205,8 +257,10 @@ export function validateProfileStatic(profile, { packages = loadPackages() } = {
   // bundle that needs it) — mounting sdlc-core in a worker starts a second
   // scheduler and a second writer against sdlc.db.
   if (profile.role === 'headless-worker') {
+    const packages = loadPackages();
     for (const bundle of profile.bundles ?? []) {
-      if (WORKER_FORBIDDEN.includes(bundle)) {
+      const m = /^@[^/]+\/(.+)$/.exec(bundle);
+      if (m && m[1] === WORKER_FORBIDDEN_BASENAME && isOwnBundleName(bundle, packages)) {
         problems.push(`${profile.name} composes host bundle ${bundle} — mounting sdlc-core in a worker starts a second scheduler (E6)`);
       }
     }

@@ -124,7 +124,7 @@ test('contract: every declared dsh.bundle.patch points at an existing file', () 
   }
 
   // P1/C1: the ordered-list form is also valid — sdlc-presets uses exactly one.
-  const presets = byName.get('@sdlc/orchestrator-presets');
+  const presets = byName.get('@patwoodman/orchestrator-presets');
   const presetsList = Array.isArray(presets.pkg.dsh.bundle.patch)
     ? presets.pkg.dsh.bundle.patch
     : [presets.pkg.dsh.bundle.patch];
@@ -178,11 +178,11 @@ test('contract: a profile never composes the same row id twice', () => {
     }
   }
 
-  // Errata E6: mounting @sdlc/orchestrator-core in a worker starts a second
+  // Errata E6: mounting @patwoodman/orchestrator-core in a worker starts a second
   // scheduler and a second writer against sdlc.db.
   const { profile, rows } = composedRows('sdlc-worker');
-  assert.ok(!profile.bundles.includes('@sdlc/orchestrator-core'),
-    'sdlc-worker bundles must not include @sdlc/orchestrator-core');
+  assert.ok(!profile.bundles.includes('@patwoodman/orchestrator-core'),
+    'sdlc-worker bundles must not include @patwoodman/orchestrator-core');
   const coreRows = new Set(loadPatch(declaredPatchPaths(packageForDirName('sdlc-core'))[0]).rows.map((r) => r.id));
   for (const row of rows) {
     assert.ok(!coreRows.has(row.id), `sdlc-worker must not compose core row "${row.id}"`);
@@ -193,11 +193,11 @@ test('contract: a profile never composes the same row id twice', () => {
 
 test('contract: the lead recipe composes the whole lead from a single bundle', () => {
   // The DSH loader mounts only the bundles a profile lists and never descends
-  // into a bundle's dependencies, so `['@sdlc/orchestrator']` must already
+  // into a bundle's dependencies, so `['@patwoodman/orchestrator']` must already
   // declare every lead row in its own patch. Without this, the documented
   // one-spec install composes a single `sdlc-orchestrator` row and nothing else.
   const { profile } = loadProfile('sdlc-web');
-  assert.deepEqual(profile.bundles, ['@sdlc/orchestrator'], 'the lead installs exactly one sdlc bundle');
+  assert.deepEqual(profile.bundles, ['@patwoodman/orchestrator'], 'the lead installs exactly one sdlc bundle');
 
   const { rows } = composedRows('sdlc-web');
   const ids = new Set(rows.map((r) => r.id));
@@ -221,18 +221,22 @@ test('contract: the meta-bundle patch is in sync with its members (generator --c
 
 // ── 3. every row name resolves to a real module ─────────────────────────────
 
-test('contract: @sdlc row names resolve to real src/ (or lib/) files', () => {
+test('contract: our own row names resolve to real src/ (or lib/) files', () => {
+  // Ownership is decided by whether the row's package is one of THIS workspace's
+  // manifests, never by a scope literal. The previous `startsWith('@patwoodman/')`
+  // filter meant that after `scripts/set-scope.mjs` renamed the suite, every row
+  // was skipped and the test passed while checking nothing at all.
+  let checked = 0;
   for (const { pkg, patch } of allPatchFiles()) {
     for (const row of loadPatch(patch).rows) {
-      if (typeof row.name !== 'string' || !row.name.startsWith('@sdlc/')) {
-        // @deepseek-ai/* rows are external DSH packages — skipped.
-        continue;
-      }
+      if (typeof row.name !== 'string') continue;
       const parts = row.name.split('/');
       const pkgName = parts.slice(0, 2).join('/');
       const sub = parts.slice(2).join('/');
       const entry = byName.get(pkgName);
-      assert.ok(entry, `${pkg.name}: row "${row.id}" names unknown package "${pkgName}"`);
+      // @deepseek-ai/* (and any other out-of-workspace package) is external.
+      if (!entry) continue;
+      checked += 1;
       const candidates = sub
         ? [join(entry.dir, 'src', `${sub}.js`), join(entry.dir, 'lib', `${sub}.js`)]
         : [join(entry.dir, 'src', 'index.js'), join(entry.dir, 'lib', 'index.js')];
@@ -242,6 +246,7 @@ test('contract: @sdlc row names resolve to real src/ (or lib/) files', () => {
       );
     }
   }
+  assert.ok(checked > 0, 'at least one own-workspace row name must be checked — a scope rename must not empty this test');
 });
 
 // ── 4. sdlc-presets: exactly 26 preset rows + the registry row ─────────────
@@ -268,7 +273,7 @@ test('contract: sdlc-presets declares exactly the 26 presetIdFor(roleId) rows', 
   // patches never run code — without it the live probe reports zero presets).
   const self = rows.filter((r) => r.id === 'sdlc-presets');
   assert.equal(self.length, 1, 'sdlc-presets declares its self-report plugin row');
-  assert.equal(self[0].name, '@sdlc/orchestrator-presets/plugin');
+  assert.equal(self[0].name, '@patwoodman/orchestrator-presets/plugin');
   assert.equal(rows.length, 28, 'sdlc-presets declares preset rows + registry + self-report');
 
   const ids = presetRows.map((r) => r.id);
@@ -353,8 +358,8 @@ test('contract: profiles use a valid template and respect mustNotContain', () =>
 
   // Errata E6 explicitly: the worker profile must exclude core.
   const worker = loadProfile('sdlc-worker').profile;
-  assert.ok(worker.mustNotContain.includes('@sdlc/orchestrator-core'),
-    'sdlc-worker mustNotContain @sdlc/orchestrator-core');
-  assert.ok(!worker.bundles.includes('@sdlc/orchestrator-core'),
-    'sdlc-worker bundles must not include @sdlc/orchestrator-core');
+  assert.ok(worker.mustNotContain.includes('@patwoodman/orchestrator-core'),
+    'sdlc-worker mustNotContain @patwoodman/orchestrator-core');
+  assert.ok(!worker.bundles.includes('@patwoodman/orchestrator-core'),
+    'sdlc-worker bundles must not include @patwoodman/orchestrator-core');
 });

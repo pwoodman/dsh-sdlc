@@ -2,7 +2,7 @@
 
 > **Beta (0.4.0-beta.2).** Install with one command from a source checkout
 > (`npm run install:local`), or the registry form
-> (`dsh plugin --profile sdlc-web add @sdlc/orchestrator`) once published — see
+> (`dsh plugin --profile sdlc-web add @patwoodman/orchestrator`) once published — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
 > limitations. No confirmatory A/B evidence yet — no "beats plain DSH" claim is
 > supported.
@@ -89,21 +89,21 @@ and no restart):
 
 ```sh
 dsh --profile sdlc-web --from-default-profile web --dump-config   # create once
-dsh plugin --profile sdlc-web add @sdlc/orchestrator              # core + tools + presets + ui
+dsh plugin --profile sdlc-web add @patwoodman/orchestrator              # core + tools + presets + ui
 dsh --profile sdlc-web
 ```
 
-Or fill `@sdlc/orchestrator` into the **Add plugin** wizard on the Plugins page.
+Or fill `@patwoodman/orchestrator` into the **Add plugin** wizard on the Plugins page.
 
 The worker profile is deliberately *unpacked*, because mounting the host services
 there would start a second scheduler and a second writer against `sdlc.db`
 (errata E6):
 
 ```sh
-dsh plugin --profile sdlc-worker add @sdlc/orchestrator-guard @sdlc/orchestrator-tools
+dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard @patwoodman/orchestrator-tools
 ```
 
-`@sdlc/orchestrator`'s patch layer is generated from its four members
+`@patwoodman/orchestrator`'s patch layer is generated from its four members
 (`node scripts/gen-bundle-patch.mjs`) — the DSH loader mounts only the bundles a
 profile lists and never descends into a bundle's `dependencies`. In the lead the
 members are ordinary module dependencies; adding them as bundles *as well*
@@ -111,8 +111,8 @@ composes every row twice.
 
 #### Publishing under your own npm scope
 
-The packages ship as `@sdlc/*`. If your npm account does not own that scope,
-`npm publish` answers **403** and nobody can resolve `@sdlc/orchestrator`. Fix it
+The packages ship as `@patwoodman/*`. If your npm account does not own that scope,
+`npm publish` answers **403** and nobody can resolve `@patwoodman/orchestrator`. Fix it
 in one command:
 
 ```sh
@@ -157,7 +157,7 @@ node scripts/build-release.mjs        # → dist/dsh-sdlc-<version>.tgz + dsh-sd
 ### Update
 
 ```sh
-dsh plugin --profile sdlc-web update @sdlc/orchestrator@latest
+dsh plugin --profile sdlc-web update @patwoodman/orchestrator@latest
 ```
 
 ## Layout

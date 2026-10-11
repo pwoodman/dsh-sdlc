@@ -7,5 +7,5 @@
 # and no UI in a headless profile).
 - insert:
     - id: sdlc-ui
-      name: '@sdlc/orchestrator-ui'
+      name: '@patwoodman/orchestrator-ui'
       config: {}

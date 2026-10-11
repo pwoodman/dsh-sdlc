@@ -5,7 +5,7 @@ All notable changes to the Universal SDLC Orchestrator plugin suite.
 ## [0.4.0-beta.2] — install works from a fresh clone, one spec for the lead
 
 **Install:** `npm run install:local` (one command, idempotent), or the registry
-form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
+form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published.
 
 ### Fixed
 - **A fresh clone could not run anything.** `.gitignore` had a bare `lib/`
@@ -24,8 +24,8 @@ form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
 - **The documented one-spec lead install composed nothing.** The DSH loader
   mounts only the bundles listed in `dsh.profile.bundles` and loads each one's
   **own** `dsh.bundle.patch`; it never descends into a bundle's `dependencies`.
-  `@sdlc/orchestrator`'s patch declared only its own row, so
-  `dsh plugin --profile sdlc-web add @sdlc/orchestrator` produced a single
+  `@patwoodman/orchestrator`'s patch declared only its own row, so
+  `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` produced a single
   `sdlc-orchestrator` row and no services, tools, presets or UI. Its patch is now
   **generated** as the union of its four members'
   (`scripts/gen-bundle-patch.mjs`, checked in and verified by
@@ -49,7 +49,7 @@ form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
   was harmless while the meta-bundle's patch held one row; now that the patch is
   the union of the members' rows it would compose every row twice. The installer
   re-selects only the recipe's bundles (keeping the members installed as
-  dependencies) and `doctor` reports extra `@sdlc/*` bundles as an error with the
+  dependencies) and `doctor` reports extra `@patwoodman/*` bundles as an error with the
   remedy.
 - **The eval `collectAudit` unit test assumed npm exists.** It asserted the
   zero-vuln value unconditionally, so it failed on any host without npm (the
@@ -64,6 +64,42 @@ form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
   the demo gate now pass `'<layer>/**/*.test.mjs'` globs, which every supported
   engine accepts — `scripts/lib/harness.mjs` exports `testGlobs()` so the
   pattern lives in one place.
+- **A re-install over an older scope composed every row twice.** The installer
+  recognised its own entries in `dsh.profile.bundles` and `dependencies` by a
+  literal `@patwoodman/` prefix. `scripts/set-scope.mjs` renames the whole suite
+  in one pass, so a tree re-scoped from `@sdlc` still had the old scope selected
+  in the profiles the previous install created: the loader mounted both layers,
+  M0-02 failed with 39 duplicate row ids, and `dsh plugin add` failed outright
+  because pnpm was asked to resolve a dead `@old-scope`/`link:` dependency. Both
+  checks now derive ownership from the workspace manifests
+  (`ownScope`/`ownBundlePrefix`/`isOwnBundleName` in `scripts/lib/composition.mjs`,
+  covered by `tests/unit/composition-ownership.test.mjs`), so no rename can
+  desynchronise them, and a **repair** step ahead of the preflight drops
+  own-suite dependencies that no longer resolve (a missing link target, or a
+  scope the tree no longer publishes) before pnpm ever sees them.
+- **A moved checkout failed every install with `ERR_PNPM_UNEXPECTED_STORE`.**
+  `node_modules/.modules.yaml` records the absolute pnpm store a profile was
+  linked from; when that path no longer exists (the checkout moved, or a
+  different `XDG_DATA_HOME`), pnpm aborts before installing anything and never
+  repairs itself. The repair step now removes such a `node_modules` so the
+  profile is re-linked from the current store — the same remedy `pnpm install`
+  would demand, applied automatically.
+- **The installer's step log truncated pnpm output mid-word** (`…ependencies
+  from the target node_modules.`) because it sliced the last 200 characters of
+  multi-line stdout. It now prints the last complete line.
+- **The release tarball could ship any untracked directory in the tree.** The
+  exclusions were a hand-kept list, so a new scratch `$DSH_HOME` doubled the
+  artifact (0.7 → 1.4 MiB, 484 → 1034 entries) and would have travelled to every
+  tester. `build-release.mjs` now takes its exclusions from `.gitignore` itself
+  (`git status --ignored=matching`), keeping only the build output the artifact
+  exists to carry (`packages/*/lib`, `lib`) — the list is a documented fallback
+  for hosts without git.
+- **The npm repository metadata was empty.** Every manifest carried
+  `"repository": { "type": "git", "directory": … }` with no `url`, which npm
+  publishes as-is: the registry page, `npm repo` and the provenance link all go
+  nowhere. `scripts/set-repository.mjs` fills `repository.url`, `homepage` and
+  `bugs` in one pass, `--check` guards drift in CI, and the value is the same for
+  every package.
 
 ### Added
 - **A no-clone beta install.** `node scripts/build-release.mjs` produces
@@ -79,7 +115,7 @@ form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
   publishes the packages to npm when the `PUBLISH_NPM` variable is `true` and an
   `NPM_TOKEN` secret exists (dependency order, skipping versions already there).
 - **`scripts/set-scope.mjs`** — one idempotent pass that re-scopes the suite
-  (`@sdlc/*` → `@your-username/*`) across package manifests, every
+  (`@patwoodman/*` → `@your-username/*`) across package manifests, every
   `cordis.patch.yml` row, the profile recipes, the tests and the docs, with
   `--check` and `--restore`. Needed because a scope your npm account does not own
   makes `npm publish` answer 403 and `dsh plugin add @scope/…` unresolvable.
@@ -107,7 +143,7 @@ form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
   also works when the checkout lives where `node` cannot `getcwd()` (containers,
   portal mounts) — which is how the release tarball is exercised.
 - Two tests that quoted the package scope literally (one via a regex-escaped
-  `@sdlc\/`) now derive the name from the manifest, so a scope rename cannot
+  `@patwoodman\/`) now derive the name from the manifest, so a scope rename cannot
   leave them behind.
 - `profiles/README.md` documents the real partition and the link-vs-bundle rule.
 - Every package's `version` tracks the root (`0.4.0-beta.2`); the DSH peer is a
@@ -139,15 +175,15 @@ form `dsh plugin --profile sdlc-web add @sdlc/orchestrator` once published.
 Requires Node ≥ 22.5, `dsh` 0.2.0-rc.2, pnpm, and a POSIX host with git.
 
 ### Added
-- `sdlc-client-ui` (`@sdlc/orchestrator-ui`, `sdlc-web` only): SDLC
+- `sdlc-client-ui` (`@patwoodman/orchestrator-ui`, `sdlc-web` only): SDLC
   right-sidebar tab with Status, Board, validated Config editor (8 fields),
   and side-by-side Review (time/tokens/tracepaths). Host routes
   (`/api/sdlc.status`, `/api/sdlc.board`, `/api/sdlc.task`,
   `/api/sdlc.compare`, `/api/sdlc.config` GET+POST, `/api/sdlc.metrics`)
   read the live `sdlc.db`; the browser bundle builds offline with zero
   dependencies (`node scripts/build-ui.mjs`, wired into `npm run build`).
-- `@sdlc/orchestrator` meta-bundle: the full lead (core+tools+presets+ui) in
-  ONE install spec — `dsh plugin --profile sdlc-web add @sdlc/orchestrator`.
+- `@patwoodman/orchestrator` meta-bundle: the full lead (core+tools+presets+ui) in
+  ONE install spec — `dsh plugin --profile sdlc-web add @patwoodman/orchestrator`.
   `node scripts/install-local.mjs` is now a single command (profiles +
   bundles + M0 verify). Worker installs stay unpacked (guard+tools, E6).
 - Publish-ready packages: MIT license, `locale/en.json`+`locale/zh.json`

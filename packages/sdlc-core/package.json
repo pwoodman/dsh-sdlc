@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/orchestrator-core",
+  "name": "@patwoodman/orchestrator-core",
   "version": "0.4.0-beta.2",
   "type": "module",
   "description": "Host services (tasks, scheduler, router, verifier, integration, evidence, escalation, worker-mgr). NEVER installed into a worker profile.",
@@ -37,7 +37,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "directory": "packages/sdlc-core"
+    "directory": "packages/sdlc-core",
+    "url": "git+https://github.com/pwoodman/dsh-sdlc.git"
   },
   "icon": "icon.svg",
   "engines": {
@@ -45,5 +46,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://github.com/pwoodman/dsh-sdlc",
+  "bugs": {
+    "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   }
 }

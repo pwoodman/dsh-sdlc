@@ -3,7 +3,7 @@
  * scripts/install-local.mjs — install the orchestrator from a source checkout.
  *
  * This is the "works today" path. The published-npm path
- * (`npx @sdlc/orchestrator init`) is a thin wrapper that downloads the packages
+ * (`npx @patwoodman/orchestrator init`) is a thin wrapper that downloads the packages
  * first and then runs exactly these steps.
  *
  * Corrected against the real CLI (spec v2 Quick Start / Part F are wrong):
@@ -25,7 +25,7 @@
  *
  * Idempotent, non-interactive and safe to re-run.
  *
- * The lead gets exactly ONE sdlc bundle. `@sdlc/orchestrator`'s patch is
+ * The lead gets exactly ONE sdlc bundle. `@patwoodman/orchestrator`'s patch is
  * GENERATED as the union of its members' rows (scripts/gen-bundle-patch.mjs),
  * because the DSH loader mounts only the bundles a profile lists and never
  * descends into a bundle's dependencies. The four members are installed as
@@ -33,10 +33,11 @@
  * node_modules. Adding them as bundles too would compose every row twice.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './lib/harness.mjs';
 import { dshPeerSatisfied } from './lib/semver-lite.mjs';
+import { ownBundlePrefix, isOwnBundleName } from './lib/composition.mjs';
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -82,6 +83,17 @@ const LEAD_RECIPE = 'sdlc-web';
 const PROBE_RECIPE = 'sdlc-probe';
 const WORKER_RECIPE = 'sdlc-worker';
 
+/**
+ * `@scope/` of THIS suite, read from the packages' own manifests. Never a
+ * literal: after `scripts/set-scope.mjs` renames the suite, a hardcoded prefix
+ * stops matching the suite's bundles — the previous scope then survives in
+ * `dsh.profile.bundles` and every composed row appears twice.
+ */
+const OWN_PREFIX = ownBundlePrefix();
+
+/** `@scope/orchestrator-core` in this tree — used only in remediation text. */
+const CORE_PACKAGE = [...PKG_DIR.keys()].find((name) => name.endsWith('-core')) ?? `${OWN_PREFIX}orchestrator-core`;
+
 
 const steps = [];
 let failed = false;
@@ -122,6 +134,70 @@ if (!JSON_OUT) {
   console.log(`  source   : ${ROOT}\n`);
 }
 
+/**
+ * Repair profile state that makes a re-install fail for reasons that have
+ * nothing to do with the current tree:
+ *
+ *   1. DEAD DEPENDENCIES. A profile installed by an earlier scope (or from a
+ *      since-moved checkout) still carries an own-suite dependency that no
+ *      longer resolves: `@old-scope/orchestrator-*`, which `dsh plugin add`
+ *      would try to fetch from the registry, or a `link:` path that no longer
+ *      exists. pnpm resolves every dependency it is asked to lock, so ONE dead
+ *      entry fails the whole `dsh plugin add` — including the profiles the user
+ *      never touched. A healthy entry (present scope, existing link target) is
+ *      kept: the recipe re-adds it anyway, and re-adding is the slow part.
+ *   2. A FOREIGN pnpm STORE. `node_modules/.modules.yaml` records the global
+ *      store a profile was linked from. If that store no longer exists (a moved
+ *      checkout, a different `XDG_DATA_HOME`, a different pnpm major), pnpm
+ *      aborts with ERR_PNPM_UNEXPECTED_STORE *before* installing anything and
+ *      never repairs itself: only `pnpm install` or deleting `node_modules`
+ *      does. That is the failure a moved checkout always produces.
+ *
+ * Both are profile-local derived state that the recipe recreates, so dropping
+ * them is safe. Anything else in the profile is left alone.
+ */
+step('repair: dead own-suite dependencies and any foreign pnpm store', () => {
+  const repaired = [];
+  for (const profile of [LEAD, WORKER, PROBE]) {
+    const manifestPath = join(HOME, 'profiles', profile, 'package.json');
+    if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const deps = manifest.dependencies ?? {};
+
+    const dead = [];
+    for (const [name, spec] of Object.entries(deps)) {
+      if (!isOwnBundleName(name)) continue;
+      // In this tree, or linked to a directory that exists → still healthy.
+      if (PKG_DIR.has(name)) continue;
+      if (typeof spec === 'string' && spec.startsWith('link:')) {
+        const target = spec.slice('link:'.length).split('#')[0];
+        if (existsSync(target)) continue;
+      }
+      dead.push(name);
+    }
+    if (dead.length > 0) {
+      manifest.dependencies = Object.fromEntries(Object.entries(deps).filter(([name]) => !dead.includes(name)));
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+      repaired.push(`${profile}: dropped ${dead.length} dead dependenc${dead.length === 1 ? 'y' : 'ies'} (${dead.join(', ')})`);
+    }
+
+    const modules = join(HOME, 'profiles', profile, 'node_modules');
+    const marker = join(modules, '.modules.yaml');
+    if (!existsSync(marker)) continue;
+    const meta = readFileSync(marker, 'utf8');
+    // `.modules.yaml` is JSON in practice; fall back to a line match if a future
+    // pnpm writes real YAML.
+    let store = null;
+    try { store = JSON.parse(meta)?.storeDir ?? null; } catch { /* not JSON */ }
+    store ??= /storeDir:\s*(.+)$/m.exec(meta)?.[1]?.trim().replace(/^['"]|['"]$/g, '') ?? null;
+    if (store && !existsSync(store)) {
+      rmSync(modules, { recursive: true, force: true });
+      repaired.push(`${profile}: removed node_modules linked from the missing store ${store}`);
+    }
+  }
+  return repaired.length ? repaired.join('; ') : 'nothing to repair';
+});
+
 step('preflight: package directories present', () => {
   const wanted = new Set([
     ...recipeBundles(LEAD_RECIPE), ...recipeBundles(WORKER_RECIPE), ...recipeBundles(PROBE_RECIPE),
@@ -139,7 +215,7 @@ step('preflight: DSH runtime within the declared peer range', () => {
     throw new Error(
       `dsh ${actual} is outside the declared peer range ${want}.\n` +
         `  Install a 0.2.x runtime, or grant an exemption:\n` +
-        `    dsh plugin --profile ${LEAD} allow-version @sdlc/orchestrator-core@<ver> --dsh-version ${actual} --accept-risk`,
+        `    dsh plugin --profile ${LEAD} allow-version ${CORE_PACKAGE}@<ver> --dsh-version ${actual} --accept-risk`,
     );
   }
   return actual;
@@ -204,14 +280,14 @@ function syncProfileBundles(profileName, recipe) {
   const manifest = JSON.parse(readFileSync(path, 'utf8'));
   const wanted = recipeBundles(recipe);
   const current = manifest.dsh?.profile?.bundles ?? [];
-  const shipped = current.filter((b) => !b.startsWith('@sdlc/'));
+  const shipped = current.filter((b) => !isOwnBundleName(b));
   const next = [...shipped, ...wanted];
-  const removed = current.filter((b) => b.startsWith('@sdlc/') && !wanted.includes(b));
+  const removed = current.filter((b) => isOwnBundleName(b) && !wanted.includes(b));
   if (JSON.stringify(current) === JSON.stringify(next)) return 'already exact';
   manifest.dsh = { ...(manifest.dsh ?? {}), profile: { ...(manifest.dsh?.profile ?? {}), bundles: next } };
   writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
   return removed.length
-    ? `dropped ${removed.join(', ')} from the bundle list (still installed as dependencies)`
+    ? `dropped ${removed.join(', ')} from the bundle list`
     : `set to ${next.join(', ')}`;
 }
 
@@ -223,7 +299,7 @@ step(`bundles: ${PROBE} selects exactly the ${PROBE_RECIPE} recipe`, () => syncP
 // The recipe files are the single source of truth for WHAT is mounted; this
 // section only decides HOW each profile gets there.
 //
-//   lead   — ONE bundle (`@sdlc/orchestrator`), whose generated patch declares
+//   lead   — ONE bundle (`@patwoodman/orchestrator`), whose generated patch declares
 //            the whole lead composition. Its four members are installed as
 //            ordinary module dependencies (`pnpm add`) so the row names resolve
 //            from the profile's node_modules. They must NOT be bundles here:
@@ -236,6 +312,18 @@ step(`bundles: ${PROBE} selects exactly the ${PROBE_RECIPE} recipe`, () => syncP
 //   probe  — exactly the recipe's bundles: core + tools + presets + guard.
 function specsFor(names) {
   return names.map((name) => `link:${pkgDir(name)}`);
+}
+
+/**
+ * A one-line summary of a tool's stdout for the step log. `dsh plugin add`
+ * prints several lines (a pnpm notice, the resolved-spec warnings, a timing
+ * line); slicing the tail chopped the last line mid-word, so the summary reads
+ * the last non-empty line whole instead.
+ */
+function lastLine(text, max = 200) {
+  const lines = String(text).split('\n').map((l) => l.trim()).filter(Boolean);
+  const line = lines.at(-1) ?? '';
+  return line.length > max ? `…${line.slice(-max)}` : line;
 }
 
 step(`install: lead bundle into ${LEAD} (the single spec)`, () => {
@@ -251,10 +339,10 @@ step(`install: lead bundle into ${LEAD} (the single spec)`, () => {
   return `${bundle} + ${deps.length} member modules as plain dependencies`;
 });
 step(`install: worker bundles into ${WORKER} (guard + report tools ONLY)`, () =>
-  sh('dsh', ['plugin', '--profile', WORKER, 'add', ...specsFor(recipeBundles(WORKER_RECIPE))]).stdout.trim().slice(-200),
+  lastLine(sh('dsh', ['plugin', '--profile', WORKER, 'add', ...specsFor(recipeBundles(WORKER_RECIPE))]).stdout),
 );
 step(`install: probe bundles into ${PROBE} (recipe composition incl. the guard)`, () =>
-  sh('dsh', ['plugin', '--profile', PROBE, 'add', ...specsFor(recipeBundles(PROBE_RECIPE))]).stdout.trim().slice(-200),
+  lastLine(sh('dsh', ['plugin', '--profile', PROBE, 'add', ...specsFor(recipeBundles(PROBE_RECIPE))]).stdout),
 );
 
 // ── verification ───────────────────────────────────────────────────────────
@@ -265,7 +353,7 @@ const ALLOWED_DUPS = new Map([['agent-preset-registry', 2]]);
 
 step('verify: lead profile selects exactly one sdlc bundle', () => {
   const manifest = JSON.parse(readFileSync(join(HOME, 'profiles', LEAD, 'package.json'), 'utf8'));
-  const selected = (manifest.dsh?.profile?.bundles ?? []).filter((b) => b.startsWith('@sdlc/'));
+  const selected = (manifest.dsh?.profile?.bundles ?? []).filter((b) => isOwnBundleName(b));
   if (selected.length !== 1 || selected[0] !== recipeBundles(LEAD_RECIPE)[0]) {
     throw new Error(
       `expected exactly [${recipeBundles(LEAD_RECIPE)[0]}] as the lead's sdlc bundle, found [${selected.join(', ')}].\n` +

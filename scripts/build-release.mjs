@@ -19,9 +19,9 @@
  * The profiles install with `link:` specs pointing at the copy this script
  * makes under `$DSH_HOME/dsh-sdlc/<version>/`, so `link:` is deliberate: pnpm
  * does not resolve a linked package's dependencies, which is what lets the
- * unpublished `@sdlc/*` members resolve to the local tree instead of a registry
+ * unpublished `@patwoodman/*` members resolve to the local tree instead of a registry
  * that has never heard of them. A `file:` spec would send pnpm to the registry
- * for `@sdlc/orchestrator-core@0.4.0-beta.2` and fail.
+ * for `@patwoodman/orchestrator-core@0.4.0-beta.2` and fail.
  *
  *   node scripts/build-release.mjs [--skip-build] [--out <dir>]
  */
@@ -48,19 +48,66 @@ const STAGE = join(STAGE_ROOT, NAME);
 const TARBALL = join(OUT_DIR, `${NAME}.tgz`);
 const ALIAS = join(OUT_DIR, 'dsh-sdlc-beta.tgz');
 
-/** Never ship these: local state, caches, dependencies and the release output. */
+/** Never ship these: local state, caches, dependencies and the release output.
+ *
+ * The list is a FALLBACK for hosts without git. When the tree IS a git checkout
+ * the exclusions come from `.gitignore` itself (see `ignoredPaths`), because a
+ * hand-kept list drifts: a new scratch directory silently travelled in the
+ * tarball and doubled its size the first time this was released.
+ */
 const EXCLUDE = [
   '.git', 'node_modules', '.tools', '.validation', '.sdlc', '.probe-dsh', 'dist',
-  '.eval-home', '.eval-out', '.eval-out-live', '.eval-out-pilot',
+  '.eval-home', '.eval-tarball-home', '.eval-tarball-home2', '.eval-out', '.eval-out-live', '.eval-out-pilot',
   '.eval-out-shard0', '.eval-out-shard1', '.eval-out-merged',
+  // any other `.eval-*` scratch home (the git path derives these from .gitignore)
+  '.eval-tarball-home2',
   'demo/.sdlc', 'demo/data', 'demo/dist',
   // The repo keeps no workspace lockfile (zero-dependency build); a stray one
   // must not travel in a release artifact where it would look authoritative.
   'pnpm-lock.yaml',
 ];
 
+/**
+ * Build output that .gitignore excludes but the ARTIFACT must carry: the
+ * tarball installs with no build step, so the prebuilt `lib/` trees are the
+ * whole point. Everything else that git ignores (node_modules, DSH homes, eval
+ * output, caches) stays out.
+ */
+const KEEP_IGNORED = [
+  /^packages\/[^/]+\/lib(\/|$)/,
+  /^lib(\/|$)/,
+];
+
+/** Every path git reports as untracked-and-ignored (`--ignored=matching`
+ *  expands ignored directories), or `null` outside a git checkout. */
+function ignoredPaths() {
+  const res = run('git', ['status', '--porcelain', '--ignored=matching', '-z'], { cwd: ROOT, timeoutMs: 120_000 });
+  if (!res.ok) return null;
+  const set = new Set();
+  for (const entry of res.stdout.split('\0')) {
+    if (entry.length < 4 || entry[0] !== '!' || entry[1] !== ' ') continue;
+    set.add(entry.slice(3).replace(/\/+$/, ''));
+    // A deleted-but-ignored file is reported with a rename arrow; keep it simple.
+  }
+  return set;
+}
+
+const IGNORED = ignoredPaths();
+
+function isKeptIgnored(rel) {
+  return KEEP_IGNORED.some((re) => re.test(rel));
+}
+
 function excluded(rel) {
   const posix = rel.split('\\').join('/');
+  if (posix === '') return false;
+  if (IGNORED && !isKeptIgnored(posix)) {
+    // Ignored if the path itself, or any ancestor directory, is ignored.
+    const parts = posix.split('/');
+    for (let i = 1; i <= parts.length; i += 1) {
+      if (IGNORED.has(parts.slice(0, i).join('/'))) return true;
+    }
+  }
   return EXCLUDE.some((e) => posix === e || posix.startsWith(`${e}/`));
 }
 

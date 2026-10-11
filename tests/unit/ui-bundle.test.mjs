@@ -19,7 +19,7 @@ const read = (rel) => readFileSync(join(PKG, rel), 'utf8');
 
 test('package manifest declares the bundle patch and the web client surface', () => {
   const pkg = JSON.parse(read('package.json'));
-  assert.equal(pkg.name, '@sdlc/orchestrator-ui');
+  assert.equal(pkg.name, '@patwoodman/orchestrator-ui');
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml');
   assert.equal(pkg.dsh.client.platform, 'web');
   assert.ok(Array.isArray(pkg.dsh.client.inject) && pkg.dsh.client.inject.length > 0);
@@ -67,8 +67,8 @@ test('cordis patch declares the UI row for the web profile only', () => {
   // Scope-agnostic: the row must name this package, whatever its scope is.
   assert.ok(patch.includes(JSON.parse(read('package.json')).name), 'the UI row names this package');
   const web = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-web', 'profile.json'), 'utf8'));
-  assert.deepEqual(web.bundles, ['@sdlc/orchestrator'], 'lead installs exactly one spec (meta-bundle)');
+  assert.deepEqual(web.bundles, ['@patwoodman/orchestrator'], 'lead installs exactly one spec (meta-bundle)');
   const worker = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-worker', 'profile.json'), 'utf8'));
-  assert.ok(!worker.bundles.includes('@sdlc/orchestrator-ui'), 'sdlc-worker must not compose UI (E6/headless)');
-  assert.ok(!worker.bundles.includes('@sdlc/orchestrator'), 'sdlc-worker must not compose the meta-bundle (it pulls core)');
+  assert.ok(!worker.bundles.includes('@patwoodman/orchestrator-ui'), 'sdlc-worker must not compose UI (E6/headless)');
+  assert.ok(!worker.bundles.includes('@patwoodman/orchestrator'), 'sdlc-worker must not compose the meta-bundle (it pulls core)');
 });

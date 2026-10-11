@@ -3,10 +3,10 @@
   "role": "boot-probe",
   "template": "sdk",
   "bundles": [
-    "@sdlc/orchestrator-core",
-    "@sdlc/orchestrator-tools",
-    "@sdlc/orchestrator-presets",
-    "@sdlc/orchestrator-guard"
+    "@patwoodman/orchestrator-core",
+    "@patwoodman/orchestrator-tools",
+    "@patwoodman/orchestrator-presets",
+    "@patwoodman/orchestrator-guard"
   ],
   "mustNotContain": [],
   "capabilities": {

@@ -50,7 +50,7 @@ let built = 0;
 // The UI bundle owns its own build (scripts/build-ui.mjs compiles JSX into
 // the closure-factory client bundle); the generic src/ → lib/ mirror would
 // clobber lib/client.js. Skip it here — build-ui.mjs mirrors + compiles.
-const OWNED_BUILDS = new Set(['@sdlc/orchestrator-ui']);
+const OWNED_BUILDS = new Set(['@patwoodman/orchestrator-ui']);
 
 for (const dir of packageDirs()) {
   const src = join(dir, 'src');

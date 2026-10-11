@@ -71,7 +71,7 @@ Why the invocation looks like that:
 - **The arms must be `headless`-template profiles.** `--json` is a headless-app
   flag; an interactive profile (e.g. `sdlc-web`) cannot serve a one-shot run.
   `preflightProfiles()` refuses to start otherwise, and also refuses a treatment
-  with no `@sdlc/*` bundle or a control that already composes one.
+  with no `@patwoodman/*` bundle or a control that already composes one.
 - **A failed run is `status:"invalid"`.** It carries no metrics, the live study
   aborts at the first one, and `report.mjs` refuses the records unless
   `--allow-invalid` is passed. A run that never happened is not a data point.

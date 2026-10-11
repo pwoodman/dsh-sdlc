@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/orchestrator-tools",
+  "name": "@patwoodman/orchestrator-tools",
   "version": "0.4.0-beta.2",
   "type": "module",
   "description": "Model-facing propose-only tools (worker + lead) and the /sdlc command surface.",
@@ -36,7 +36,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "directory": "packages/sdlc-tools"
+    "directory": "packages/sdlc-tools",
+    "url": "git+https://github.com/pwoodman/dsh-sdlc.git"
   },
   "icon": "icon.svg",
   "engines": {
@@ -44,5 +45,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://github.com/pwoodman/dsh-sdlc",
+  "bugs": {
+    "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   }
 }

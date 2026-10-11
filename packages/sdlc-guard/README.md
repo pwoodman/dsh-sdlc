@@ -1,4 +1,4 @@
-# @sdlc/orchestrator-guard — worker-side enforcement
+# @patwoodman/orchestrator-guard — worker-side enforcement
 
 The policy half of the worker sandbox: a `tools/pre-execute` waterfall and the
 `fs/*` write deciders. It denies writes outside the task contract's allowed
@@ -11,13 +11,13 @@ security boundary — the real controls are the sandbox root and the post-hoc
 `git diff` check.
 
 Installed into worker profiles beside
-[`@sdlc/orchestrator-tools`](https://www.npmjs.com/package/@sdlc/orchestrator-tools),
+[`@patwoodman/orchestrator-tools`](https://www.npmjs.com/package/@patwoodman/orchestrator-tools),
 and into the boot probe for symmetry.
 
 ## Install
 
 ```sh
-dsh plugin --profile sdlc-worker add @sdlc/orchestrator-guard @sdlc/orchestrator-tools
+dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard @patwoodman/orchestrator-tools
 ```
 
 ## Configuration

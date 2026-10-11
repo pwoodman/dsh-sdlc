@@ -4,7 +4,7 @@
  *
  * This is the single source of truth behind both:
  *   - `sdlc doctor` / `/sdlc doctor`   (in-session convenience wrapper)
- *   - `npx @sdlc/orchestrator doctor`  (standalone, no DSH boot required)
+ *   - `npx @patwoodman/orchestrator doctor`  (standalone, no DSH boot required)
  *
  * It runs WITHOUT booting DSH and WITHOUT any LLM call, so it is safe in CI
  * pre-flight. Unlike spec v2's F.2, it does not invent a `/sdlc` slash command
@@ -22,6 +22,7 @@ import { join, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { run } from './lib/harness.mjs';
 import { dshPeerSatisfied } from './lib/semver-lite.mjs';
+import { ownBundlePrefix, isOwnBundleName } from './lib/composition.mjs';
 
 // ESM has no bare `require`; the v2 C.8.1 script's `require(...)` calls would
 // have thrown ReferenceError. This is the corrected form.
@@ -167,9 +168,13 @@ function readProfileBundles(name) {
 
 function checkProfiles() {
   const sec = 'Profiles';
+  // Derived from the manifests, not a literal: a scope rename (set-scope.mjs)
+  // must not stop doctor recognising that a profile still selects an old-scope
+  // copy of the suite, which is exactly the state that composes every row twice.
+  const own = ownBundlePrefix();
   for (const [name, required] of [
-    ['sdlc-web', ['@sdlc/orchestrator']],
-    ['sdlc-worker', ['@sdlc/orchestrator-guard', '@sdlc/orchestrator-tools']],
+    ['sdlc-web', [`${own}orchestrator`]],
+    ['sdlc-worker', [`${own}orchestrator-guard`, `${own}orchestrator-tools`]],
   ]) {
     const dir = profileDir(name);
     if (!existsSync(dir)) {
@@ -199,7 +204,7 @@ function checkProfiles() {
     // the meta-bundle AND its four members: harmless while the meta-bundle's
     // patch held a single row, but since that patch became the union of its
     // members' rows it composes every row twice.
-    const extra = bundles.filter((b) => b.startsWith('@sdlc/') && !required.includes(b));
+    const extra = bundles.filter((b) => isOwnBundleName(b) && !required.includes(b));
     if (extra.length) {
       record(
         sec,

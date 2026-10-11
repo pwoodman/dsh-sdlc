@@ -20,14 +20,14 @@ export const WORKER_TOOL_ROWS = [
   { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash' },
   { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
   { id: 'tool-todo', name: '@deepseek-ai/dsh-tool-todo' },
-  { id: 'sdlc-report', name: '@sdlc/orchestrator-tools' },
+  { id: 'sdlc-report', name: '@patwoodman/orchestrator-tools' },
 ];
 
 /** Tools only the Lead composes: delegation, plan deltas, decision ledger. */
 export const LEAD_TOOL_ROWS = [
   { id: 'tool-subagent', name: '@deepseek-ai/dsh-tool-subagent' },
-  { id: 'sdlc-dispatch', name: '@sdlc/orchestrator-tools' },
-  { id: 'sdlc-plan', name: '@sdlc/orchestrator-tools' },
+  { id: 'sdlc-dispatch', name: '@patwoodman/orchestrator-tools' },
+  { id: 'sdlc-plan', name: '@patwoodman/orchestrator-tools' },
 ];
 
 export const POLICY_SUFFIX = [

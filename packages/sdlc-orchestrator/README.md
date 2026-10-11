@@ -1,4 +1,4 @@
-# @sdlc/orchestrator — the lead bundle
+# @patwoodman/orchestrator — the lead bundle
 
 The **one** spec an interactive SDLC lead installs. Its patch layer is generated
 as the union of its four members' rows (`scripts/gen-bundle-patch.mjs` in the
@@ -9,10 +9,10 @@ Contains, in a single install:
 
 | Member | What it contributes |
 |---|---|
-| [`@sdlc/orchestrator-core`](https://www.npmjs.com/package/@sdlc/orchestrator-core) | the nine host services (tasks, scheduler, router, verifier, integration, evidence, escalation, worker-mgr, recovery) |
-| [`@sdlc/orchestrator-tools`](https://www.npmjs.com/package/@sdlc/orchestrator-tools) | the propose-only model tools and the `/sdlc` command surface |
-| [`@sdlc/orchestrator-presets`](https://www.npmjs.com/package/@sdlc/orchestrator-presets) | 26 role presets (one per SDLC role) |
-| [`@sdlc/orchestrator-ui`](https://www.npmjs.com/package/@sdlc/orchestrator-ui) | the SDLC right-sidebar web UI and its host routes |
+| [`@patwoodman/orchestrator-core`](https://www.npmjs.com/package/@patwoodman/orchestrator-core) | the nine host services (tasks, scheduler, router, verifier, integration, evidence, escalation, worker-mgr, recovery) |
+| [`@patwoodman/orchestrator-tools`](https://www.npmjs.com/package/@patwoodman/orchestrator-tools) | the propose-only model tools and the `/sdlc` command surface |
+| [`@patwoodman/orchestrator-presets`](https://www.npmjs.com/package/@patwoodman/orchestrator-presets) | 26 role presets (one per SDLC role) |
+| [`@patwoodman/orchestrator-ui`](https://www.npmjs.com/package/@patwoodman/orchestrator-ui) | the SDLC right-sidebar web UI and its host routes |
 
 ## Install
 
@@ -21,7 +21,7 @@ Contains, in a single install:
 dsh --profile sdlc-web --from-default-profile web --dump-config
 
 # then the single spec
-dsh plugin --profile sdlc-web add @sdlc/orchestrator
+dsh plugin --profile sdlc-web add @patwoodman/orchestrator
 
 dsh --profile sdlc-web
 ```

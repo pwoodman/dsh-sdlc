@@ -8,6 +8,6 @@
 # Injection:    model mock/<scenario>?inject=escape|falsefile|injection
 - insert:
     - id: sdlc-mock-llm
-      name: '@sdlc/orchestrator-mock-llm'
+      name: '@patwoodman/orchestrator-mock-llm'
       config:
         recordPath: .validation/mock-llm/requests.jsonl

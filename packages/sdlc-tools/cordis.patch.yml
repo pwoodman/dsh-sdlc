@@ -6,6 +6,6 @@
 # Tools are propose-only — none of them may grant authority (L.1 rule 4).
 - insert:
     - id: sdlc-tools
-      name: '@sdlc/orchestrator-tools/plugin'
+      name: '@patwoodman/orchestrator-tools/plugin'
       config:
         worktreePath: !!js process.cwd()

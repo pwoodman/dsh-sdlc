@@ -10,7 +10,7 @@
  *   - the arms are created from the shipped `headless` template;
  *   - the provider/model config is copied into BOTH arms identically, so the
  *     only difference is the plugin (the protocol's central claim);
- *   - the `@sdlc/*` bundles are linked into the treatment arm with symlinks,
+ *   - the `@patwoodman/*` bundles are linked into the treatment arm with symlinks,
  *     which is enough because those packages import only Node builtins.
  *
  *   node scripts/setup-eval-profiles.mjs [--dsh-home <dir>] [--provider <p>]
@@ -129,12 +129,12 @@ for (const name of BUNDLES) {
   const linkDir = join(treatmentDir, 'node_modules', '@sdlc');
   const link = join(linkDir, `orchestrator-${name}`);
   if (CHECK_ONLY) {
-    log(`  [${existsSync(link) ? 'ok' : 'missing'}] @sdlc/orchestrator-${name}`);
+    log(`  [${existsSync(link) ? 'ok' : 'missing'}] @patwoodman/orchestrator-${name}`);
     continue;
   }
   mkdirSync(linkDir, { recursive: true });
   if (!existsSync(link)) symlinkSync(src, link, 'dir');
-  log(`  [link]    @sdlc/orchestrator-${name}`);
+  log(`  [link]    @patwoodman/orchestrator-${name}`);
 }
 
 if (!CHECK_ONLY) {
@@ -143,13 +143,13 @@ if (!CHECK_ONLY) {
   doc.dsh ??= { profile: { bundles: [] } };
   doc.dsh.profile.bundles ??= [];
   for (const name of BUNDLES) {
-    const id = `@sdlc/orchestrator-${name}`;
+    const id = `@patwoodman/orchestrator-${name}`;
     if (!doc.dsh.profile.bundles.includes(id)) doc.dsh.profile.bundles.push(id);
   }
   doc.dependencies ??= {};
-  for (const name of BUNDLES) doc.dependencies[`@sdlc/orchestrator-${name}`] = `link:../../../../packages/sdlc-${name}`;
+  for (const name of BUNDLES) doc.dependencies[`@patwoodman/orchestrator-${name}`] = `link:../../../../packages/sdlc-${name}`;
   writeFileSync(pkgPath, `${JSON.stringify(doc, null, 2)}\n`);
-  log('  [ok]      @sdlc/* bundles declared in the treatment package.json');
+  log('  [ok]      @patwoodman/* bundles declared in the treatment package.json');
 
   // Reuse the credentials of the normal home, so the study can authenticate.
   const credSrc = join(homedir(), '.dsh', '.credentials.yaml');
@@ -171,7 +171,7 @@ for (const [label, name] of [['baseline', CONTROL], ['treatment', TREATMENT]]) {
   const res = run('dsh', ['--profile', name, '--dump-config'], { timeoutMs: 300_000, env: { ...process.env, DSH_HOME: HOME } });
   if (!res.ok) fail(`${label} profile "${name}" did not compose:\n${(res.stdout + res.stderr).slice(-1200)}`);
   const rows = [...String(res.stdout).matchAll(/^- id:\s*(.+)$/gm)].length;
-  const sdlc = [...String(res.stdout).matchAll(/@sdlc\//g)].length;
+  const sdlc = [...String(res.stdout).matchAll(/@patwoodman\//g)].length;
   log(`  [ok]      ${name}: ${rows} rows, ${sdlc} plugin rows`);
 }
 

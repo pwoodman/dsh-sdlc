@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/orchestrator-presets",
+  "name": "@patwoodman/orchestrator-presets",
   "version": "0.4.0-beta.2",
   "type": "module",
   "description": "26 dsh-agent-preset rows — one per SDLC role (patch declares them; no host code).",
@@ -38,7 +38,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "directory": "packages/sdlc-presets"
+    "directory": "packages/sdlc-presets",
+    "url": "git+https://github.com/pwoodman/dsh-sdlc.git"
   },
   "icon": "icon.svg",
   "engines": {
@@ -46,5 +47,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://github.com/pwoodman/dsh-sdlc",
+  "bugs": {
+    "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   }
 }

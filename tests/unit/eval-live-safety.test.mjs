@@ -16,10 +16,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { preflightProfiles, armOrder, runDsh, runEvaluation } from '../../eval/run.mjs';
 import { ARMS } from '../../eval/lib/records.mjs';
+import { ownBundlePrefix } from '../../scripts/lib/composition.mjs';
 
 const TASKS_DIR = join(dirname(import.meta.dirname), '..', 'eval', 'tasks');
 const HEADLESS = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'];
-const WITH_PLUGIN = [...HEADLESS, '@sdlc/orchestrator-core', '@sdlc/orchestrator-tools'];
+// Derived, not literal: this suite is re-scoped in one pass by set-scope.mjs.
+const OWN = ownBundlePrefix();
+const WITH_PLUGIN = [...HEADLESS, `${OWN}orchestrator-core`, `${OWN}orchestrator-tools`];
 
 function makeProfile(home, name, bundles) {
   const dir = join(home, 'profiles', name);
@@ -65,7 +68,7 @@ test('preflight refuses a treatment that is not actually treated', () => {
   withHome((home) => {
     makeProfile(home, 'eval-control', HEADLESS);
     makeProfile(home, 'eval-treatment', HEADLESS);
-    assert.match(preflightProfiles({ baselineProfile: 'eval-control', treatmentProfile: 'eval-treatment', dshHome: home })[0], /composes no @sdlc/);
+    assert.match(preflightProfiles({ baselineProfile: 'eval-control', treatmentProfile: 'eval-treatment', dshHome: home })[0], /composes no SDLC-orchestrator bundle/);
   });
 });
 

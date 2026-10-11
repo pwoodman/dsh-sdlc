@@ -6,10 +6,10 @@
  * `dsh.profile.bundles`; it does NOT descend into a bundle's `dependencies`. A
  * meta-bundle whose members are ordinary npm dependencies therefore composes
  * NOTHING but its own row — which is what `dsh plugin --profile sdlc-web add
- * @sdlc/orchestrator` used to produce: one `sdlc-orchestrator` row and no
+ * @patwoodman/orchestrator` used to produce: one `sdlc-orchestrator` row and no
  * services, tools, presets or UI.
  *
- * `@sdlc/orchestrator` is the one spec the lead installs, so its own patch must
+ * `@patwoodman/orchestrator` is the one spec the lead installs, so its own patch must
  * carry the whole lead composition. That composition is the union of its four
  * members' rows, and this script is the single place that union is assembled:
  * the members keep owning their rows (the worker and probe profiles mount them
@@ -33,13 +33,18 @@ const META_DIR = join(ROOT, 'packages', 'sdlc-orchestrator');
 const TARGET = join(META_DIR, 'cordis.patch.yml');
 const CHECK = process.argv.includes('--check');
 
-/** The lead composition, in load order. Each entry owns its rows. */
+/** The lead composition, in load order. Each entry owns its rows.
+ *
+ * The member package names are READ from their manifests: hardcoding a scope
+ * would make this generator's output stale (or its `--check` fail) the moment
+ * `scripts/set-scope.mjs` renames the suite.
+ */
 const MEMBERS = [
-  { dir: 'sdlc-core', pkg: '@sdlc/orchestrator-core', what: 'host services (spec v3 C.2)' },
-  { dir: 'sdlc-tools', pkg: '@sdlc/orchestrator-tools', what: 'model tools + the /sdlc command surface (C.4)' },
-  { dir: 'sdlc-presets', pkg: '@sdlc/orchestrator-presets', what: 'the 26 role presets (C.3)' },
-  { dir: 'sdlc-client-ui', pkg: '@sdlc/orchestrator-ui', what: 'the web UI + host routes (C.1)' },
-];
+  { dir: 'sdlc-core', what: 'host services (spec v3 C.2)' },
+  { dir: 'sdlc-tools', what: 'model tools + the /sdlc command surface (C.4)' },
+  { dir: 'sdlc-presets', what: 'the 26 role presets (C.3)' },
+  { dir: 'sdlc-client-ui', what: 'the web UI + host routes (C.1)' },
+].map((m) => ({ ...m, pkg: JSON.parse(readFileSync(join(ROOT, 'packages', m.dir, 'package.json'), 'utf8')).name }));
 
 const HEADER = `# sdlc-orchestrator — lead-profile meta-bundle (the ONE spec the lead installs).
 #
@@ -73,7 +78,7 @@ const SELF_ROW = `# ── the meta-bundle's own row ─────────
 # real loader layer rather than data alone (the sdlc-ui self-report pattern).
 - insert:
     - id: sdlc-orchestrator
-      name: '@sdlc/orchestrator'
+      name: '@patwoodman/orchestrator'
       config: {}
 `;
 

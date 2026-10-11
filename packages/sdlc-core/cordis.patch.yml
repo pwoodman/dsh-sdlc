@@ -9,43 +9,43 @@
 #
 # NOTE (discrepancy D2): spec C.1's inline comment shows sdlc-core declaring
 # both cordis.patch.yml and presets.patch.yml. The 26 preset rows live in
-# @sdlc/orchestrator-presets (C.1 body text); declaring them here as well would
+# @patwoodman/orchestrator-presets (C.1 body text); declaring them here as well would
 # produce duplicate loader row ids and fail M0-02-no-dup-ids. Core therefore
 # declares host rows only.
 - insert:
     - id: sdlc-tasks
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: tasks
     - id: sdlc-scheduler
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: scheduler
     - id: sdlc-router
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: router
     - id: sdlc-verifier
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: verifier
     - id: sdlc-integration
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: integration
     - id: sdlc-evidence
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: evidence
     - id: sdlc-escalation
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: escalation
     - id: sdlc-worker-mgr
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: worker-mgr
     - id: sdlc-recovery
-      name: '@sdlc/orchestrator-core/services'
+      name: '@patwoodman/orchestrator-core/services'
       config:
         service: recovery

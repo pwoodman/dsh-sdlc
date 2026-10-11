@@ -8,4 +8,4 @@ export {
 } from './roles.js';
 export { apply, declaredPresetIds } from './plugin.js';
 
-export const PACKAGE = '@sdlc/orchestrator-presets';
+export const PACKAGE = '@patwoodman/orchestrator-presets';

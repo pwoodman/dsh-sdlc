@@ -808,7 +808,7 @@ console.log('  M0 validation: PASS');
 | Artifact | Format | Command |
 |---|---|---|
 | Source workspace | pnpm monorepo | `pnpm install && pnpm build` |
-| Published packages | npm (scoped `@sdlc/`) | `pnpm publish -r --access public` |
+| Published packages | npm (scoped `@patwoodman/`) | `pnpm publish -r --access public` |
 | Profile template | DSH profile directory | `dsh --profile sdlc-lead --from-default-profile sdlc-lead` |
 | Docker image (optional) | OCI image with DSH + orchestrator pre-installed | `docker build -t sdlc-orchestrator .` |
 
@@ -881,19 +881,19 @@ Each milestone has a **gate** — an automated check that must pass before the n
 
 This part makes the orchestrator trivially installable. The goal: **one command from zero to running**, with a doctor command that diagnoses any environment issue.
 
-## F.1 Bootstrap script (`npx @sdlc/orchestrator init`)
+## F.1 Bootstrap script (`npx @patwoodman/orchestrator init`)
 
-A standalone Node.js script (`packages/sdlc-cli/init.mjs`) that scaffolds everything. Published as `@sdlc/orchestrator` on npm. Runs without any prior setup.
+A standalone Node.js script (`packages/sdlc-cli/init.mjs`) that scaffolds everything. Published as `@patwoodman/orchestrator` on npm. Runs without any prior setup.
 
 ```sh
 # One command — installs DSH if needed, creates profiles, installs plugins, validates
-npx @sdlc/orchestrator init
+npx @patwoodman/orchestrator init
 
 # Non-interactive (CI / scripting)
-npx @sdlc/orchestrator init --yes --provider openai --model-tier base:gpt-4o
+npx @patwoodman/orchestrator init --yes --provider openai --model-tier base:gpt-4o
 
 # Into an existing profile
-npx @sdlc/orchestrator init --profile my-existing-profile
+npx @patwoodman/orchestrator init --profile my-existing-profile
 ```
 
 ### What `init` does (step by step)
@@ -914,7 +914,7 @@ npx @sdlc/orchestrator init --profile my-existing-profile
 
 **Failure handling:** every step is atomic. If step N fails, steps 1..N-1 are rolled back (profile deleted, packages uninstalled). The script prints the exact rollback command on failure.
 
-**Offline mode:** `npx @sdlc/orchestrator init --offline` skips npm installs and uses locally cached packages. For air-gapped environments.
+**Offline mode:** `npx @patwoodman/orchestrator init --offline` skips npm installs and uses locally cached packages. For air-gapped environments.
 
 ## F.2 `/sdlc doctor` — Environment validation
 
@@ -1831,11 +1831,11 @@ dsh --profile sdlc-lead -- /sdlc db restore --backup .sdlc/sdlc.db.backup-202601
 
 | Package | npm name | Purpose |
 |---|---|---|
-| `sdlc-core` | `@sdlc/orchestrator-core` | Services, state machine, router, guard |
-| `sdlc-tools` | `@sdlc/orchestrator-tools` | Model-facing tools + `/sdlc` commands |
-| `sdlc-presets` | `@sdlc/orchestrator-presets` | 26 role preset definitions |
-| `sdlc-client-ui` | `@sdlc/orchestrator-ui` | Optional web dashboard |
-| `sdlc-cli` | `@sdlc/orchestrator` | Bootstrap script (`npx @sdlc/orchestrator init`) |
+| `sdlc-core` | `@patwoodman/orchestrator-core` | Services, state machine, router, guard |
+| `sdlc-tools` | `@patwoodman/orchestrator-tools` | Model-facing tools + `/sdlc` commands |
+| `sdlc-presets` | `@patwoodman/orchestrator-presets` | 26 role preset definitions |
+| `sdlc-client-ui` | `@patwoodman/orchestrator-ui` | Optional web dashboard |
+| `sdlc-cli` | `@patwoodman/orchestrator` | Bootstrap script (`npx @patwoodman/orchestrator init`) |
 
 Each package:
 - Declares `peerDependencies: { "@deepseek-ai/dsh": "0.2.0-rc.2", "@deepseek-ai/dsh-*": "0.2.0-rc.2" }` (P36)
@@ -1858,7 +1858,7 @@ Each package:
 dsh --profile sdllc-lead -- /sdlc version --check
 
 # Upgrade (re-installs bundles in the profile)
-dsh plugin --profile sdlc-lead update @sdlc/orchestrator-core @sdlc/orchestrator-tools @sdlc/orchestrator-presets
+dsh plugin --profile sdlc-lead update @patwoodman/orchestrator-core @patwoodman/orchestrator-tools @patwoodman/orchestrator-presets
 
 # Restart required (dependency change)
 dsh --profile sdlc-lead
@@ -1916,7 +1916,7 @@ docker run -e OPENAI_API_KEY=$OPENAI_API_KEY -v $(pwd):/workspace sdlc-orchestra
 
 ```sh
 # Remove the orchestrator from a profile
-dsh plugin --profile sdlc-lead remove @sdlc/orchestrator-core @sdlc/orchestrator-tools @sdlc/orchestrator-presets
+dsh plugin --profile sdlc-lead remove @patwoodman/orchestrator-core @patwoodman/orchestrator-tools @patwoodman/orchestrator-presets
 
 # Delete the profiles entirely
 dsh plugin --profile sdlc-lead remove --profile  # (or rm -rf $DSH_HOME/profiles/sdlc-lead)

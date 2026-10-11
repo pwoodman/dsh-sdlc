@@ -1,4 +1,4 @@
-# @sdlc/orchestrator-mock-llm — deterministic test provider
+# @patwoodman/orchestrator-mock-llm — deterministic test provider
 
 **Test-only, never published** (`"private": true`). Registers a deterministic
 `ctx.llm` provider so every offline test and CI acceptance run is free,

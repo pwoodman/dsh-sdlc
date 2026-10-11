@@ -42,15 +42,20 @@ import { join, dirname } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { runSuite, run, withTempDir, EXIT } from './lib/harness.mjs';
 import {
-  ROOT, loadProfiles, validateProfileStatic, allPatchRows, composeProfile, loadPackages, loadPatchRows,
+  ROOT, loadProfiles, validateProfileStatic, allPatchRows, composeProfile, loadPackages, loadPatchRows, ownBundlePrefix,
 } from './lib/composition.mjs';
 
 const HOME = process.env.DSH_HOME || join(process.env.HOME || '', '.dsh');
 const LEAD_PROFILE = process.env.SDLC_LEAD_PROFILE || 'sdlc-web';
 const PROBE_PROFILE = process.env.SDLC_PROBE_PROFILE || 'sdlc-probe';
-const SELF_PACKAGES = ['@sdlc/orchestrator-core', '@sdlc/orchestrator-tools', '@sdlc/orchestrator-presets'];
-const LEAD_META_PACKAGE = '@sdlc/orchestrator';
-const LEAD_UI_PACKAGE = '@sdlc/orchestrator-ui';
+// Every own-package name below is DERIVED from the workspace manifests, never a
+// scope literal: `scripts/set-scope.mjs` renames the suite in one pass, and a
+// literal would make this gate fail (or, worse, skip) on a correctly re-scoped
+// tree — the exact trap the installer and the static composition checks fell into.
+const OWN = ownBundlePrefix();
+const SELF_PACKAGES = [`${OWN}orchestrator-core`, `${OWN}orchestrator-tools`, `${OWN}orchestrator-presets`];
+const LEAD_META_PACKAGE = `${OWN}orchestrator`;
+const LEAD_UI_PACKAGE = `${OWN}orchestrator-ui`;
 const LEAD_UI_ROW = 'sdlc-ui';
 const ROLE_COUNT = 26;
 
@@ -201,7 +206,7 @@ const checks = [
     title: `lead profile ${LEAD_PROFILE} composes the sdlc bundles`,
     fn() {
       if (leadBundles) {
-        // Single-spec install: the lead declares the @sdlc/orchestrator
+        // Single-spec install: the lead declares the @patwoodman/orchestrator
         // meta-bundle; its dependencies provide the rows. Unpacked installs
         // (core+tools+presets listed directly) are also accepted.
         const viaMeta = leadBundles.includes(LEAD_META_PACKAGE);
@@ -266,7 +271,7 @@ const checks = [
       // Negative control: the checker must notice a forced duplicate. Use
       // the guard bundle twice (a small patch with no meta indirection), so
       // the duplicate survives regardless of the seen-set dedup.
-      const forced = composeProfile({ bundles: ['@sdlc/orchestrator-guard', '@sdlc/orchestrator-guard'] }, { packages });
+      const forced = composeProfile({ bundles: [`${OWN}orchestrator-guard`, `${OWN}orchestrator-guard`] }, { packages });
       if (forced.duplicates.length === 0) throw new Error('duplicate detection is not working (negative control failed)');
       return { detail: `static: ${new Set(report.composition.ids).size} unique ids across the composed bundles (negative control passed)` };
     },

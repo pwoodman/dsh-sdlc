@@ -24,7 +24,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 function selftest() {
   try {
-    return require('@sdlc/orchestrator-core/selftest.js');
+    return require('@patwoodman/orchestrator-core/selftest.js');
   } catch {
     return null;
   }

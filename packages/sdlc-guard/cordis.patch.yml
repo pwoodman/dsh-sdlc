@@ -6,7 +6,7 @@
 # policy, the sandbox root and the post-hoc git diff are the real controls.
 - insert:
     - id: sdlc-guard
-      name: '@sdlc/orchestrator-guard/plugin'
+      name: '@patwoodman/orchestrator-guard/plugin'
       config:
         guardMode: deny
         orchestratorPaths: ['.sdlc/**', '.dsh/**']

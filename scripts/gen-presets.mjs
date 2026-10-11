@@ -4,7 +4,7 @@
  *
  * The patch file is a build artifact of the role registry: keeping it generated
  * (and checked in) means the roster has ONE source of truth while the DSH loader
- * still sees a static patch. `pnpm --filter @sdlc/orchestrator-presets gen`
+ * still sees a static patch. `pnpm --filter @patwoodman/orchestrator-presets gen`
  * regenerates it; a unit test asserts the checked-in file matches roles.js.
  *
  *   node scripts/gen-presets.mjs [--check]
@@ -18,6 +18,9 @@ import { dumpYaml } from '../packages/sdlc-core/src/yaml-lite.js';
 const ROOT = join(import.meta.dirname, '..');
 const TARGET = join(ROOT, 'packages', 'sdlc-presets', 'cordis.patch.yml');
 const CHECK = process.argv.includes('--check');
+// The self-report row must name THIS package, so read its manifest instead of
+// hardcoding a scope `scripts/set-scope.mjs` can rewrite.
+const SELF_PACKAGE = JSON.parse(readFileSync(join(ROOT, 'packages', 'sdlc-presets', 'package.json'), 'utf8')).name;
 
 const HEADER = `# sdlc-presets — the ${ROLE_COUNT}-role registry (spec v3 C.3).
 #
@@ -54,7 +57,7 @@ const registry = presetRegistryRow();
 const presets = presetRows().filter((r) => r.id !== registry.id);
 const selfReport = {
   id: 'sdlc-presets',
-  name: '@sdlc/orchestrator-presets/plugin',
+  name: `${SELF_PACKAGE}/plugin`,
   config: {},
 };
 const body = dumpYaml([{ insert: [registry, ...presets, selfReport] }]);

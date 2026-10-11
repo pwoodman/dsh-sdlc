@@ -1,4 +1,4 @@
-# @sdlc/orchestrator-ui — the SDLC web panel
+# @patwoodman/orchestrator-ui — the SDLC web panel
 
 The browser half of the orchestrator: an **SDLC** tab in the web app's right
 sidebar, plus the host routes that feed it.
@@ -20,10 +20,10 @@ right-sidebar slot system; it needs no build step on the consumer's machine.
 ## Install
 
 Installed into the interactive lead only — a `web`-platform profile. It is a
-member of [`@sdlc/orchestrator`](https://www.npmjs.com/package/@sdlc/orchestrator):
+member of [`@patwoodman/orchestrator`](https://www.npmjs.com/package/@patwoodman/orchestrator):
 
 ```sh
-dsh plugin --profile sdlc-web add @sdlc/orchestrator
+dsh plugin --profile sdlc-web add @patwoodman/orchestrator
 ```
 
 It must never be mounted in the headless worker profile (E6).

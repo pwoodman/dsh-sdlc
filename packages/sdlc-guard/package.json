@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/orchestrator-guard",
+  "name": "@patwoodman/orchestrator-guard",
   "version": "0.4.0-beta.2",
   "type": "module",
   "description": "Worker-side enforcement only: tools/pre-execute + fs/* deciders. Never installed into the lead profile.",
@@ -39,7 +39,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "directory": "packages/sdlc-guard"
+    "directory": "packages/sdlc-guard",
+    "url": "git+https://github.com/pwoodman/dsh-sdlc.git"
   },
   "icon": "icon.svg",
   "engines": {
@@ -47,5 +48,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://github.com/pwoodman/dsh-sdlc",
+  "bugs": {
+    "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   }
 }

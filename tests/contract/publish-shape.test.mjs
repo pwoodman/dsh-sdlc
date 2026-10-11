@@ -22,13 +22,13 @@ import { DSH_PEER_RANGE, dshPeerSatisfied } from '../../scripts/lib/semver-lite.
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
 const SHIPPABLE = [
-  '@sdlc/orchestrator',
-  '@sdlc/orchestrator-core',
-  '@sdlc/orchestrator-guard',
-  '@sdlc/orchestrator-tools',
-  '@sdlc/orchestrator-presets',
-  '@sdlc/orchestrator-ui',
-  '@sdlc/orchestrator-cli',
+  '@patwoodman/orchestrator',
+  '@patwoodman/orchestrator-core',
+  '@patwoodman/orchestrator-guard',
+  '@patwoodman/orchestrator-tools',
+  '@patwoodman/orchestrator-presets',
+  '@patwoodman/orchestrator-ui',
+  '@patwoodman/orchestrator-cli',
 ];
 
 function pkgDir(name) {
@@ -55,17 +55,17 @@ test('publish: shippable bundles are public, licensed, and versioned with root',
 });
 
 test('publish: mock-llm stays private (test-only, never published)', () => {
-  const dir = pkgDir('@sdlc/orchestrator-mock-llm');
+  const dir = pkgDir('@patwoodman/orchestrator-mock-llm');
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
   assert.equal(pkg.private, true, 'mock-llm must stay private');
 });
 
 test('publish: every bundle declares the DSH peer range and declares its patch', () => {
-  for (const name of [...SHIPPABLE, '@sdlc/orchestrator-mock-llm']) {
+  for (const name of [...SHIPPABLE, '@patwoodman/orchestrator-mock-llm']) {
     const dir = pkgDir(name);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
     assert.equal(pkg.peerDependencies?.['@deepseek-ai/dsh'], DSH_PEER_RANGE, `${name} declares dsh peer ${DSH_PEER_RANGE} (P36, beta.2)`);
-    if (name === '@sdlc/orchestrator-cli') continue; // CLI is not a DSH bundle
+    if (name === '@patwoodman/orchestrator-cli') continue; // CLI is not a DSH bundle
     const patch = pkg.dsh?.bundle?.patch;
     assert.ok(patch, `${name} declares dsh.bundle.patch`);
     for (const rel of Array.isArray(patch) ? patch : [patch]) {
@@ -123,7 +123,7 @@ test('publish: bundles ship and export a package-root icon and their patch', () 
   for (const name of SHIPPABLE) {
     const dir = pkgDir(name);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-    if (name === '@sdlc/orchestrator-cli') continue; // the CLI is not a bundle
+    if (name === '@patwoodman/orchestrator-cli') continue; // the CLI is not a bundle
     assert.equal(pkg.icon, 'icon.svg', `${name} declares a package-root icon`);
     assert.ok(existsSync(join(dir, 'icon.svg')), `${name} ships icon.svg`);
     assert.ok(readFileSync(join(dir, 'icon.svg')).length <= MAX_ICON_BYTES, `${name} icon is under 256 KiB`);
@@ -147,18 +147,18 @@ test('publish: scoped packages declare public access and a node engine', () => {
 });
 
 test('publish: meta-bundle depends on exact member versions', () => {
-  const dir = pkgDir('@sdlc/orchestrator');
+  const dir = pkgDir('@patwoodman/orchestrator');
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-  for (const member of ['@sdlc/orchestrator-core', '@sdlc/orchestrator-tools', '@sdlc/orchestrator-presets', '@sdlc/orchestrator-ui']) {
+  for (const member of ['@patwoodman/orchestrator-core', '@patwoodman/orchestrator-tools', '@patwoodman/orchestrator-presets', '@patwoodman/orchestrator-ui']) {
     assert.equal(pkg.dependencies?.[member], VERSION, `meta-bundle pins ${member}@${VERSION} (saveExact)`);
   }
-  assert.ok(!pkg.dependencies?.['@sdlc/orchestrator-guard'], 'meta-bundle must not pull the guard');
-  assert.ok(!pkg.dependencies?.['@sdlc/orchestrator-cli'], 'meta-bundle must not pull the CLI');
+  assert.ok(!pkg.dependencies?.['@patwoodman/orchestrator-guard'], 'meta-bundle must not pull the guard');
+  assert.ok(!pkg.dependencies?.['@patwoodman/orchestrator-cli'], 'meta-bundle must not pull the CLI');
 });
 
 test('publish: worker profile never composes the meta-bundle (E6)', () => {
   const worker = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-worker', 'profile.json'), 'utf8'));
-  assert.ok(!worker.bundles.includes('@sdlc/orchestrator'), 'worker must not install the meta-bundle (it pulls core)');
+  assert.ok(!worker.bundles.includes('@patwoodman/orchestrator'), 'worker must not install the meta-bundle (it pulls core)');
   const web = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-web', 'profile.json'), 'utf8'));
-  assert.deepEqual(web.bundles, ['@sdlc/orchestrator'], 'lead installs exactly one spec');
+  assert.deepEqual(web.bundles, ['@patwoodman/orchestrator'], 'lead installs exactly one spec');
 });

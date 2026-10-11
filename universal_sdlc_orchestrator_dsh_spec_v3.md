@@ -875,7 +875,7 @@ The scripts are plain Node.js with no dependencies, so they run in any CI enviro
 | Artifact | Format | Command |
 |---|---|---|
 | Source workspace | pnpm monorepo | `pnpm install && pnpm build` |
-| Published packages | npm (scoped `@sdlc/`) | `pnpm publish -r --access public` |
+| Published packages | npm (scoped `@patwoodman/`) | `pnpm publish -r --access public` |
 | Profile template | **Installer recipe** (DSH templates are a closed set — E2) | `dsh <name> --from-default-profile web\|headless\|sdk`, then `dsh plugin --profile <name> add <pkgs>` via `scripts/install-local.mjs` |
 | Docker image (optional) | OCI image with DSH + orchestrator pre-installed | `docker build -t sdlc-orchestrator .` |
 
@@ -982,12 +982,12 @@ Part L holds the operational detail; this part is the normative procedure. **Eve
 | Surface | Command | Requires a live model? | Deterministic? |
 |---|---|---|---|
 | Source-checkout installer | `node scripts/install-local.mjs` | no | yes |
-| Published bootstrap | `npx @sdlc/orchestrator init` | no | yes |
-| Environment doctor | `node scripts/doctor.mjs` / `npx @sdlc/orchestrator doctor` | no | yes |
+| Published bootstrap | `npx @patwoodman/orchestrator init` | no | yes |
+| Environment doctor | `node scripts/doctor.mjs` / `npx @patwoodman/orchestrator doctor` | no | yes |
 
 `/sdlc doctor`, `/sdlc config`, `/sdlc init` exist as **interactive conveniences** that call the same code paths. They are **not** available in one-shot profiles (E3), and v2's `dsh --profile X --headless "/sdlc doctor"` cannot work.
 
-## F.2 `sdlc init` / `npx @sdlc/orchestrator init` — machine setup
+## F.2 `sdlc init` / `npx @patwoodman/orchestrator init` — machine setup
 
 Steps, in order. Every step is idempotent; the installer is safe to re-run.
 
@@ -1912,12 +1912,12 @@ All of these run without DSH booting and without a model call, so they work even
 
 | Package | npm name | Ships a bundle patch? | Installed into |
 |---|---|---|---|
-| `sdlc-core` | `@sdlc/orchestrator-core` | yes (2 patch files) | `sdlc-web`, `sdlc-probe` |
-| `sdlc-guard` | `@sdlc/orchestrator-guard` | yes | `sdlc-worker`, `sdlc-web` |
-| `sdlc-tools` | `@sdlc/orchestrator-tools` | yes | all three |
-| `sdlc-presets` | `@sdlc/orchestrator-presets` | yes | `sdlc-web`, `sdlc-probe` |
-| `sdlc-cli` | `@sdlc/orchestrator` | **no** (plain CLI + `bin`) | global / `npx` |
-| `sdlc-client-ui` | `@sdlc/orchestrator-ui` | yes (`dsh.client`) | `sdlc-web` only |
+| `sdlc-core` | `@patwoodman/orchestrator-core` | yes (2 patch files) | `sdlc-web`, `sdlc-probe` |
+| `sdlc-guard` | `@patwoodman/orchestrator-guard` | yes | `sdlc-worker`, `sdlc-web` |
+| `sdlc-tools` | `@patwoodman/orchestrator-tools` | yes | all three |
+| `sdlc-presets` | `@patwoodman/orchestrator-presets` | yes | `sdlc-web`, `sdlc-probe` |
+| `sdlc-cli` | `@patwoodman/orchestrator` | **no** (plain CLI + `bin`) | global / `npx` |
+| `sdlc-client-ui` | `@patwoodman/orchestrator-ui` | yes (`dsh.client`) | `sdlc-web` only |
 | `sdlc-mock-llm` | *(not published)* | yes | test profiles only |
 
 Each bundle package:
@@ -1943,9 +1943,9 @@ Each bundle package:
 sdlc version --check
 
 # Upgrade the bundles in each profile (pnpm passthrough)
-dsh plugin --profile sdlc-web    add @sdlc/orchestrator-core@<v> @sdlc/orchestrator-tools@<v> @sdlc/orchestrator-presets@<v>
-dsh plugin --profile sdlc-worker add @sdlc/orchestrator-guard@<v>  @sdlc/orchestrator-tools@<v>
-dsh plugin --profile sdlc-probe  add @sdlc/orchestrator-core@<v> @sdlc/orchestrator-tools@<v> @sdlc/orchestrator-presets@<v>
+dsh plugin --profile sdlc-web    add @patwoodman/orchestrator-core@<v> @patwoodman/orchestrator-tools@<v> @patwoodman/orchestrator-presets@<v>
+dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard@<v>  @patwoodman/orchestrator-tools@<v>
+dsh plugin --profile sdlc-probe  add @patwoodman/orchestrator-core@<v> @patwoodman/orchestrator-tools@<v> @patwoodman/orchestrator-presets@<v>
 
 # Dependency changes require a restart (HMR covers patch/manifest/source edits only)
 sdlc doctor && sdlc resume
@@ -2015,9 +2015,9 @@ The image is a **worker** image. A long-lived lead with a web GUI is better run 
 ```sh
 # 1. Remove the bundles from each profile (pnpm passthrough; there is no
 #    `dsh plugin init` and `remove --profile` is not a command - E12).
-dsh plugin --profile sdlc-web    remove @sdlc/orchestrator-core @sdlc/orchestrator-tools @sdlc/orchestrator-presets @sdlc/orchestrator-ui
-dsh plugin --profile sdlc-worker remove @sdlc/orchestrator-guard @sdlc/orchestrator-tools
-dsh plugin --profile sdlc-probe  remove @sdlc/orchestrator-core @sdlc/orchestrator-tools @sdlc/orchestrator-presets
+dsh plugin --profile sdlc-web    remove @patwoodman/orchestrator-core @patwoodman/orchestrator-tools @patwoodman/orchestrator-presets @patwoodman/orchestrator-ui
+dsh plugin --profile sdlc-worker remove @patwoodman/orchestrator-guard @patwoodman/orchestrator-tools
+dsh plugin --profile sdlc-probe  remove @patwoodman/orchestrator-core @patwoodman/orchestrator-tools @patwoodman/orchestrator-presets
 
 # 2. Delete the profiles (profiles are plain directories).
 rm -rf "$DSH_HOME/profiles/sdlc-web" "$DSH_HOME/profiles/sdlc-worker" "$DSH_HOME/profiles/sdlc-probe"
@@ -2028,7 +2028,7 @@ git branch -D sdlc/integration
 rm -rf .sdlc/
 
 # 4. Global CLI.
-npm uninstall -g @sdlc/orchestrator
+npm uninstall -g @patwoodman/orchestrator
 ```
 
 `dsh plugin remove` uses pnpm and can leave downloaded files under `node_modules` after a failed removal; step 2 removes them wholesale.

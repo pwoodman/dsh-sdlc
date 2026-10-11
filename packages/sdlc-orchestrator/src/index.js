@@ -8,12 +8,12 @@
  * beyond its own presence.
  */
 
-export const PACKAGE = '@sdlc/orchestrator';
+export const PACKAGE = '@patwoodman/orchestrator';
 export const BUNDLES = [
-  '@sdlc/orchestrator-core',
-  '@sdlc/orchestrator-tools',
-  '@sdlc/orchestrator-presets',
-  '@sdlc/orchestrator-ui',
+  '@patwoodman/orchestrator-core',
+  '@patwoodman/orchestrator-tools',
+  '@patwoodman/orchestrator-presets',
+  '@patwoodman/orchestrator-ui',
 ];
 
 export default { PACKAGE, BUNDLES };

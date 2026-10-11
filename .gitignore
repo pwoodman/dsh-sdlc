@@ -21,6 +21,8 @@
 .eval-load-k6.js
 # an isolated DSH_HOME used by a live study (profiles, sessions, credentials)
 .eval-home/
+# an isolated DSH_HOME used to rehearse the tarball installer as a fresh user
+.eval-tarball-home*/
 
 # node
 node_modules/

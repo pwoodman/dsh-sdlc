@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/orchestrator-mock-llm",
+  "name": "@patwoodman/orchestrator-mock-llm",
   "version": "0.4.0-beta.2",
   "private": true,
   "type": "module",
@@ -23,5 +23,13 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pwoodman/dsh-sdlc.git"
+  },
+  "homepage": "https://github.com/pwoodman/dsh-sdlc",
+  "bugs": {
+    "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   }
 }
