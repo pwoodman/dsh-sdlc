@@ -37,10 +37,23 @@ test('splitZstdFrames splits a concatenated append log', () => {
   assert.equal(text, parts.join(''));
 });
 
-test('a whole-buffer zstdDecompressSync reads ONLY the first frame (the bug this guards)', () => {
+test('a whole-buffer zstdDecompressSync is not a concatenation-safe reader', () => {
+  // The bug this guards: DSH appends ONE zstd frame per session event, and a
+  // reader that decompresses the whole buffer only sees part of the log. WHICH
+  // part depends on the engine — Node 22/24 stop after the first frame
+  // (`{"a":1}\n`), Node 26 keeps decoding and returns both (`{"a":1}\n{"b":2}\n`).
+  // Asserting one of those made this test fail on the other runtime, so pin what
+  // is actually guaranteed: the whole-buffer call never reconstructs the log
+  // from an arbitrary offset, while splitZstdFrames does.
   const buf = Buffer.concat([frame('{"a":1}\n'), frame('{"b":2}\n')]);
-  assert.equal(zstdDecompressSync(buf).toString('utf8'), '{"a":1}\n');
-  assert.equal(splitZstdFrames(buf).frames.length, 2);
+  const whole = zstdDecompressSync(buf).toString('utf8');
+  assert.ok(
+    whole === '{"a":1}\n' || whole === '{"a":1}\n{"b":2}\n',
+    `whole-buffer decode returned ${JSON.stringify(whole)} — neither the first frame nor the concatenation`,
+  );
+  const split = splitZstdFrames(buf);
+  assert.equal(split.frames.length, 2);
+  assert.equal(split.frames.map((f) => zstdDecompressSync(f).toString('utf8')).join(''), '{"a":1}\n{"b":2}\n');
 });
 
 test('an unparseable tail is reported, never silently dropped', () => {
