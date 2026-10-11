@@ -1,0 +1,23 @@
+# sdlc-guard — worker-side enforcement (spec v3 C.1/C.7).
+#
+# Installed into the sdlc-worker profile beside sdlc-tools, and into the lead
+# profile for symmetry. It registers the `tools/pre-execute` waterfall and the
+# fs write decider. There is no host service here and no DB access: the guard is
+# policy, the sandbox root and the post-hoc git diff are the real controls.
+- insert:
+    - id: sdlc-guard
+      name: '@sdlc/orchestrator-guard/plugin'
+      config:
+        guardMode: deny
+        orchestratorPaths: ['.sdlc/**', '.dsh/**']
+        protectedOrchestratorPaths:
+          - '.sdlc/sdlc.db'
+          - '.sdlc/sdlc.db-*'
+          - '.sdlc/sdlc.lock'
+          - '.sdlc/instance.lock'
+          - '.sdlc/task-contract.json'
+        guardForbiddenPatterns:
+          - 'git push --force*'
+          - 'rm -rf /'
+          - 'git clean -fdx*'
+          - 'git reset --hard*'

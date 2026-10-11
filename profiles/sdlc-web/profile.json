@@ -1,0 +1,15 @@
+{
+  "name": "sdlc-web",
+  "role": "interactive-lead",
+  "template": "web",
+  "bundles": [
+    "@sdlc/orchestrator"
+  ],
+  "mustNotContain": [],
+  "capabilities": {
+    "slashCommands": true,
+    "approvals": true,
+    "longLived": true,
+    "holdsInstanceLock": true
+  }
+}

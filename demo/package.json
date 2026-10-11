@@ -1,0 +1,15 @@
+{
+  "name": "sdlc-demo-tasks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Test fullstack demo driven end-to-end by the SDLC orchestrator (offline, zero dependencies).",
+  "scripts": {
+    "test": "node --test tests/",
+    "build": "node scripts/build.mjs",
+    "start": "node src/server.mjs"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

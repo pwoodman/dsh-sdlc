@@ -1,0 +1,23 @@
+{
+  "id": "arch-csv-export",
+  "title": "Add a streaming CSV export that reuses the repository layer",
+  "dimension": ["architecture", "code-quality"],
+  "requirement": "Add a GET /export.csv endpoint to this service that streams every stored record as RFC 4180 CSV. Reuse the existing repository layer for the query; do not duplicate query logic or introduce a second data path. Handle escaping of commas, quotes and newlines, and add tests.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "package.json": "{\"name\":\"seed-service\",\"type\":\"module\",\"scripts\":{\"test\":\"node --test tests\"}}",
+      "src/repository.js": "const rows = [];\nexport function all() { return rows.slice(); }\nexport function add(row) { rows.push(row); return row; }\n",
+      "src/server.js": "import { all, add } from './repository.js';\nexport const routes = {\n  'GET /records': () => ({ status: 200, body: all() }),\n  'POST /records': (body) => ({ status: 201, body: add(body) }),\n};\n"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "endpoint-exists", "kind": "file-contains", "path": "src", "contains": "export.csv" },
+      { "id": "tests-pass", "kind": "command", "command": ["node", "--test", "tests"] }
+    ]
+  },
+  "metrics": ["loc", "duplication", "complexity", "module-cycles", "syntax", "test-ratio"],
+  "budget": { "maxWallClockMs": 900000, "maxCostUsd": 8 },
+  "strata": { "risk": "R2", "size": "M" }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "@sdlc/orchestrator-presets",
+  "version": "0.4.0-beta.2",
+  "type": "module",
+  "description": "26 dsh-agent-preset rows — one per SDLC role (patch declares them; no host code).",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./roles": "./lib/roles.js",
+    "./plugin": "./lib/plugin.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "LICENSE",
+    "README.md",
+    "icon.svg"
+  ],
+  "scripts": {
+    "build": "node ./build.cjs",
+    "gen": "node ../../scripts/gen-presets.mjs",
+    "prepack": "node ./build.cjs",
+    "prepare": "node ./build.cjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "directory": "packages/sdlc-presets"
+  },
+  "icon": "icon.svg",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

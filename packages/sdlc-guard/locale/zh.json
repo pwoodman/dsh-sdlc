@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SDLC Worker Guard",
+    "description": "Worker-side policy: tool and filesystem deciders. Worker profiles only."
+  }
+}

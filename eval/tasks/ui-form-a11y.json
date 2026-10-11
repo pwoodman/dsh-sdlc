@@ -1,0 +1,22 @@
+{
+  "id": "ui-form-a11y",
+  "title": "Accessible, consistent sign-up form",
+  "dimension": ["ui", "ux"],
+  "requirement": "Implement a sign-up form with email, password and confirmation. Every input needs a programmatically associated label, inline validation must be announced to assistive technology, errors must use text and not colour alone, and focus must move to the first invalid field on submit. Keyboard-only completion must be possible end to end.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "package.json": "{\"name\":\"seed-form\",\"type\":\"module\"}",
+      "index.html": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Sign up</title></head><body><main></main></body></html>\n"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "labels", "kind": "file-contains", "path": "index.html", "contains": "label" },
+      { "id": "rubric", "kind": "rubric", "expect": "rubric/ui-form-a11y.json" }
+    ]
+  },
+  "metrics": ["static-a11y", "syntax", "duplication", "loc"],
+  "budget": { "maxWallClockMs": 900000, "maxCostUsd": 9 },
+  "strata": { "risk": "R3", "size": "S" }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "sec-authz",
+  "title": "Object-level authorization on a document endpoint",
+  "dimension": ["security"],
+  "requirement": "Harden the GET /documents/:id endpoint so a caller can only read a document they own. Authorize on the server for every request, never trust a client-supplied owner id, return 404 rather than 403 when the record is not visible to the caller, and add tests covering the cross-tenant attempt, a missing session and an admin override.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "package.json": "{\"name\":\"seed-sec\",\"type\":\"module\",\"scripts\":{\"test\":\"node --test tests\"}}",
+      "src/documents.js": "const docs = new Map();\nexport function get(id) { return docs.get(id) ?? null; }\nexport function put(doc) { docs.set(doc.id, doc); return doc; }\n",
+      "src/server.js": "import { get } from './documents.js';\nexport function handle(req) {\n  if (req.path.startsWith('/documents/')) return { status: 200, body: get(req.path.split('/').pop()) };\n  return { status: 404 };\n}\n"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "owner-check", "kind": "file-contains", "path": "src", "contains": "owner" },
+      { "id": "tests-pass", "kind": "command", "command": ["node", "--test", "tests"] }
+    ]
+  },
+  "metrics": ["secrets", "dangerous-patterns", "dependency-audit", "syntax", "test-ratio"],
+  "budget": { "maxWallClockMs": 900000, "maxCostUsd": 10 },
+  "strata": { "risk": "R4", "size": "M" }
+}

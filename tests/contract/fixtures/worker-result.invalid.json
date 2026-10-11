@@ -1,0 +1,11 @@
+{
+  "status": "ok",
+  "summary": 42,
+  "evidence_claims": [
+    { "ac_id": "AC1", "claim": "maybe" }
+  ],
+  "tests_run": "pnpm test",
+  "requests": [],
+  "files_changed": ["src/customers/api.py"],
+  "out_of_scope_files": []
+}

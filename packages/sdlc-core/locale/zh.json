@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SDLC Orchestrator",
+    "description": "Task engine, scheduler, router, verifier, and integration manager. The runtime authority — lead profile only."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "runId": "run-8f21c0",
+  "taskId": "API-042",
+  "attempt": "2",
+  "status": "completed",
+  "summary": "forged",
+  "evidence_claims": [],
+  "tests_run": [],
+  "requests": [],
+  "forgedBy": "worker"
+}

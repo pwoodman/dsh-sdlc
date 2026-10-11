@@ -1,0 +1,51 @@
+{
+  "id": "ui-form-a11y",
+  "version": "1.0.0",
+  "title": "Accessible sign-up form — blinded jury rubric",
+  "scale": { "min": 1, "max": 5 },
+  "criteria": [
+    {
+      "id": "label-association",
+      "question": "Is every input programmatically associated with a visible label (not placeholder-as-label)?",
+      "anchors": { "1": "placeholders used as labels", "3": "labels present but association is visual only", "5": "all inputs properly labelled" },
+      "weight": 1.5
+    },
+    {
+      "id": "error-communication",
+      "question": "Are errors communicated as text (not colour alone) and announced to assistive technology?",
+      "anchors": { "1": "red border only", "3": "text error but no live region", "5": "text, associated, and announced" },
+      "weight": 1.5
+    },
+    {
+      "id": "keyboard-flow",
+      "question": "Can the form be completed with the keyboard alone, with visible focus and focus moved to the first invalid field?",
+      "anchors": { "1": "keyboard traps or invisible focus", "3": "completable but focus is not managed on error", "5": "fully keyboard-completable with managed focus" },
+      "weight": 1.5
+    },
+    {
+      "id": "contrast",
+      "question": "Do text and interactive states meet WCAG AA contrast at rest and on focus/hover?",
+      "anchors": { "1": "fails AA", "3": "passes at rest, fails on a state", "5": "passes AA at rest and in every state" },
+      "weight": 1.0
+    },
+    {
+      "id": "consistency",
+      "question": "Are validation messages, field styling and button treatment consistent across the form?",
+      "anchors": { "1": "each field behaves differently", "3": "minor drift", "5": "one consistent pattern" },
+      "weight": 1.0
+    }
+  ],
+  "slopChecklist": [
+    "placeholder used as the only label",
+    "colour-only validation",
+    "focus outline removed with no replacement",
+    "generic 'Invalid input' with no field context",
+    "inconsistent error placement between fields"
+  ],
+  "reliability": { "metric": "krippendorff-alpha", "min": 0.67 },
+  "procedure": {
+    "raters": { "min": 3, "minHumans": 2, "maxVisionModels": 1 },
+    "blinding": "identities stripped, arms unlabelled, order randomised per rater",
+    "viewports": [375, 768, 1440]
+  }
+}

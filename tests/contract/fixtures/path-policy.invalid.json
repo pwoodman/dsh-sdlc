@@ -1,0 +1,6 @@
+{
+  "allowed_paths": [""],
+  "forbidden_paths": ["src/auth/**"],
+  "forbidden_commands": [123],
+  "guardMode": "block"
+}

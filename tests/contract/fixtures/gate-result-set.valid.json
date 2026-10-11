@@ -1,0 +1,11 @@
+{
+  "overall": "pass",
+  "gates": {
+    "syntax": { "status": "pass", "exitCode": 0, "durationMs": 41, "logPath": ".sdlc/verification/API-042/syntax.log" },
+    "lint": { "status": "pass", "exitCode": 0, "durationMs": 812, "logPath": ".sdlc/verification/API-042/lint.log" },
+    "visual": { "status": "skipped:no-browser-stack" },
+    "e2e": { "status": "skipped:no-browser-stack" },
+    "unit": { "status": "pass", "exitCode": 0, "durationMs": 4210, "logPath": ".sdlc/verification/API-042/unit.log" }
+  },
+  "firstFailure": null
+}

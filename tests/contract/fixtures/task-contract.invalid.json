@@ -1,0 +1,8 @@
+{
+  "id": "api_042",
+  "objective": "",
+  "risk_class": "R9",
+  "allowed_paths": "src/customers/**",
+  "verification": ["unit", "not-a-gate"],
+  "budgets": { "max_attempts": 0, "unknown_budget": 1 }
+}

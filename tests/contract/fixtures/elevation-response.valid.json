@@ -1,0 +1,10 @@
+{
+  "root_cause": "The worker assumed the tenants table was already migrated; it is created by DB-001.",
+  "failure_pattern": "integration gate fails with 'no such table: tenants' on every attempt 1",
+  "mis_decomposition": true,
+  "architecture_issue": false,
+  "corrective_plan": [
+    { "action": "edit", "task_id": "API-001", "rationale": "add explicit depends_on DB-001" }
+  ],
+  "disposition": "replan"
+}

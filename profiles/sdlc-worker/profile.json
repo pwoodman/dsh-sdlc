@@ -1,0 +1,19 @@
+{
+  "name": "sdlc-worker",
+  "role": "headless-worker",
+  "template": "headless",
+  "bundles": [
+    "@sdlc/orchestrator-guard",
+    "@sdlc/orchestrator-tools"
+  ],
+  "mustNotContain": [
+    "@sdlc/orchestrator-core"
+  ],
+  "capabilities": {
+    "slashCommands": false,
+    "approvals": false,
+    "longLived": false,
+    "holdsInstanceLock": false
+  },
+  "note": "Errata E6: sdlc-core must never be installed here — it would start a second scheduler and a second writer against sdlc.db."
+}

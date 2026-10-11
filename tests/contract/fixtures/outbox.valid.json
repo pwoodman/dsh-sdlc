@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "runId": "run-8f21c0",
+  "taskId": "API-042",
+  "attempt": 2,
+  "nonce": "3f9c1a7e5b2d4086",
+  "status": "completed",
+  "summary": "Customers list endpoint implemented; integration test added.",
+  "evidence_claims": [
+    { "ac_id": "AC1", "claim": "pass", "artifact": "tests/customers/test_api.py#test_valid_payload" }
+  ],
+  "tests_run": ["pnpm run test:integration"],
+  "requests": ["needs AUTH-001 merged before e2e"]
+}

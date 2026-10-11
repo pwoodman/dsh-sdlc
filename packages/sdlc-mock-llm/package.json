@@ -1,0 +1,27 @@
+{
+  "name": "@sdlc/orchestrator-mock-llm",
+  "version": "0.4.0-beta.2",
+  "private": true,
+  "type": "module",
+  "description": "TEST-ONLY deterministic ctx.llm provider (spec v3 K.4). Never published.",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib",
+    "scenarios",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

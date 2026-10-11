@@ -1,0 +1,22 @@
+{
+  "status": "completed",
+  "summary": "Added the customers list endpoint and its integration test.",
+  "evidence_claims": [
+    { "ac_id": "AC1", "claim": "pass", "artifact": "tests/customers/test_api.py#test_valid_payload" },
+    { "ac_id": "AC2", "claim": "pass", "artifact": "tests/customers/test_api.py#test_unauthorized" }
+  ],
+  "tests_run": ["pnpm test -- --run tests/customers", "pnpm run test:integration"],
+  "requests": [],
+  "files_changed": ["src/customers/api.py", "tests/customers/test_api.py"],
+  "out_of_scope_files": [],
+  "forbidden_files": [],
+  "result_malformed": false,
+  "suspect": false,
+  "session_id": "sess-7c1f",
+  "tokens": { "in": 18500, "out": 2400 },
+  "cost_usd": 0.42,
+  "duration_ms": 184000,
+  "model": { "provider": "anthropic", "id": "claude-sonnet-4" },
+  "attempt": 1,
+  "worker_claimed_status": "completed"
+}

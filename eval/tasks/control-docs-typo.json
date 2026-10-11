@@ -1,0 +1,22 @@
+{
+  "id": "control-docs-typo",
+  "title": "NEGATIVE CONTROL — fix a typo in a README",
+  "dimension": ["code-quality"],
+  "requirement": "In README.md, change the misspelled word 'recieve' to 'receive'. Change nothing else.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "README.md": "# Seed\n\nYou recieve exactly one line of setup here.\n",
+      "package.json": "{\"name\":\"seed-control\",\"type\":\"module\"}"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "typo-fixed", "kind": "file-contains", "path": "README.md", "contains": "receive" }
+    ]
+  },
+  "metrics": ["loc", "syntax"],
+  "budget": { "maxWallClockMs": 180000, "maxCostUsd": 1 },
+  "strata": { "risk": "R1", "size": "S" },
+  "control": true
+}

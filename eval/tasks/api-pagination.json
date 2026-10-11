@@ -1,0 +1,22 @@
+{
+  "id": "api-pagination",
+  "title": "Stable cursor pagination for a list endpoint",
+  "dimension": ["api-performance", "api-reliability"],
+  "requirement": "Add cursor-based pagination to the GET /users list endpoint. The cursor must be opaque, stable under inserts, and the endpoint must never return duplicate or skipped rows between pages. Keep the response shape stable, reject malformed cursors with 400, and add tests that page through a mutating dataset.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "package.json": "{\"name\":\"seed-api\",\"type\":\"module\",\"scripts\":{\"test\":\"node --test tests\"}}",
+      "src/users.js": "export const users = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, name: `user-${i + 1}` }));\nexport function list({ limit = 20 } = {}) { return users.slice(0, limit); }\n"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "cursor", "kind": "file-contains", "path": "src", "contains": "cursor" },
+      { "id": "tests-pass", "kind": "command", "command": ["node", "--test", "tests"] }
+    ]
+  },
+  "metrics": ["latency-p95", "error-rate", "syntax", "test-ratio", "duplication"],
+  "budget": { "maxWallClockMs": 900000, "maxCostUsd": 8 },
+  "strata": { "risk": "R2", "size": "M" }
+}

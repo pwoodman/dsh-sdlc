@@ -1,0 +1,51 @@
+{
+  "name": "sdlc-probe",
+  "role": "boot-probe",
+  "template": "sdk",
+  "bundles": [
+    "@sdlc/orchestrator-core",
+    "@sdlc/orchestrator-tools",
+    "@sdlc/orchestrator-presets",
+    "@sdlc/orchestrator-guard"
+  ],
+  "mustNotContain": [],
+  "capabilities": {
+    "slashCommands": false,
+    "approvals": false,
+    "longLived": false,
+    "holdsInstanceLock": false
+  },
+  "selftest": {
+    "env": "SDLC_SELFTEST",
+    "requires": {
+      "tools": [
+        "sdlc_report_result",
+        "sdlc_claim_check",
+        "sdlc_request_decision"
+      ],
+      "commands": [
+        "run",
+        "status",
+        "stop",
+        "resume",
+        "doctor",
+        "config",
+        "verify",
+        "explain",
+        "debug"
+      ],
+      "services": [
+        "tasks",
+        "scheduler",
+        "router",
+        "verifier",
+        "integration",
+        "evidence",
+        "escalation",
+        "worker-mgr",
+        "recovery"
+      ],
+      "presets": 26
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "@sdlc/orchestrator-core",
+  "version": "0.4.0-beta.2",
+  "type": "module",
+  "description": "Host services (tasks, scheduler, router, verifier, integration, evidence, escalation, worker-mgr). NEVER installed into a worker profile.",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./*": "./lib/*.js",
+    "./complexity": "./lib/complexity/index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "LICENSE",
+    "README.md",
+    "icon.svg"
+  ],
+  "scripts": {
+    "build": "node ./build.cjs",
+    "prepack": "node ./build.cjs",
+    "prepare": "node ./build.cjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "directory": "packages/sdlc-core"
+  },
+  "icon": "icon.svg",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

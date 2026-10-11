@@ -1,0 +1,24 @@
+{
+  "id": "refactor-dedupe",
+  "title": "Remove duplicated validation logic without changing behaviour",
+  "dimension": ["architecture", "code-quality"],
+  "requirement": "Three call sites validate the same payload with near-identical code. Consolidate them into one validation module, keep the exact same observable behaviour and error messages, and leave the test suite green. Do not change the public API surface.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "package.json": "{\"name\":\"seed-refactor\",\"type\":\"module\",\"scripts\":{\"test\":\"node --test tests\"}}",
+      "src/a.js": "export function validateA(x) {\n  if (!x) throw new Error('missing payload');\n  if (typeof x.name !== 'string') throw new Error('bad name');\n  if (x.name.length > 64) throw new Error('name too long');\n  return true;\n}\n",
+      "src/b.js": "export function validateB(x) {\n  if (!x) throw new Error('missing payload');\n  if (typeof x.name !== 'string') throw new Error('bad name');\n  if (x.name.length > 64) throw new Error('name too long');\n  return true;\n}\n",
+      "src/c.js": "export function validateC(x) {\n  if (!x) throw new Error('missing payload');\n  if (typeof x.name !== 'string') throw new Error('bad name');\n  if (x.name.length > 64) throw new Error('name too long');\n  return true;\n}\n"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "shared-module", "kind": "file-exists", "path": "src/validate.js" },
+      { "id": "tests-pass", "kind": "command", "command": ["node", "--test", "tests"] }
+    ]
+  },
+  "metrics": ["duplication", "complexity", "module-cycles", "test-ratio", "syntax"],
+  "budget": { "maxWallClockMs": 600000, "maxCostUsd": 5 },
+  "strata": { "risk": "R1", "size": "S" }
+}

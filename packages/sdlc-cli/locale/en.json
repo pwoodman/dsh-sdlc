@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SDLC CLI",
+    "description": "Deterministic sdlc control plane: init, status, tasks, debug compare."
+  }
+}

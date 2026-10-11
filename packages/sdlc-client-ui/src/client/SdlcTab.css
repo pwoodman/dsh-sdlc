@@ -1,0 +1,38 @@
+/* SDLC tab body: panel switcher + four panels. Plain CSS (no modules — the
+   zero-dependency build inlines this file's sibling CSS as text). */
+.sdlc-root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: auto;
+  padding: 8px 12px;
+}
+.sdlc-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.sdlc-tabs button[aria-selected="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.sdlc-root table {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.sdlc-root th,
+.sdlc-root td {
+  border: 1px solid #8886;
+  padding: 2px 8px;
+  text-align: left;
+}
+.sdlc-root code {
+  font-size: 12px;
+}
+.sdlc-root ul {
+  padding-left: 20px;
+}

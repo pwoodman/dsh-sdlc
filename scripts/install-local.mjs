@@ -1,0 +1,326 @@
+#!/usr/bin/env node
+/**
+ * scripts/install-local.mjs — install the orchestrator from a source checkout.
+ *
+ * This is the "works today" path. The published-npm path
+ * (`npx @sdlc/orchestrator init`) is a thin wrapper that downloads the packages
+ * first and then runs exactly these steps.
+ *
+ * Corrected against the real CLI (spec v2 Quick Start / Part F are wrong):
+ *   - `--headless` is NOT a launcher flag. A one-shot profile must include the
+ *     `@deepseek-ai/dsh-headless` bundle, created from the shipped `headless`
+ *     template. `dsh --profile X --headless "..."` exits 1 with
+ *     "unknown option '--headless'".
+ *   - Profile templates are a closed set {acp, web, headless, sdk, sdk-minimal};
+ *     an out-of-tree plugin cannot ship one. Custom profiles are created with
+ *     `dsh <name> --from-default-profile <shipped>`.
+ *   - `dsh plugin --profile X add <pkg...>` forwards to pnpm; pnpm is required
+ *     (exit 127 without it) and multiple local directories are supported.
+ *   - There is no `dsh plugin init`; profiles initialize on first use.
+ *
+ *   node scripts/install-local.mjs [--dry-run] [--json] [--skip-build]
+ *     --profile-lead <name>    (default sdlc-web)
+ *     --profile-worker <name>  (default sdlc-worker)
+ *     --profile-probe <name>   (default sdlc-probe, from the `sdk` template)
+ *
+ * Idempotent, non-interactive and safe to re-run.
+ *
+ * The lead gets exactly ONE sdlc bundle. `@sdlc/orchestrator`'s patch is
+ * GENERATED as the union of its members' rows (scripts/gen-bundle-patch.mjs),
+ * because the DSH loader mounts only the bundles a profile lists and never
+ * descends into a bundle's dependencies. The four members are installed as
+ * plain module dependencies so the row names resolve from the profile's
+ * node_modules. Adding them as bundles too would compose every row twice.
+ */
+
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { run } from './lib/harness.mjs';
+import { dshPeerSatisfied } from './lib/semver-lite.mjs';
+
+const argv = process.argv.slice(2);
+const flag = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
+const has = (name) => argv.includes(name);
+
+const DRY_RUN = has('--dry-run');
+const SKIP_BUILD = has('--skip-build');
+const JSON_OUT = has('--json');
+const HOME = process.env.DSH_HOME || join(process.env.HOME || '', '.dsh');
+const ROOT = join(import.meta.dirname, '..');
+
+const LEAD = flag('--profile-lead', 'sdlc-web');
+const WORKER = flag('--profile-worker', 'sdlc-worker');
+const PROBE = flag('--profile-probe', 'sdlc-probe');
+
+/** package name → directory, for every packages/* manifest. */
+const PKG_DIR = (() => {
+  const dir = join(ROOT, 'packages');
+  const map = new Map();
+  for (const name of readdirSync(dir)) {
+    const manifest = join(dir, name, 'package.json');
+    if (!existsSync(manifest)) continue;
+    map.set(JSON.parse(readFileSync(manifest, 'utf8')).name, join(dir, name));
+  }
+  return map;
+})();
+
+function pkgDir(name) {
+  const dir = PKG_DIR.get(name);
+  if (!dir) throw new Error(`package ${name} has no packages/* directory`);
+  return dir;
+}
+
+/** The bundle list a profile recipe declares — the single source of truth. */
+function recipeBundles(recipe) {
+  const path = join(ROOT, 'profiles', recipe, 'profile.json');
+  const bundles = JSON.parse(readFileSync(path, 'utf8')).bundles;
+  if (!Array.isArray(bundles) || bundles.length === 0) throw new Error(`${path}: bundles must be a non-empty array`);
+  return bundles;
+}
+
+const LEAD_RECIPE = 'sdlc-web';
+const PROBE_RECIPE = 'sdlc-probe';
+const WORKER_RECIPE = 'sdlc-worker';
+
+
+const steps = [];
+let failed = false;
+
+function step(name, fn) {
+  const started = Date.now();
+  if (DRY_RUN) {
+    steps.push({ name, status: 'dry-run', ms: 0 });
+    if (!JSON_OUT) console.log(`  [dry-run] ${name}`);
+    return;
+  }
+  try {
+    const detail = fn() ?? '';
+    steps.push({ name, status: 'ok', detail, ms: Date.now() - started });
+    if (!JSON_OUT) console.log(`  [ok]      ${name}${detail ? ` — ${detail}` : ''}`);
+  } catch (e) {
+    failed = true;
+    steps.push({ name, status: 'fail', error: e.message, ms: Date.now() - started });
+    if (!JSON_OUT) console.log(`  [FAIL]    ${name}\n            ${e.message}`);
+  }
+}
+
+function sh(cmd, args, opts = {}) {
+  const res = run(cmd, args, { timeoutMs: 900_000, ...opts });
+  if (!res.ok) {
+    const detail = (res.stderr || res.stdout || String(res.error ?? '')).trim().slice(0, 1500);
+    throw new Error(`${cmd} ${args.join(' ')} exited ${res.code}\n${detail}`);
+  }
+  return res;
+}
+
+// ── preflight ──────────────────────────────────────────────────────────────
+
+if (!JSON_OUT) {
+  console.log(`\nSDLC orchestrator — local install${DRY_RUN ? ' (dry run)' : ''}`);
+  console.log('==========================================\n');
+  console.log(`  DSH_HOME : ${HOME}`);
+  console.log(`  source   : ${ROOT}\n`);
+}
+
+step('preflight: package directories present', () => {
+  const wanted = new Set([
+    ...recipeBundles(LEAD_RECIPE), ...recipeBundles(WORKER_RECIPE), ...recipeBundles(PROBE_RECIPE),
+    ...Object.keys(JSON.parse(readFileSync(join(pkgDir(recipeBundles(LEAD_RECIPE)[0]), 'package.json'), 'utf8')).dependencies ?? {}),
+  ]);
+  const missing = [...wanted].filter((name) => !PKG_DIR.has(name));
+  if (missing.length) throw new Error(`no packages/* directory for: ${missing.join(', ')}`);
+  return `${wanted.size} packages`;
+});
+step('preflight: dsh CLI on PATH', () => sh('dsh', ['--version']).stdout.trim());
+step('preflight: DSH runtime within the declared peer range', () => {
+  const actual = sh('dsh', ['--version']).stdout.trim().replace(/^v/, '');
+  const want = JSON.parse(readFileSync(join(ROOT, 'packages', 'sdlc-core', 'package.json'), 'utf8')).peerDependencies['@deepseek-ai/dsh'];
+  if (!dshPeerSatisfied(actual)) {
+    throw new Error(
+      `dsh ${actual} is outside the declared peer range ${want}.\n` +
+        `  Install a 0.2.x runtime, or grant an exemption:\n` +
+        `    dsh plugin --profile ${LEAD} allow-version @sdlc/orchestrator-core@<ver> --dsh-version ${actual} --accept-risk`,
+    );
+  }
+  return actual;
+});
+step('preflight: pnpm available (required by `dsh plugin`)', () => {
+  const res = run('pnpm', ['--version']);
+  if (!res.ok) {
+    throw new Error('pnpm not on PATH. `dsh plugin add` exits 127 without it.\n  Fix: npm install -g pnpm\n  (corepack is not bundled with Node 25+)');
+  }
+  return `pnpm ${res.stdout.trim()}`;
+});
+
+// ── build ──────────────────────────────────────────────────────────────────
+
+if (!SKIP_BUILD) {
+  // Absolute script paths and no `cwd`: each generator resolves its own root from
+  // `import.meta.dirname`. Not chdir-ing means the install also works when the
+  // checkout lives somewhere node cannot `getcwd()` (containers, portal mounts).
+  const gen = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-160);
+  step('build: generated patches (presets + meta-bundle union)', () =>
+    gen('gen-presets.mjs') + gen('gen-bundle-patch.mjs'),
+  );
+  step('build: artifacts (build.mjs + build-ui.mjs)', () => {
+    const build = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-200);
+    return build('build.mjs') + build('build-ui.mjs');
+  });
+}
+
+// ── profiles ───────────────────────────────────────────────────────────────
+// `--from-default-profile` only accepts the shipped template names, which each
+// recipe declares (`profiles/<recipe>/profile.json#template`). Creating a
+// profile this way is idempotent: initProfile never overwrites existing files.
+
+function recipeTemplate(recipe) {
+  return JSON.parse(readFileSync(join(ROOT, 'profiles', recipe, 'profile.json'), 'utf8')).template;
+}
+
+function ensureProfile(profileName, recipe, note) {
+  if (existsSync(join(HOME, 'profiles', profileName, 'package.json'))) return 'exists';
+  const template = recipeTemplate(recipe);
+  sh('dsh', ['--profile', profileName, '--from-default-profile', template, '--dump-config']);
+  return `created from "${template}"${note ? ` (${note})` : ''}`;
+}
+
+step(`profile: ${LEAD} from the ${LEAD_RECIPE} recipe`, () => ensureProfile(LEAD, LEAD_RECIPE));
+step(`profile: ${WORKER} from the ${WORKER_RECIPE} recipe (one-shot workers)`, () => ensureProfile(WORKER, WORKER_RECIPE));
+step(`profile: ${PROBE} from the ${PROBE_RECIPE} recipe (deterministic boot probe)`, () => ensureProfile(PROBE, PROBE_RECIPE));
+
+/**
+ * Make the profile's `dsh.profile.bundles` match its recipe.
+ *
+ * The shipped (non-@sdlc) bundles keep their order and precedence; every @sdlc
+ * entry is replaced by the recipe's list. This is the beta.1 → beta.2 upgrade
+ * path as much as a fresh install: beta.1 selected the meta-bundle *and* its
+ * four members, which was harmless while the meta-bundle's patch held one row,
+ * but now that the patch is the union of the members' rows it would compose
+ * every row twice. The members stay in `dependencies` — that is what the row
+ * names resolve from.
+ */
+function syncProfileBundles(profileName, recipe) {
+  const path = join(HOME, 'profiles', profileName, 'package.json');
+  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  const wanted = recipeBundles(recipe);
+  const current = manifest.dsh?.profile?.bundles ?? [];
+  const shipped = current.filter((b) => !b.startsWith('@sdlc/'));
+  const next = [...shipped, ...wanted];
+  const removed = current.filter((b) => b.startsWith('@sdlc/') && !wanted.includes(b));
+  if (JSON.stringify(current) === JSON.stringify(next)) return 'already exact';
+  manifest.dsh = { ...(manifest.dsh ?? {}), profile: { ...(manifest.dsh?.profile ?? {}), bundles: next } };
+  writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
+  return removed.length
+    ? `dropped ${removed.join(', ')} from the bundle list (still installed as dependencies)`
+    : `set to ${next.join(', ')}`;
+}
+
+step(`bundles: ${LEAD} selects exactly the ${LEAD_RECIPE} recipe`, () => syncProfileBundles(LEAD, LEAD_RECIPE));
+step(`bundles: ${WORKER} selects exactly the ${WORKER_RECIPE} recipe`, () => syncProfileBundles(WORKER, WORKER_RECIPE));
+step(`bundles: ${PROBE} selects exactly the ${PROBE_RECIPE} recipe`, () => syncProfileBundles(PROBE, PROBE_RECIPE));
+
+// ── bundles ────────────────────────────────────────────────────────────────
+// The recipe files are the single source of truth for WHAT is mounted; this
+// section only decides HOW each profile gets there.
+//
+//   lead   — ONE bundle (`@sdlc/orchestrator`), whose generated patch declares
+//            the whole lead composition. Its four members are installed as
+//            ordinary module dependencies (`pnpm add`) so the row names resolve
+//            from the profile's node_modules. They must NOT be bundles here:
+//            `dsh plugin add` would select them, and their patches would
+//            compose every row a second time. The meta-bundle is published with
+//            those dependencies, so a registry install needs no second step;
+//            the explicit `pnpm add` is what makes a source/link install work
+//            while the members are unpublished.
+//   worker — guard + tools, as bundles (E6: never core, never the meta-bundle).
+//   probe  — exactly the recipe's bundles: core + tools + presets + guard.
+function specsFor(names) {
+  return names.map((name) => `link:${pkgDir(name)}`);
+}
+
+step(`install: lead bundle into ${LEAD} (the single spec)`, () => {
+  const [bundle] = recipeBundles(LEAD_RECIPE);
+  sh('dsh', ['plugin', '--profile', LEAD, 'add', `link:${pkgDir(bundle)}`]);
+  const deps = Object.keys(JSON.parse(readFileSync(join(pkgDir(bundle), 'package.json'), 'utf8')).dependencies ?? {});
+  if (deps.length === 0) return `${bundle} (no member modules)`;
+  const pnpmRes = run('pnpm', ['add', '--dir', join(HOME, 'profiles', LEAD), ...specsFor(deps)], { timeoutMs: 900_000 });
+  if (!pnpmRes.ok) {
+    const detail = (pnpmRes.stderr || pnpmRes.stdout || String(pnpmRes.error ?? '')).trim().slice(0, 1500);
+    throw new Error(`pnpm add (member modules) exited ${pnpmRes.code}\n${detail}`);
+  }
+  return `${bundle} + ${deps.length} member modules as plain dependencies`;
+});
+step(`install: worker bundles into ${WORKER} (guard + report tools ONLY)`, () =>
+  sh('dsh', ['plugin', '--profile', WORKER, 'add', ...specsFor(recipeBundles(WORKER_RECIPE))]).stdout.trim().slice(-200),
+);
+step(`install: probe bundles into ${PROBE} (recipe composition incl. the guard)`, () =>
+  sh('dsh', ['plugin', '--profile', PROBE, 'add', ...specsFor(recipeBundles(PROBE_RECIPE))]).stdout.trim().slice(-200),
+);
+
+// ── verification ───────────────────────────────────────────────────────────
+
+/** The loader-accepted duplicate: the web template ships its own
+ *  `agent-preset-registry` row and the presets block inserts one. */
+const ALLOWED_DUPS = new Map([['agent-preset-registry', 2]]);
+
+step('verify: lead profile selects exactly one sdlc bundle', () => {
+  const manifest = JSON.parse(readFileSync(join(HOME, 'profiles', LEAD, 'package.json'), 'utf8'));
+  const selected = (manifest.dsh?.profile?.bundles ?? []).filter((b) => b.startsWith('@sdlc/'));
+  if (selected.length !== 1 || selected[0] !== recipeBundles(LEAD_RECIPE)[0]) {
+    throw new Error(
+      `expected exactly [${recipeBundles(LEAD_RECIPE)[0]}] as the lead's sdlc bundle, found [${selected.join(', ')}].\n` +
+        `  Member bundles in the lead would compose every row twice — remove them:\n` +
+        `    dsh plugin --profile ${LEAD} remove <member>`,
+    );
+  }
+  return selected[0];
+});
+step('verify: lead profile composes the full lead without unexpected duplicate rows', () => {
+  const res = sh('dsh', ['--profile', LEAD, '--dump-config']);
+  const ids = [...res.stdout.matchAll(/^- id:\s*(.+)$/gm)].map((m) => m[1].trim().replace(/^['"]|['"]$/g, ''));
+  const counts = new Map();
+  for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const dups = [...counts].filter(([id, n]) => n > (ALLOWED_DUPS.get(id) ?? 1));
+  if (dups.length) throw new Error(`duplicate row ids: ${dups.map(([id, n]) => `${id}x${n}`).join(', ')}`);
+  if (!counts.has('sdlc-orchestrator')) throw new Error('the meta-bundle row is absent from the composed lead');
+  for (const id of ['sdlc-tasks', 'sdlc-router', 'sdlc-verifier', 'sdlc-tools', 'sdlc-ui']) {
+    if (!counts.has(id)) {
+      throw new Error(
+        `row ${id} is absent from the composed lead — the meta-bundle's generated patch is incomplete.\n` +
+          '  Regenerate it with: node scripts/gen-bundle-patch.mjs',
+      );
+    }
+  }
+  const presets = [...counts.keys()].filter((id) => /^preset-sdlc-/.test(id)).length;
+  if (presets !== 26) throw new Error(`expected 26 preset-sdlc-* rows in the composed lead, found ${presets}`);
+  return `${counts.size} unique ids incl. ${presets} presets (sdlc-ui + meta-bundle present)`;
+});
+step('verify: M0 gate', () => {
+  const res = run('node', [join(ROOT, 'scripts', 'validate-m0.mjs')], { timeoutMs: 900_000 });
+  if (!res.ok) throw new Error((res.stdout + res.stderr).slice(-1500));
+  return 'M0 green';
+});
+
+// ── report ─────────────────────────────────────────────────────────────────
+
+if (JSON_OUT) {
+  mkdirSync(join(ROOT, '.validation'), { recursive: true });
+  const out = join(ROOT, '.validation', 'install.json');
+  writeFileSync(out, JSON.stringify({ ok: !failed, dshHome: HOME, steps }, null, 2) + '\n');
+  console.log(out);
+} else {
+  console.log('');
+  if (failed) {
+    console.log('Install FAILED. Re-running this script is safe: profile creation and');
+    console.log('bundle installation are both idempotent. To roll back a profile:');
+    console.log(`  rm -rf ${join(HOME, 'profiles', LEAD)}`);
+  } else {
+    console.log('Install complete. Next:');
+    console.log(`  node scripts/doctor.mjs                # environment check`);
+    console.log(`  dsh --profile ${LEAD}                  # interactive lead (web GUI)`);
+    console.log(`  dsh --profile ${WORKER} "<one task>"   # one-shot worker`);
+  }
+  console.log('');
+}
+
+process.exit(failed ? 1 : 0);

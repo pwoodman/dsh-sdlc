@@ -1,0 +1,11 @@
+# sdlc-tools — model-facing tools + the /sdlc command surface (spec v3 C.4).
+#
+# Installed into BOTH the lead and worker profiles (E6): the worker needs
+# sdlc_report_result / sdlc_claim_check / sdlc_request_decision to write its
+# outbox proposal; the lead additionally gets the delegation/planning tools.
+# Tools are propose-only — none of them may grant authority (L.1 rule 4).
+- insert:
+    - id: sdlc-tools
+      name: '@sdlc/orchestrator-tools/plugin'
+      config:
+        worktreePath: !!js process.cwd()

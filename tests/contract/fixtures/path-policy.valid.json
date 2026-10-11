@@ -1,0 +1,10 @@
+{
+  "allowed_paths": ["src/customers/**", "tests/customers/**"],
+  "forbidden_paths": ["src/auth/**", "**/*.pem"],
+  "forbidden_patterns": ["git push --force*", "rm -rf /", "git clean -fdx*"],
+  "forbidden_commands": [],
+  "orchestratorPaths": [".sdlc/**", ".dsh/**"],
+  "protectedOrchestratorPaths": [".sdlc/sdlc.db", ".sdlc/task-contract.json", ".sdlc/instance.lock"],
+  "guardMode": "deny",
+  "worktreeRoot": "/home/patrick/.sdlc/worktrees/API-042"
+}

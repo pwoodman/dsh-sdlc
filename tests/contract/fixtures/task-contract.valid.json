@@ -1,0 +1,31 @@
+{
+  "id": "API-042",
+  "title": "Expose GET /api/customers",
+  "objective": "return the customers list for the current tenant",
+  "role": "backend-engineer",
+  "depends_on": ["DB-001", "AUTH-001"],
+  "risk_class": "R2",
+  "capabilities": ["backend", "api", "testing"],
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "statement": "a valid payload is accepted",
+      "check": "integration:test_customers_api.py::test_valid_payload"
+    },
+    {
+      "id": "AC2",
+      "statement": "unauthenticated requests are rejected with 401",
+      "check": "api:test_customers_api.py::test_unauthorized"
+    }
+  ],
+  "allowed_paths": ["src/customers/**", "tests/customers/**"],
+  "forbidden_paths": ["src/auth/**"],
+  "verification": ["unit", "integration", "api"],
+  "estimate": { "files": 8, "integrations": 1, "external_deps": 0 },
+  "budgets": {
+    "max_attempts": 3,
+    "max_duration_ms": 3600000,
+    "max_cost_usd": 5.0,
+    "max_tokens": 400000
+  }
+}

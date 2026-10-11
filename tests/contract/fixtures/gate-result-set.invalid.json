@@ -1,0 +1,7 @@
+{
+  "overall": "green",
+  "gates": {
+    "unit": { "status": "passed", "exitCode": 0 }
+  },
+  "firstFailure": null
+}

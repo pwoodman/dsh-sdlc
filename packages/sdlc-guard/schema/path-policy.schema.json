@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sdlc.dev/schemas/path-policy.schema.json",
+  "title": "SDLC guard path/command policy",
+  "description": "Version 1.0.0 of the fixed glob dialect published by spec v3 C.7.3: `*` matches within a path segment, `**` matches across segments, a leading `./` is stripped, matching is on the repo-relative POSIX path, and forbidden_paths is evaluated after allowed_paths (deny wins).",
+  "x-dialect-version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "allowed_paths": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/glob" },
+      "description": "Paths the worker may write inside the worktree."
+    },
+    "forbidden_paths": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/glob" },
+      "description": "Evaluated after allowed_paths; deny wins."
+    },
+    "forbidden_patterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Command patterns; `*` is a wildcard. Defence-in-depth only."
+    },
+    "forbidden_commands": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "orchestratorPaths": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/glob" }
+    },
+    "protectedOrchestratorPaths": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/glob" }
+    },
+    "guardMode": { "enum": ["deny", "warn"] },
+    "worktreeRoot": { "type": "string" }
+  },
+  "$defs": {
+    "glob": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\u0000]*$",
+      "description": "Repo-relative POSIX glob. `..`, absolute paths and NUL are rejected at match time."
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# sdlc-mock-llm — deterministic mock provider (spec v3 K.4).
+#
+# TEST-ONLY. Installed into the sdlc-test and sdlc-probe profiles; never
+# published. It registers a deterministic `ctx.llm` provider so every offline
+# test and every CI acceptance run is free, networkless and reproducible.
+#
+# Fault mode:   model mock/<scenario>?fail=429:2   (fail the first two calls)
+# Injection:    model mock/<scenario>?inject=escape|falsefile|injection
+- insert:
+    - id: sdlc-mock-llm
+      name: '@sdlc/orchestrator-mock-llm'
+      config:
+        recordPath: .validation/mock-llm/requests.jsonl

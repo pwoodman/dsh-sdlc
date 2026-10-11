@@ -1,0 +1,48 @@
+# SDLC orchestrator — runtime and build artifacts
+.sdlc/worktrees/
+.sdlc/recovery/
+.sdlc/verification/
+.sdlc/backup/
+.sdlc/sdlc.db
+.sdlc/sdlc.db-*
+.sdlc/sdlc.lock
+.sdlc/debug.log
+.sdlc/debug-demo/
+
+# validation evidence bundles
+.validation/
+
+# A/B evaluation output (run records + materialised workspaces)
+.eval-out/
+.eval-out-pilot/
+.eval-out-live/
+.eval-out-shard*/
+.eval-out-merged/
+.eval-load-k6.js
+# an isolated DSH_HOME used by a live study (profiles, sessions, credentials)
+.eval-home/
+
+# node
+node_modules/
+
+# Build output ONLY. A bare `lib/` (any depth) also matched scripts/lib,
+# tests/lib and eval/lib — which are *source*, not artifacts. That silently kept
+# those 16 files out of git, so a fresh clone could not build, install, doctor or
+# run a single test. Keep these scoped to the package build directories.
+/lib/
+packages/*/lib/
+/dist/
+packages/*/dist/
+
+# scratch
+.probe-dsh/
+
+# workspace-local tooling (shims are reproducible from package.json scripts)
+.tools/
+npm-debug.log*
+
+# demo runtime outputs (verification logs + file-store data)
+demo/.sdlc/
+demo/data/
+demo/dist/
+pnpm-lock.yaml

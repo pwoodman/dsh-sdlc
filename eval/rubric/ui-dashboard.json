@@ -1,0 +1,59 @@
+{
+  "id": "ui-dashboard",
+  "version": "1.0.0",
+  "title": "Responsive metrics dashboard — blinded jury rubric",
+  "scale": { "min": 1, "max": 5 },
+  "criteria": [
+    {
+      "id": "visual-hierarchy",
+      "question": "Is there a clear primary, secondary and tertiary level, so the eye lands on the KPI before the chrome?",
+      "anchors": { "1": "no discernible hierarchy; everything competes", "3": "title and cards differ but the hierarchy breaks below the fold", "5": "immediate, consistent hierarchy at every viewport" },
+      "weight": 1.0
+    },
+    {
+      "id": "spacing-rhythm",
+      "question": "Does spacing follow one consistent scale, or are paddings arbitrary per component?",
+      "anchors": { "1": "arbitrary per-component spacing", "3": "mostly consistent with visible outliers", "5": "one scale applied throughout" },
+      "weight": 1.0
+    },
+    {
+      "id": "type-scale",
+      "question": "Is there a single, deliberate type scale with sensible line length?",
+      "anchors": { "1": "ad-hoc sizes and cramped lines", "3": "reasonable but inconsistent headings", "5": "a coherent scale with readable measure" },
+      "weight": 1.0
+    },
+    {
+      "id": "state-completeness",
+      "question": "Are empty, loading and error states designed, or only the happy path?",
+      "anchors": { "1": "only the happy path exists", "3": "some states handled inconsistently", "5": "all three states designed and consistent" },
+      "weight": 1.5
+    },
+    {
+      "id": "responsive-integrity",
+      "question": "At 375/768/1440, does the layout reflow cleanly with no overflow or crushed controls?",
+      "anchors": { "1": "breaks or overflows at one or more viewports", "3": "usable but awkward at one viewport", "5": "clean at all three" },
+      "weight": 1.5
+    },
+    {
+      "id": "consistency",
+      "question": "Are the same concepts rendered the same way across screens (labels, icons, affordances)?",
+      "anchors": { "1": "visibly different treatments for the same concept", "3": "minor drift", "5": "one visual language" },
+      "weight": 1.0
+    }
+  ],
+  "slopChecklist": [
+    "gratuitous gradient or glow with no semantic role",
+    "inconsistent corner radii between sibling components",
+    "colour-only status or error signalling",
+    "placeholder lorem left in the artifact",
+    "mismatched icon sets or weights",
+    "a different spinner per async region",
+    "decorative animation with no state meaning"
+  ],
+  "reliability": { "metric": "krippendorff-alpha", "min": 0.67 },
+  "procedure": {
+    "raters": { "min": 3, "minHumans": 2, "maxVisionModels": 1 },
+    "blinding": "identities stripped, arms unlabelled, order randomised per rater",
+    "viewports": [375, 768, 1440]
+  }
+}

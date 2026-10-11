@@ -1,0 +1,11 @@
+# sdlc-client-ui — SDLC orchestrator web UI (spec v3 C.1, optional).
+#
+# Installed into the sdlc-web profile ONLY (interactive lead). It registers
+# `sdlc.*` host routes (read-only status/board/review + validated config writes)
+# and contributes the browser `sdlc` sidebar tab (config editor, task board,
+# side-by-side review). Never installed into sdlc-worker (E6: no core there,
+# and no UI in a headless profile).
+- insert:
+    - id: sdlc-ui
+      name: '@sdlc/orchestrator-ui'
+      config: {}

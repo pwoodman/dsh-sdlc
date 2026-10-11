@@ -1,0 +1,135 @@
+name: CI
+
+# Spec v3 G.5, corrected (errata E10):
+#   - the DSH runtime is INSTALLED before any `dsh plugin` step (v2 omitted it);
+#   - pnpm is pinned via pnpm/action-setup;
+#   - testcontainers is gone — `node:test` is the only runner and isolation comes
+#     from the deterministic sdlc-mock-llm provider;
+#   - gate:P and gate:M0 need no model and no network; M1..M8 are deterministic
+#     and use the mock provider (never a real API call).
+
+on: [push, pull_request]
+
+env:
+  DSH_VERSION: 0.2.0-rc.2
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - name: build (zero-dependency src → lib, incl. UI bundle)
+        run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - name: presets are in sync with roles.js
+        run: node scripts/gen-presets.mjs --check
+      - name: the meta-bundle patch is in sync with its members
+        run: node scripts/gen-bundle-patch.mjs --check
+      - name: every package version matches the root
+        run: node scripts/bump-version.mjs --check
+      - name: UI bundle is in sync with client sources
+        run: node scripts/build-ui.mjs --check
+      - name: unit tests (L2)
+        run: npm run test:unit
+      - name: contract tests (L3)
+        run: npm run test:contract
+
+  gate-platform:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - name: install the pinned DSH runtime (v2 omitted this)
+        run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - name: gate:P — deterministic platform facts (no model, no network)
+        run: node scripts/validate-platform.mjs --json .validation/gate-P.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-evidence
+          path: .validation/
+
+  gate-m0:
+    needs: gate-platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - name: install profiles + bundles
+        run: node scripts/install-local.mjs --yes --skip-build
+      - name: gate:M0 — composition + boot hook + guard + schema
+        run: node scripts/validate-m0.mjs --json .validation/gate-M0.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m0-evidence
+          path: .validation/
+
+  gates:
+    needs: gate-m0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - name: integration + fault + adversarial layers (L4–L6)
+        run: |
+          npm run test:integration
+          npm run test:fault
+          npm run test:adversarial
+      - name: gate:P → gate:M8, stopping at the first failure
+        run: node scripts/validate-gates.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: milestone-evidence
+          path: .validation/
+
+  e2e:
+    needs: gates
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - name: the eight §53 acceptance tests (mock provider, no cost)
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-evidence
+          path: .validation/
+
+  # L8 — live. Manual only, costs money, never runs automatically.
+  e2e-live:
+    needs: e2e
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - run: npm run test:e2e-live
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

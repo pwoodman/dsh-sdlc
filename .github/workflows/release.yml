@@ -1,0 +1,135 @@
+name: Release
+
+# Cuts a beta release: verifies the tree, builds the no-clone tarball, attaches
+# it to a GitHub Release, and — when the repository variable PUBLISH_NPM is true
+# and an NPM_TOKEN secret exists — publishes the packages so
+# `dsh plugin --profile sdlc-web add <scope>/orchestrator` works exactly like
+# dsh-context / dsh-proactive.
+#
+#   node scripts/set-scope.mjs @your-npm-username   # once, if you do not own the scope
+#   git tag v0.4.0-beta.2 && git push origin v0.4.0-beta.2
+#
+# The tag must match package.json's version (checked below), so the release name,
+# the tarball name and the npm versions can never drift apart.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the GitHub Release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      DSH_VERSION: 0.2.0-rc.2
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: install the DSH runtime (needed by gate:P and gate:M0)
+        run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+
+      - name: the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag v$tag does not match package.json version $version"
+            exit 1
+          fi
+          node scripts/bump-version.mjs --check
+
+      - name: build the release tarball (also regenerates patches and lib/)
+        run: node scripts/build-release.mjs
+
+      - name: offline test suite
+        run: npm test
+
+      - name: gates P and M0–M8 plus coverage
+        run: node scripts/validate-gates.mjs
+
+      - name: keep the evidence bundles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation
+          path: .validation/
+
+      - name: keep the tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-sdlc-beta
+          path: dist/*.tgz
+
+      - name: publish the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tgz
+          generate_release_notes: true
+          prerelease: true
+          body: |
+            **Beta installer - no clone, no build:**
+
+            ```sh
+            curl -fsSLO https://github.com/${{ github.repository }}/releases/latest/download/dsh-sdlc-beta.tgz
+            tar xzf dsh-sdlc-beta.tgz && cd dsh-sdlc-*/
+            ./install.sh
+            ```
+
+            That creates the `sdlc-web`, `sdlc-worker` and `sdlc-probe` profiles,
+            installs the bundles, verifies the composed lead and runs the `M0`
+            gate. It needs `dsh` and `pnpm` on `PATH` and Node >= 22.5, and it is
+            idempotent - re-run it any time. Then start the lead with:
+
+            ```sh
+            dsh --profile sdlc-web
+            ```
+
+            When the npm packages are published for this tag, the registry and
+            **Add plugin** forms work too; the meta-bundle package name is in the
+            Install section of the repository README.
+
+            Known beta limits are in CHANGELOG.md.
+
+      # Publishing is opt-in and skipped (never failed) when unconfigured: the
+      # tarball above is a complete install path on its own. Enable it with the
+      # repository variable PUBLISH_NPM=true plus the NPM_TOKEN secret.
+      - name: publish to npm
+        if: vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
+        run: |
+          set -euo pipefail
+          export NODE_AUTH_TOKEN="$NPM_TOKEN"
+          version="$(node -p "require('./package.json').version")"
+          # Dependency order: the meta-bundle is published last.
+          for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
+            name="$(node -p "require('./packages/$dir/package.json').name")"
+            private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
+            if [ "$private" = "true" ]; then
+              echo "skip $name (private)"; continue
+            fi
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already published)"; continue
+            fi
+            echo "publishing $name@$version"
+            ( cd "packages/$dir" && npm publish --access public )
+          done
+
+      - name: explain an npm refusal
+        if: failure() && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
+        run: |
+          echo "::warning::If the publish step failed with 403, the package scope is not one your npm account owns."
+          echo "::warning::Sign in to npm (GitHub OAuth works), then either run 'node scripts/set-scope.mjs @your-username' and re-tag, or create a free npm org with the current scope name."

@@ -1,0 +1,23 @@
+{
+  "id": "ui-dashboard",
+  "title": "Responsive metrics dashboard with a consistent visual language",
+  "dimension": ["ui", "ux"],
+  "requirement": "Build a responsive metrics dashboard: a header, a filter row and a grid of metric cards fed by a small fetch layer. It must reflow cleanly at 375px, 768px and 1440px, keep one spacing and type scale throughout, show an explicit empty and error state, and meet WCAG AA contrast. Provide a single consistent loading affordance rather than a different spinner per card.",
+  "fixture": {
+    "kind": "greenfield",
+    "seedFiles": {
+      "package.json": "{\"name\":\"seed-ui\",\"type\":\"module\",\"scripts\":{\"build\":\"node scripts/build.mjs\"}}",
+      "scripts/build.mjs": "console.log('build ok');\n"
+    }
+  },
+  "acceptance": {
+    "checks": [
+      { "id": "html-entry", "kind": "file-exists", "path": "index.html" },
+      { "id": "builds", "kind": "command", "command": ["npm", "run", "build"] },
+      { "id": "rubric", "kind": "rubric", "expect": "rubric/ui-dashboard.json" }
+    ]
+  },
+  "metrics": ["static-a11y", "bundle-size", "syntax", "duplication", "loc"],
+  "budget": { "maxWallClockMs": 1200000, "maxCostUsd": 12 },
+  "strata": { "risk": "R3", "size": "M" }
+}
