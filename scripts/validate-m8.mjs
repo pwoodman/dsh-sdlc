@@ -11,7 +11,7 @@
  *   node scripts/validate-m8.mjs [--json <path>] [--fail-fast]
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runSuite, run, testGlobs, EXIT } from './lib/harness.mjs';
 import { importPkg, withDir, testConfig, openRuntime } from './lib/gate-helpers.mjs';
@@ -47,7 +47,18 @@ const checks = [
       if (missing.length) throw new Error(`missing §53 tests: ${missing.join(', ')}`);
       if (!existsSync(join(ROOT, 'tests', 'e2e', 'live.test.mjs'))) throw new Error('the opt-in live test is missing');
       const res = run('node', ['--test', ...testGlobs(['tests/e2e'])], { cwd: ROOT, timeoutMs: 600000 });
-      if (!res.ok) throw new Error(`the e2e layer failed:\n${(res.stdout + res.stderr).slice(-2000)}`);
+      const out = `${res.stdout}${res.stderr}`;
+      if (out) {
+        mkdirSync(join(ROOT, '.validation'), { recursive: true });
+        writeFileSync(join(ROOT, '.validation', 'm8-e2e.log'), out);
+      }
+      if (!res.ok) {
+        const failed = out.split('\n').filter((l) => /^\s*(not ok |✖)/.test(l)).slice(0, 5);
+        throw new Error(
+          `the e2e layer failed: ${failed.length ? failed.map((l) => l.trim()).join(' ; ') : 'no test reported as failed, but the runner exited non-zero'}` +
+          `\n  full output: .validation/m8-e2e.log`,
+        );
+      }
       const summary = (res.stdout.match(/ℹ tests \d+[\s\S]*?ℹ fail \d+/) ?? [])[0] ?? '';
       return { detail: `8 §53 tests present; layer green (${summary.replace(/\s+/g, ' ')})` };
     },
@@ -147,10 +158,35 @@ const checks = [
       const layers = ['tests/unit', 'tests/fault', 'tests/adversarial', 'tests/e2e']
         .filter((d) => existsSync(join(ROOT, d)));
       const res = run('node', ['--test', ...testGlobs(layers)], { cwd: ROOT, timeoutMs: 900000 });
-      if (!res.ok) throw new Error(`a test layer failed:\n${(res.stdout + res.stderr).slice(-2500)}`);
-      const pass = (res.stdout.match(/ℹ pass (\d+)/) ?? [])[1] ?? '?';
-      const fail = (res.stdout.match(/ℹ fail (\d+)/) ?? [])[1] ?? '?';
-      const skipped = (res.stdout.match(/ℹ skipped (\d+)/) ?? [])[1] ?? '0';
+      const out = `${res.stdout}${res.stderr}`;
+      // Keep the whole run: when the gate fails, this is the evidence that says
+      // WHICH test died and why, and the Release workflow uploads .validation/.
+      if (out) {
+        mkdirSync(join(ROOT, '.validation'), { recursive: true });
+        writeFileSync(join(ROOT, '.validation', 'm8-full-suite.log'), out);
+      }
+      if (!res.ok) {
+        // `node --test` can exit non-zero WITHOUT reporting a failing test: a
+        // crashed worker, an unhandled 'error' event or an import-time throw
+        // leaves `ℹ fail 0` behind while the exit code stays 1. The old message
+        // showed `fail=?` (the regex found no summary) and threw away the cause,
+        // so name the failure AND keep the whole log for the evidence bundle.
+        const failed = out.split('\n').filter((l) => /^\s*(not ok |✖)/.test(l)).slice(0, 5);
+        const firstError = out.split('\n').find((l) => /^\s*(Error|TypeError|RangeError|ReferenceError|AssertionError)/.test(l));
+        const summary = out.split('\n').filter((l) => /^ℹ (tests|pass|fail|skipped|cancelled)/.test(l)).join(' | ');
+        const reason = failed.length
+          ? `failed tests: ${failed.map((l) => l.trim()).join(' ; ')}`
+          : 'no test was reported as failed — the runner exited non-zero anyway (crashed worker, unhandled error, or import-time throw)';
+        throw new Error(
+          `a test layer failed: ${reason}` +
+          `${firstError ? `\n  ${firstError.trim()}` : ''}` +
+          `${summary ? `\n  ${summary}` : '\n  (the run produced no summary at all — it aborted early)'}` +
+          `\n  full output: .validation/m8-full-suite.log`,
+        );
+      }
+      const pass = (out.match(/ℹ pass (\d+)/) ?? [])[1] ?? '?';
+      const fail = (out.match(/ℹ fail (\d+)/) ?? [])[1] ?? '?';
+      const skipped = (out.match(/ℹ skipped (\d+)/) ?? [])[1] ?? '0';
       if (fail !== '0') throw new Error(`fail=${fail}`);
       return { detail: `${layers.join(', ')}: ${pass} passed, ${fail} failed, ${skipped} skipped` };
     },
