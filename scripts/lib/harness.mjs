@@ -35,6 +35,41 @@ export function testGlobs(layers = TEST_LAYERS) {
   return layers.map((layer) => `${layer.replace(/\/+$/, '')}/**/*.test.mjs`);
 }
 
+/** Strip ANSI SGR sequences so a coloured reporter still parses. */
+export function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return String(text).replace(/\u001B\[[0-9;]*m/g, '');
+}
+
+/**
+ * The `node --test` end-of-run summary, whatever shape this engine printed.
+ *
+ * Node's own reporter writes `ℹ pass 553`, but the same engine also emits the
+ * plain TAP-ish form (`# pass 553`) depending on how the run terminated — the
+ * bundled Node 24 here always writes the first, while the release runner on Node
+ * 22 wrote the second after aborting. A gate that matched only `ℹ` therefore
+ * read `fail=?` from a completely green suite and blocked a release. Return the
+ * counts from whichever form is present (or `null` when the run printed none).
+ *
+ * @returns {{tests:number|null,pass:number|null,fail:number|null,skipped:number|null,durationMs:number|null}|null}
+ */
+export function summaryOf(output) {
+  const text = stripAnsi(output);
+  const patterns = [
+    /^[\u2139#]\s*(tests|pass|fail|skipped|cancelled)\s+(\d+)\s*$/gm,
+    /^[\u2139#]\s*duration_ms\s+([\d.]+)\s*$/gm,
+  ];
+  const counts = { tests: null, pass: null, fail: null, skipped: null, durationMs: null };
+  let seen = false;
+  for (const m of text.matchAll(patterns[0])) {
+    counts[m[1]] = Number(m[2]);
+    seen = true;
+  }
+  for (const m of text.matchAll(patterns[1])) counts.durationMs = Number(m[1]);
+  if (!seen && counts.durationMs === null) return null;
+  return counts;
+}
+
 /** Run a command, never throwing, and return a normalized result. */
 export function run(cmd, args = [], opts = {}) {
   const res = spawnSync(cmd, args, {

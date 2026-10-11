@@ -13,7 +13,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { runSuite, run, testGlobs, EXIT } from './lib/harness.mjs';
+import { runSuite, run, testGlobs, summaryOf, stripAnsi, EXIT } from './lib/harness.mjs';
 import { importPkg, withDir, testConfig, openRuntime } from './lib/gate-helpers.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -59,8 +59,11 @@ const checks = [
           `\n  full output: .validation/m8-e2e.log`,
         );
       }
-      const summary = (res.stdout.match(/ℹ tests \d+[\s\S]*?ℹ fail \d+/) ?? [])[0] ?? '';
-      return { detail: `8 §53 tests present; layer green (${summary.replace(/\s+/g, ' ')})` };
+      const counts = summaryOf(out);
+      const summary = counts
+        ? `tests ${counts.tests ?? '?'}, pass ${counts.pass ?? '?'}, fail ${counts.fail ?? '?'}, skipped ${counts.skipped ?? '?'}`
+        : 'no summary reported';
+      return { detail: `8 §53 tests present; layer green (${summary})` };
     },
   },
   {
@@ -166,18 +169,16 @@ const checks = [
         mkdirSync(join(ROOT, '.validation'), { recursive: true });
         writeFileSync(join(ROOT, '.validation', 'm8-full-suite.log'), out);
       }
-      const pass = (out.match(/ℹ pass (\d+)/) ?? [])[1] ?? '?';
-      const fail = (out.match(/ℹ fail (\d+)/) ?? [])[1] ?? '?';
-      const skipped = (out.match(/ℹ skipped (\d+)/) ?? [])[1] ?? '0';
-      if (!res.ok || fail !== '0') {
-        // Every branch below reported a bare `fail=?` before: that means the
-        // summary line never matched, which happens when the run aborts before
-        // printing it. Include the exact command, the runner's own fail count
-        // and the tail of the output, so a CI-only abort is diagnosable without
-        // a second round trip.
+      // Both reporter shapes: see summaryOf(). Matching only `ℹ` reported
+      // fail=? for a green 553-test suite on the release runner and blocked it.
+      const counts = summaryOf(out) ?? {};
+      const pass = counts.pass ?? '?';
+      const fail = counts.fail ?? '?';
+      const skipped = counts.skipped ?? '0';
+      if (!res.ok || fail !== 0) {
         const failed = out.split('\n').filter((l) => /^\s*(not ok |✖)/.test(l)).slice(0, 5);
         const firstError = out.split('\n').find((l) => /^\s*(Error|TypeError|RangeError|ReferenceError|AssertionError)/.test(l));
-        const summary = out.split('\n').filter((l) => /^ℹ /.test(l)).join(' | ');
+        const summary = out.split('\n').filter((l) => /^[ℹ#] /.test(stripAnsi(l))).join(' | ');
         const tail = out.split('\n').filter(Boolean).slice(-6).join(' | ');
         throw new Error(
           `node --test ${globs.join(' ')} → status=${res.status ?? 'null'} signal=${res.signal ?? 'none'}` +
@@ -185,7 +186,7 @@ const checks = [
           `\n  reported: pass=${pass} fail=${fail} skipped=${skipped} (process ${res.ok ? 'exited 0' : 'exited non-zero'})` +
           `${failed.length ? `\n  failed tests: ${failed.map((l) => l.trim()).join(' ; ')}` : ''}` +
           `${firstError ? `\n  first error: ${firstError.trim()}` : ''}` +
-          `${summary ? `\n  summary: ${summary}` : '\n  (no ℹ summary line at all — the run aborted early)'}` +
+          `${summary ? `\n  summary: ${summary}` : '\n  (no summary line at all — the run aborted early)'}` +
           `${tail ? `\n  tail: ${tail}` : '\n  (no output captured)'}` +
           `\n  full output: .validation/m8-full-suite.log`,
         );

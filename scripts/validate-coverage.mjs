@@ -26,7 +26,7 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { runSuite, testGlobs, EXIT } from './lib/harness.mjs';
+import { runSuite, testGlobs, summaryOf, stripAnsi, EXIT } from './lib/harness.mjs';
 import { DSH_PEER_RANGE } from './lib/semver-lite.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -81,10 +81,11 @@ export function measureCoverage({ layers = LAYERS, cwd = ROOT, timeoutMs = 900_0
   let current = null;
   let overall = null;
   const tests = { tests: null, pass: null, fail: null, skipped: null };
-  for (const m of output.matchAll(/^ℹ (tests|pass|fail|skipped) (\d+)$/gm)) tests[m[1]] = Number(m[2]);
+  // Both reporter shapes (`ℹ pass N` and `# pass N`): see summaryOf().
+  Object.assign(tests, summaryOf(output) ?? {});
 
-  for (const rawLine of output.split('\n')) {
-    const line = rawLine.replace(/^ℹ\s?/, '');
+  for (const rawLine of stripAnsi(output).split('\n')) {
+    const line = rawLine.replace(/^[ℹ#]\s?/, '');
     // Package header: " sdlc-core           |        |          |         |"
     // Node also emits the structural rows "packages" and "src"; neither may
     // become the current package, or every file row would be attributed to them.
