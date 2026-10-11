@@ -570,13 +570,39 @@ function walk(dir, base = dir, out = []) {
   }
   return out;
 }
+
+// Cross-package imports: src/ uses relative paths (tests see one module), lib/
+// must use bare specifiers (published packages resolve via node_modules).
+const DIR_TO_PKG = {};
+for (const d of readdirSync(join(ROOT, 'packages'))) {
+  const pj = join(ROOT, 'packages', d, 'package.json');
+  if (!existsSync(pj)) continue;
+  const m = JSON.parse(readFileSync(pj, 'utf8'));
+  if (m.name) DIR_TO_PKG[d] = m.name;
+}
+function rewriteImports(text) {
+  return text.replace(
+    /from '((?:\.\.\/)+)sdlc-([a-z-]+)\/src\/([^']+?)\.(js|mjs)'/g,
+    (_m, _d, dir, file, _e) => {
+      const pkg = DIR_TO_PKG[`sdlc-${dir}`];
+      if (!pkg) return _m;
+      const stem = file.split('/').pop();
+      const MAIN_STEMS = { '@patwoodman/orchestrator-cli': 'cli' };
+      return (stem === 'index' || stem === MAIN_STEMS[pkg]) ? `from '${pkg}'` : `from '${pkg}/${file}'`;
+    },
+  );
+}
+function copyRewrite(from, to) {
+  mkdirSync(join(to, '..'), { recursive: true });
+  writeFileSync(to, rewriteImports(readFileSync(from, 'utf8')));
+}
 rmSync(join(LIB, 'server'), { recursive: true, force: true });
 rmSync(join(LIB, 'client'), { recursive: true, force: true });
 mkdirSync(join(LIB, 'server'), { recursive: true });
 mkdirSync(join(LIB, 'client'), { recursive: true });
-for (const rel of walk(join(SRC, 'server'))) cpSync(join(SRC, 'server', rel), join(LIB, 'server', rel));
-for (const rel of walk(join(SRC, 'client'))) cpSync(join(SRC, 'client', rel), join(LIB, 'client', rel));
-cpSync(join(SRC, 'routes.js'), join(LIB, 'routes.js'));
+for (const rel of walk(join(SRC, 'server'))) copyRewrite(join(SRC, 'server', rel), join(LIB, 'server', rel));
+for (const rel of walk(join(SRC, 'client'))) copyRewrite(join(SRC, 'client', rel), join(LIB, 'client', rel));
+copyRewrite(join(SRC, 'routes.js'), join(LIB, 'routes.js'));
 writeFileSync(join(LIB, 'index.js'), hostEntry);
 writeFileSync(join(LIB, 'client.js'), clientBundle);
 process.stdout.write(`  @patwoodman/orchestrator-ui built client bundle (${clientBundle.length} bytes) → lib/\n`);

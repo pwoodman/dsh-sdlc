@@ -2,6 +2,32 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
+## [0.4.0-beta.4] — published packages actually import
+
+**Install:** `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` —
+now resolves and boots. Or the tarball path (unchanged).
+
+### Fixed
+
+- **Published packages could not be imported.** Seven cross-package imports in
+  `src/` pointed at sibling source files (`../../sdlc-guard/src/index.js`,
+  `../../../sdlc-core/src/config.js` …). That worked inside the monorepo (where
+  the packages sit next to each other) and in a `link:` install, but a package
+  installed from npm has no `../sdlc-*/src/` directory — every row except the
+  presets failed with `ERR_MODULE_NOT_FOUND`, so the lead composed 223 rows and
+  12 of 13 plugins refused to activate. `build.mjs` and `build-ui.mjs` now rewrite
+  cross-package relative imports to bare npm specifiers (`@patwoodman/orchestrator-guard`,
+  `@patwoodman/orchestrator-core/config`, …) when building `lib/`. The `src/`
+  tree keeps relative imports so tests see one module instance and `instanceof`
+  works across packages. A contract test asserts every built `lib/` file has no
+  remaining cross-package relative imports.
+
+- **The `0.0.0-stage` artifact.** npm's new staged-publish flow (npm 12 / the
+  registry's 202-accept pipeline) creates a placeholder version the first time
+  a scope publishes. It is invisible to `latest`/`beta` dist-tags and installs
+  resolve to `0.4.0-beta.4` as expected, but it clutters the version list. The
+  placeholder cannot be removed (npm does not allow version deletion).
+
 ## [0.4.0-beta.3] — first public release (2026-10-11)
 
 The first tag that actually publishes. Everything below the fold was written

@@ -44,6 +44,39 @@ function walk(dir, base = dir, out = []) {
   return out;
 }
 
+
+/**
+ * Rewrite cross-package relative imports to bare npm specifiers.
+ *
+ * `src/` uses relative imports (`../../sdlc-guard/src/index.js`) so the monorepo
+ * tests see one module instance. `lib/` must use bare specifiers
+ * (`@patwoodman/orchestrator-guard`) so a published package resolves through
+ * `node_modules`. This transform bridges the two.
+ */
+const DIR_TO_PKG = {};
+const PKG_MAIN_STEMS = {};
+for (const d of readdirSync(join(ROOT, 'packages'))) {
+  const pj = join(ROOT, 'packages', d, 'package.json');
+  if (!existsSync(pj)) continue;
+  const m = JSON.parse(readFileSync(pj, 'utf8'));
+  if (!m.name) continue;
+  DIR_TO_PKG[d] = m.name;
+  PKG_MAIN_STEMS[m.name] = (m.main ?? 'lib/index.js').split('/').pop().replace(/\.\w+$/, '');
+}
+
+function rewriteImports(text) {
+  return text.replace(
+    /from '((?:\.\.\/)+)sdlc-([a-z-]+)\/src\/([^']+?)\.(js|mjs)'/g,
+    (_match, _dots, dir, file, _ext) => {
+      const pkg = DIR_TO_PKG[`sdlc-${dir}`];
+      if (!pkg) return _match;
+      const stem = file.split('/').pop();
+      if (stem === 'index' || stem === PKG_MAIN_STEMS[pkg]) return `from '${pkg}'`;
+      return `from '${pkg}/${file}'`;
+    },
+  );
+}
+
 let failed = 0;
 let built = 0;
 
@@ -89,7 +122,8 @@ for (const dir of packageDirs()) {
   for (const rel of files) {
     const from = join(src, rel);
     const to = join(lib, rel);
-    if (!existsSync(to) || readFileSync(from, 'utf8') !== readFileSync(to, 'utf8')) stale.push(rel);
+    const srcText = rewriteImports(readFileSync(from, 'utf8'));
+    if (!existsSync(to) || srcText !== readFileSync(to, 'utf8')) stale.push(rel);
   }
 
   if (CHECK) {
@@ -104,7 +138,12 @@ for (const dir of packageDirs()) {
 
   rmSync(lib, { recursive: true, force: true });
   mkdirSync(lib, { recursive: true });
-  for (const rel of files) cpSync(join(src, rel), join(lib, rel));
+  for (const rel of files) {
+    const srcText = rewriteImports(readFileSync(join(src, rel), 'utf8'));
+    const dest = join(lib, rel);
+    mkdirSync(join(dest, '..'), { recursive: true });
+    writeFileSync(dest, srcText);
+  }
 
   // Keep the package entrypoint honest: lib/ main must resolve.
   const main = pkg.main ?? 'lib/index.js';
