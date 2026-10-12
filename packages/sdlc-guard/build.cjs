@@ -6,8 +6,9 @@
  * contains fresh lib/ artifacts, and standalone via `pnpm build`.
  */
 
-const { cpSync, existsSync, mkdirSync, readdirSync, rmSync, readFileSync } = require('node:fs');
+const { cpSync, existsSync, mkdirSync, readdirSync, rmSync, readFileSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
+const { buildMap, rewriteImports } = require('../../scripts/lib/cross-package-imports.cjs');
 
 const DIR = __dirname;
 const SRC = join(DIR, 'src');
@@ -30,7 +31,13 @@ if (!existsSync(SRC)) {
 }
 rmSync(LIB, { recursive: true, force: true });
 mkdirSync(LIB, { recursive: true });
-for (const rel of walk(SRC)) cpSync(join(SRC, rel), join(LIB, rel));
+const importMap = buildMap(join(DIR, '..'));
+for (const rel of walk(SRC)) {
+  const srcText = rewriteImports(readFileSync(join(SRC, rel), 'utf8'), importMap);
+  const dest = join(LIB, rel);
+  mkdirSync(join(dest, '..'), { recursive: true });
+  writeFileSync(dest, srcText);
+}
 const main = pkg.main ?? 'lib/index.js';
 if (!existsSync(join(DIR, main))) {
   console.error(`  ${pkg.name} FAIL — main "${main}" missing after build`);

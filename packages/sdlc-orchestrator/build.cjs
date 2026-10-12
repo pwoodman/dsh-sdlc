@@ -6,6 +6,7 @@
 
 const { cpSync, existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
+const { buildMap, rewriteImports } = require('../../scripts/lib/cross-package-imports.cjs');
 
 const DIR = __dirname;
 mkdirSync(join(DIR, 'lib'), { recursive: true });

@@ -10,6 +10,7 @@
 
 const { existsSync } = require('node:fs');
 const { join } = require('node:path');
+const { buildMap, rewriteImports } = require('../../scripts/lib/cross-package-imports.cjs');
 const { execFileSync } = require('node:child_process');
 
 const DIR = __dirname;
