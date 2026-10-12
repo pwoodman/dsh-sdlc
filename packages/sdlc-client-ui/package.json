@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/orchestrator-ui",
-  "version": "0.4.0-beta.7",
+  "version": "0.4.0-beta.8",
   "type": "module",
   "description": "SDLC orchestrator web UI: config editor, task board, and side-by-side review (sdlc-web profile only).",
   "main": "lib/index.js",
@@ -68,7 +68,7 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/orchestrator-cli": "0.4.0-beta.7",
-    "@patwoodman/orchestrator-core": "0.4.0-beta.7"
+    "@patwoodman/orchestrator-cli": "0.4.0-beta.8",
+    "@patwoodman/orchestrator-core": "0.4.0-beta.8"
   }
 }

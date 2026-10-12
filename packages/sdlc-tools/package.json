@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/orchestrator-tools",
-  "version": "0.4.0-beta.7",
+  "version": "0.4.0-beta.8",
   "type": "module",
   "description": "Model-facing propose-only tools (worker + lead) and the /sdlc command surface.",
   "main": "lib/index.js",
@@ -51,6 +51,6 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/orchestrator-core": "0.4.0-beta.7"
+    "@patwoodman/orchestrator-core": "0.4.0-beta.8"
   }
 }

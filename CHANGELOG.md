@@ -2,7 +2,11 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
-## [0.4.0-beta.7] — the UI row activates
+## [0.4.0-beta.8] — the UI row activates
+
+> Published `0.4.0-beta.7` was tagged before these fixes landed — the npm tarball
+> still fails to activate the `sdlc-ui` row. These fixes first ship in
+> `0.4.0-beta.8` (dist-tag `beta`).
 
 ### Fixed
 
