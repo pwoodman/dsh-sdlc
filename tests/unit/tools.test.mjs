@@ -111,8 +111,11 @@ test('the plugin registration lists match the declared surface (used by M0-03/04
   const fakeCtx = { tools: { register: (t) => registered.push(t.name) }, commands: { register: (c) => commands.push(c.name) }, logger: { warn() {} } };
   const registered = [];
   const commands = [];
-  const report = toolsPlugin.apply(fakeCtx, {});
+  // apply() is the loader entry and returns nothing (its return would be read
+  // as an effect); the declared command surface comes from the pure helper.
+  assert.equal(toolsPlugin.apply(fakeCtx, {}), undefined);
   assert.equal(registered.length, Object.keys(plugin.TOOL_DEFS).length);
-  assert.ok(report.commands.includes('run'));
-  assert.ok(report.commands.includes('doctor'));
+  const commandNames = toolsPlugin.registerCommands(fakeCtx, {});
+  assert.ok(commandNames.includes('run'));
+  assert.ok(commandNames.includes('doctor'));
 });

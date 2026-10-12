@@ -7,7 +7,7 @@
  * `sidebar.right.pane.tab.title`, both under the type's id.
  */
 
-import api from './api.js';
+import { api } from './api.js';
 import { createSdlcStores } from './store.js';
 import { NS, en, zh } from './locales.js';
 import { SDLC_ID, sdlcDefinition } from './definition.js';

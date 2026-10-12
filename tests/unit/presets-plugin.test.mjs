@@ -53,16 +53,17 @@ test('plugin re-exports the roster surface', () => {
   assert.equal(plugin.presetIdFor, roles.presetIdFor);
 });
 
-test('apply returns {presets, count:26} and contributes them to the selftest report', () => {
+test('apply contributes the full roster to the selftest report', () => {
   withSelftestPath((path) => {
-    const result = plugin.apply({ provide() {} }, {});
-    assert.equal(result.count, 26);
-    assert.equal(result.presets.length, 26);
-    assert.deepEqual([...result.presets].sort(), plugin.declaredPresetIds().sort());
+    // apply() is the loader entry and returns nothing (its return would be
+    // read as an effect); the roster comes from declaredPresetIds().
+    assert.equal(plugin.apply({ provide() {} }, {}), undefined);
+    const presets = plugin.declaredPresetIds();
+    assert.equal(presets.length, 26);
 
     const report = coreSelftest.flushSelftest();
     assert.equal(report.presets.length, 26);
-    assert.deepEqual([...report.presets].sort(), [...result.presets].sort());
+    assert.deepEqual([...report.presets].sort(), [...presets].sort());
     assert.equal(coreSelftest.selftestWritten(), true);
 
     const onDisk = JSON.parse(readFileSync(path, 'utf8'));
@@ -76,8 +77,8 @@ test('inert without SDLC_SELFTEST: apply still declares the roster but writes no
   try {
     const dir = tempDir('sdlc-presets-inert-');
     try {
-      const result = plugin.apply({}, {});
-      assert.equal(result.count, 26);
+      plugin.apply({}, {});
+      assert.equal(plugin.declaredPresetIds().length, 26);
       assert.equal(coreSelftest.flushSelftest(), null);
     } finally {
       cleanup(dir);

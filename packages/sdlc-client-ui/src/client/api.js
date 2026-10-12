@@ -94,4 +94,13 @@ export async function fetchMetrics() {
   }
 }
 
-export default { fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics };
+/**
+ * The single api face the client consumes. NAMED on purpose: the closure-factory
+ * bundle concatenates the client sources into one scope, where a default import
+ * of this module would be stripped UNBOUND (`api is not defined` at client
+ * apply — shipped broken until the entry contract test called apply). The
+ * default export stays for source-level ergonomics; the bundler strips it.
+ */
+export const api = { fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics };
+
+export default api;

@@ -136,6 +136,13 @@ export function installGuard(ctx, config = {}) {
   return guard;
 }
 
+/**
+ * Loader entry. MUST return nothing: the Cordis runner interprets a plugin's
+ * return value as an effect (`TypeError: Invalid effect` for a
+ * non-constructible apply; silently dropped for this regular-function apply).
+ * Tests that want the guard call `installGuard(ctx, config)` directly.
+ * @returns {undefined}
+ */
 export function apply(ctx, config = {}) {
   setSelftestMeta({ version: pkgVersion() });
   const guard = installGuard(ctx, config);
@@ -146,7 +153,6 @@ export function apply(ctx, config = {}) {
       protectedOrchestratorPaths: guard.policy.protectedOrchestratorPaths ?? PROTECTED_ORCHESTRATOR_PATHS,
     },
   });
-  return guard;
 }
 
 export default apply;

@@ -21,9 +21,13 @@ export const BUNDLES = [
  * composition lives in its generated cordis.patch.yml — but the loader expects
  * every bundle listed in `dsh.profile.bundles` to export `apply`. Without it
  * the row silently fails to activate and the boot hook reports a missing plugin.
+ *
+ * MUST return nothing: the Cordis runner interprets a plugin's return value as
+ * an effect (`TypeError: Invalid effect` for a non-constructible apply;
+ * silently dropped for this regular-function apply). The composition is
+ * declared by the exported BUNDLES constant and the generated patch file.
+ * @returns {undefined}
  */
-export function apply(ctx, config = {}) {
-  return { package: PACKAGE, bundles: BUNDLES };
-}
+export function apply(ctx, config = {}) {}
 
 export default { PACKAGE, BUNDLES, apply };

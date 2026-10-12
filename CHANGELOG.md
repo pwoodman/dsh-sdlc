@@ -2,6 +2,56 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
+## [0.4.0-beta.7] — the UI row activates
+
+### Fixed
+
+- **The `sdlc-ui` row failed to activate with `cannot get property "connection" without inject`.**
+  The host plugin read `ctx.connection` inside `registerRoutes` without declaring the service, so
+  the Cordis context proxy refused the read at activation (a service-injection issue, not an
+  import one — the other 12 rows activated and the selftest counts were complete). The plugin now
+  declares `inject = ['connection']` (the deliverables-plugin pattern the row already claimed to
+  follow) and the entry re-exports it: the loader reads `plugin.inject` from the entry namespace
+  when it activates the row, holds the fiber until the connection service exists, and puts the
+  implementation in the fiber's store. `scripts/build-ui.mjs` emits the re-export into the
+  generated `lib/index.js` the loader imports. Verified against the real Cordis runtime: without
+  the export the fiber fails with exactly the reported error; with it the row activates and all
+  seven routes register.
+
+- **Route registration is now effect-scoped (`ctx.effect`).** The connection refuses a second
+  registration of the same exact path (`exact Fetch route … is already registered`), so the bare
+  registrations would have leaked across a bundle/config restart and — through the warn-only
+  fallback — silently dropped every route after the first reload. Registrations now ride the
+  fiber's effects (the session-controller pattern), so a restart disposes the routes before
+  `apply` runs again. Plain contexts (unit tests, import-without-host) still register directly.
+
+- **The UI's selftest contribution was dead code.** `require('@patwoodman/orchestrator-core/selftest.js')`
+  used a `.js`-suffixed subpath, but core's exports map (`"./*": "./lib/*.js"`) resolves that to
+  `lib/selftest.js.js`, so the require never resolved and the catch hid it — no `sdlc_ui_routes`
+  contribution and no version metadata ever reached the boot-hook report, in any environment. The
+  stem form (`/selftest`) resolves; and when `SDLC_SELFTEST` is set while the helper still fails
+  to load, the UI now warns through `ctx.logger` instead of failing invisibly (the never-fabricate
+  rule cuts both ways).
+
+- **Every loader-facing `apply()` now returns nothing.** Verified against the real Cordis runtime:
+  the runner interprets a plugin's return value as an effect — a plain object is fatal for a
+  non-constructible apply (`TypeError: Invalid effect`, the row never activates), and for the
+  regular-function applies this suite ships, both object returns and disposer returns are silently
+  swallowed by the construct-as-class path. All seven bundle entries return void; the registration
+  reports the tests consume come from the named helpers (`registerRoutes`,
+  `registerTools`/`registerCommands`, `declaredPresetIds`, `getRuntime`, `installGuard`), and
+  `tests/unit/plugin-entry-contract.test.mjs` pins the contract for every composed row so a
+  refactor cannot turn it back into a dead row.
+
+- **The shipped client bundle had an unbound `api` reference.** The closure-factory bundler strips
+  import lines, but `client/index.js` used a DEFAULT import (`import api from './api.js'`) and
+  api.js declared its face as `export default {…}` — both stripped, leaving `api` undeclared, so
+  the client `apply` crashed with `ReferenceError: api is not defined` the moment the web loader
+  activated the tab. api.js now exports the face as `export const api` (resolved lexically in the
+  concatenated scope), and the bundler fails the build on default imports instead of shipping an
+  unbound reference. The entry contract test drives the shipped bundle's `apply` end-to-end, and
+  `ui-bundle.test.mjs` evaluates the factory the way the web module table does.
+
 ## [0.4.0-beta.6] — published packages actually import
 
 **Install:** `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` —

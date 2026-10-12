@@ -141,13 +141,16 @@ function runInProcessProbe() {
       const selftest = await import(${JSON.stringify('file://' + join(ROOT, 'packages/sdlc-core/src/selftest.js'))});
       const ctx = { provide() {}, logger: { debug() {}, warn() {}, error() {} } };
       // One apply() per declared loader row, exactly as the host composes them.
+      // apply() returns nothing by contract (the Cordis runner reads a plugin
+      // return value as an effect), so the runtime handle for the final close
+      // comes from the same per-project-root singleton the rows create.
       for (const row of ${JSON.stringify(guardRows)}) guard.apply(ctx, { ...row.config, worktreeRoot: ${JSON.stringify(projectRoot)} });
       tools.apply(ctx, {});
       presets.apply(ctx, {});
-      let runtime = null;
       for (const row of ${JSON.stringify(coreRows)}) {
-        runtime = core.apply(ctx, { ...row.config, projectRoot: ${JSON.stringify(projectRoot)}, storage: { dbPath: '.sdlc/sdlc.db' }, safety: { instanceLock: false } });
+        core.apply(ctx, { ...row.config, projectRoot: ${JSON.stringify(projectRoot)}, storage: { dbPath: '.sdlc/sdlc.db' }, safety: { instanceLock: false } });
       }
+      const runtime = core.getRuntime({}, { projectRoot: ${JSON.stringify(projectRoot)} });
       const report = selftest.flushSelftest();
       runtime?.close?.({ releaseLock: false });
       process.stdout.write(JSON.stringify(report));

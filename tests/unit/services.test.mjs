@@ -30,13 +30,17 @@ const fakeCtx = () => {
   };
 };
 
-test('apply(service=tasks) opens the db, provides sdlc.tasks and returns the runtime', () => {
+test('apply(service=tasks) opens the db, provides sdlc.tasks and exposes the runtime', () => {
   const dir = tempDir('sdlc-services-apply-');
   try {
     const ctx = fakeCtx();
-    const runtime = services.apply(ctx, CFG(dir, { service: 'tasks' }));
+    // apply() is the loader entry and returns nothing: the Cordis runner
+    // interprets a plugin return value as an effect. The runtime handle comes
+    // from the same per-project-root singleton apply creates.
+    assert.equal(services.apply(ctx, CFG(dir, { service: 'tasks' })), undefined);
+    const runtime = services.getRuntime(CFG(dir, { service: 'tasks' }), { projectRoot: dir });
 
-    assert.ok(runtime, 'apply returns a Runtime');
+    assert.ok(runtime, 'getRuntime exposes the Runtime apply created');
     assert.equal(runtime.projectRoot, dir);
     assert.ok(runtime.db, 'the runtime opened a database');
     assert.equal(runtime.db.isOpen, true);
@@ -55,11 +59,13 @@ test('a second apply for the same project root reuses the runtime (single writer
   try {
     const ctx = fakeCtx();
     const config = CFG(dir, { service: 'tasks' });
-    const first = services.apply(ctx, config);
+    services.apply(ctx, config);
+    const first = services.getRuntime(config, { projectRoot: dir });
     const dbBefore = first.db;
 
-    const second = services.apply(ctx, config);
-    assert.equal(second, first, 'the SAME runtime object is returned');
+    services.apply(ctx, config);
+    const second = services.getRuntime(config, { projectRoot: dir });
+    assert.equal(second, first, 'the SAME runtime object is reused');
     assert.equal(second.db, dbBefore, 'the database was not reopened');
     assert.equal(second.db.isOpen, true);
 
@@ -74,7 +80,8 @@ test('a second apply for the same project root reuses the runtime (single writer
 test('makeService exposes exactly the documented methods, bound to the runtime', () => {
   const dir = tempDir('sdlc-services-api-');
   try {
-    const runtime = services.apply(fakeCtx(), CFG(dir, { service: 'tasks' }));
+    services.apply(fakeCtx(), CFG(dir, { service: 'tasks' }));
+    const runtime = services.getRuntime({}, { projectRoot: dir });
     const expected = {
       tasks: ['addTask', 'getTask', 'listTasks', 'projectTasks', 'proposeTransition', 'transition'],
       scheduler: ['canDispatch', 'guardFor', 'spentTotals'],
@@ -114,7 +121,8 @@ test('makeService exposes exactly the documented methods, bound to the runtime',
 test('makeService omits runtime methods that do not exist (no phantom API)', () => {
   const dir = tempDir('sdlc-services-phantom-');
   try {
-    const runtime = services.apply(fakeCtx(), CFG(dir, { service: 'tasks' }));
+    services.apply(fakeCtx(), CFG(dir, { service: 'tasks' }));
+    const runtime = services.getRuntime({}, { projectRoot: dir });
     const api = services.makeService(runtime, 'not-a-service');
     assert.deepEqual(Object.keys(api).sort(), ['config', 'runtime', 'service']);
   } finally {
@@ -155,7 +163,8 @@ test('apply with no service provides sdlc.runtime and contributes the full servi
   const dir = tempDir('sdlc-services-runtime-');
   try {
     const ctx = fakeCtx();
-    const runtime = services.apply(ctx, CFG(dir));
+    services.apply(ctx, CFG(dir));
+    const runtime = services.getRuntime(CFG(dir), { projectRoot: dir });
     assert.equal(ctx.provided.length, 1);
     assert.equal(ctx.provided[0][0], 'sdlc.runtime');
     assert.equal(ctx.provided[0][1], runtime);

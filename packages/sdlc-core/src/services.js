@@ -87,6 +87,13 @@ export function makeService(runtime, service) {
 /**
  * DSH plugin entry. Registering a service is idempotent: the runtime is created
  * once and every row shares it.
+ *
+ * MUST return nothing: the Cordis runner interprets a plugin's return value as
+ * an effect (`TypeError: Invalid effect` for a non-constructible apply;
+ * silently dropped for this regular-function apply). Callers that need the
+ * runtime handle use `getRuntime(config, { projectRoot })` — the same
+ * per-project-root singleton this entry creates.
+ * @returns {undefined}
  */
 export function apply(ctx, config = {}) {
   setSelftestMeta({ version: pkgVersion(), dsh: dshVersion() });
@@ -116,7 +123,6 @@ export function apply(ctx, config = {}) {
   } else if (typeof ctx?.provide === 'function') {
     ctx.provide('sdlc.runtime', runtime);
   }
-  return runtime;
 }
 
 export default apply;

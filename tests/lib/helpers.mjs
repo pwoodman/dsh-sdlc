@@ -61,6 +61,33 @@ export function tempDir(prefix = 'sdlc-test-') {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
+/**
+ * Evaluate the SHIPPED client bundle (lib/client.js) exactly the way the web
+ * module table does: `window.__ModuleLoader__.load({ id, factory })`, with
+ * `react` / `react/jsx-runtime` resolved through the factory's require(). The
+ * factory only declares functions and objects at execution time, so minimal
+ * stubs suffice; rendering is never triggered.
+ *
+ * @param {string} rel - workspace-relative bundle path.
+ * @returns {{ id: string, exports: Record<string, any> }} what the client
+ *   loader consumes (the factory id must equal the package name).
+ * @throws when the bundle registers zero or several factories.
+ */
+export function clientBundleExports(rel = 'packages/sdlc-client-ui/lib/client.js') {
+  const src = readFileSync(join(ROOT, rel), 'utf8');
+  const captured = [];
+  const fakeWindow = { __ModuleLoader__: { load: (def) => captured.push(def) } };
+  new Function('window', src)(fakeWindow);
+  if (captured.length !== 1) {
+    throw new Error(`client bundle registered ${captured.length} factories, expected exactly one`);
+  }
+  const { id, factory } = captured[0];
+  const reactStub = { useState() {}, useSyncExternalStore() {} };
+  const jsxStub = { jsx: () => null, jsxs: () => null, Fragment: 'Fragment' };
+  const exported = factory((spec) => (spec === 'react' ? reactStub : spec === 'react/jsx-runtime' ? jsxStub : {}));
+  return { id, exports: exported };
+}
+
 export function cleanup(dir) {
   rmSync(dir, { recursive: true, force: true });
 }

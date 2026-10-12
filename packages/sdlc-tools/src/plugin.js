@@ -67,12 +67,19 @@ export function registerCommands(ctx, config = {}) {
   return registered;
 }
 
+/**
+ * Loader entry. MUST return nothing: the Cordis runner interprets a plugin's
+ * return value as an effect (`TypeError: Invalid effect` for a
+ * non-constructible apply; silently dropped for this regular-function apply).
+ * Tests that want the registration report call `registerTools` /
+ * `registerCommands` directly.
+ * @returns {undefined}
+ */
 export function apply(ctx, config = {}) {
   setSelftestMeta({ version: pkgVersion() });
   const tools = registerTools(ctx, config);
   const commands = registerCommands(ctx, config);
   contributeSelftest({ tools, commands });
-  return { tools, commands };
 }
 
 export { COMMANDS, TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, ALL_TOOLS, DEBUG_COMMANDS };

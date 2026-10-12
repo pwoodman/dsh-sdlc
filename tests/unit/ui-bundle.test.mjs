@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from '../lib/helpers.mjs';
+import { ROOT, core, clientBundleExports } from '../lib/helpers.mjs';
 
 const PKG = join(ROOT, 'packages', 'sdlc-client-ui');
 const read = (rel) => readFileSync(join(PKG, rel), 'utf8');
@@ -59,6 +59,35 @@ test('host entry re-exports the plugin surface', () => {
   const entry = read('lib/index.js');
   assert.match(entry, /server\/plugin\.js/);
   assert.match(entry, /PACKAGE/);
+  // The loader reads `plugin.inject` from this module's namespace when it
+  // activates the sdlc-ui row (no default export → the namespace IS the
+  // plugin object). A missing re-export here is the exact regression that
+  // made the row throw `cannot get property "connection" without inject`.
+  assert.match(entry, /inject/);
+});
+
+test('host plugin declares the connection service inject', async () => {
+  const entry = await import(`file://${join(PKG, 'src', 'index.js')}`);
+  assert.deepEqual(entry.inject, ['connection']);
+  const plugin = await core.uiPlugin();
+  assert.deepEqual(plugin.inject, ['connection']);
+});
+
+test('client bundle factory wires apply + inject under the loader contract', () => {
+  // Grepping the bundle for `exports.inject` is not enough: the closure
+  // factory is what the web module table executes, and a stripped or renamed
+  // export there is the client-side twin of the connection bug — the sdlc tab
+  // would never activate, with no error anywhere. So evaluate the shipped
+  // artifact against a stub module loader (tests/lib/helpers.mjs) and assert
+  // what the loader consumes.
+  const { id, exports } = clientBundleExports();
+  assert.equal(id, JSON.parse(read('package.json')).name, 'factory id equals the package name');
+  assert.equal(typeof exports.apply, 'function', 'exports.apply is wired at the factory tail');
+  assert.deepEqual(
+    exports.inject,
+    ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote'],
+    'exports.inject is wired and names exactly the browser services the client apply reads',
+  );
 });
 
 test('cordis patch declares the UI row for the web profile only', () => {

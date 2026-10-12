@@ -63,14 +63,19 @@ test('report shape has exactly the documented keys (C.9)', () => {
 });
 
 test('a profile apply() contributes the expected registration surface', async () => {
-  const { apply } = await core.runtime().then(() => import('../../packages/sdlc-core/src/services.js'));
+  const services = await import('../../packages/sdlc-core/src/services.js');
   const dir = tempDir('sdlc-selftest-apply-');
   const previous = process.env.SDLC_SELFTEST;
   try {
     process.env.SDLC_SELFTEST = join(dir, 'report.json');
     const provided = [];
     const ctx = { provide: (name, value) => provided.push(name), logger: { debug() {}, warn() {}, error() {} } };
-    const runtime = apply(ctx, { service: 'tasks', projectRoot: dir, storage: { dbPath: '.sdlc/sdlc.db' }, safety: { instanceLock: false } });
+    const config = { projectRoot: dir, storage: { dbPath: '.sdlc/sdlc.db' }, safety: { instanceLock: false } };
+    // apply() is the loader entry and returns nothing (its return would be
+    // read as an effect); the runtime handle comes from the same
+    // per-project-root singleton apply creates.
+    services.apply(ctx, { ...config, service: 'tasks' });
+    const runtime = services.getRuntime(config, { projectRoot: dir });
     assert.ok(runtime.db, 'the runtime opened a database');
     assert.ok(provided.includes('sdlc.tasks'));
     const report = selftest.flushSelftest();

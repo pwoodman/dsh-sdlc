@@ -252,7 +252,15 @@ export function defaultScenarios() {
   };
 }
 
-/** DSH plugin entry: register the provider and contribute the boot-hook report. */
+/**
+ * DSH plugin entry: register the provider and contribute the boot-hook report.
+ *
+ * MUST return nothing: the Cordis runner interprets a plugin's return value as
+ * an effect (`TypeError: Invalid effect` for a non-constructible apply;
+ * silently dropped for this regular-function apply). The provider is exposed
+ * to the host through `ctx.provide('sdlc.mockLlm', …)` above.
+ * @returns {undefined}
+ */
 export function apply(ctx, config = {}) {
   const provider = new MockLlm({
     scenarioDir: config.scenarioDir ?? null,
@@ -263,7 +271,6 @@ export function apply(ctx, config = {}) {
     if (typeof ctx?.llm?.registerProvider === 'function') ctx.llm.registerProvider(provider.providerDescriptor());
     if (typeof ctx?.provide === 'function') ctx.provide('sdlc.mockLlm', provider);
   } catch { /* provider registration is host-optional in tests */ }
-  return provider;
 }
 
 export default apply;

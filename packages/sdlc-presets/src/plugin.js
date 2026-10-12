@@ -26,11 +26,17 @@ export function declaredPresetIds(patchPath = new URL('../cordis.patch.yml', imp
   return [...text.matchAll(/^\s*-\s*id:\s*(preset-sdlc-[A-Za-z0-9-]+)\s*$/gm)].map((m) => m[1]);
 }
 
+/**
+ * Loader entry. MUST return nothing: the Cordis runner interprets a plugin's
+ * return value as an effect (`TypeError: Invalid effect` for a
+ * non-constructible apply; silently dropped for this regular-function apply).
+ * Tests that want the roster call `declaredPresetIds()` directly.
+ * @returns {undefined}
+ */
 export function apply(ctx, config = {}) {
   setSelftestMeta({ version: pkgVersion() });
   const presets = declaredPresetIds();
   contributeSelftest({ presets });
-  return { presets, count: presets.length };
 }
 
 export {

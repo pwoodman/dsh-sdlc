@@ -233,8 +233,11 @@ test('installGuard with no host API returns a usable guard and never throws', as
     assert.equal(guard.checkFsWrite('src/a.ts'), 'deny');
     assert.equal(plugin.decideToolCall(guard, { toolName: 'write', args: { path: 'src/a.ts' } }).kind, 'deny');
 
-    const viaApply = plugin.default({}, { worktreeRoot: dir });
-    assert.ok(viaApply instanceof g.GuardPlugin, 'the default export is the installer');
+    // apply() is the loader entry and returns nothing: the Cordis runner reads
+    // a plugin return value as an effect, so the installer is installGuard and
+    // the default export IS apply (same function, loader-facing contract).
+    assert.equal(plugin.default({}, { worktreeRoot: dir }), undefined);
+    assert.equal(plugin.default, plugin.apply);
     assert.equal(typeof plugin.default, 'function');
   } finally {
     cleanup(dir);

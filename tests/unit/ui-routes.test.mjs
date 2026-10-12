@@ -167,19 +167,42 @@ test('metrics endpoint renders Prometheus text', () => {
 
 test('plugin registers routes behind the connection fence', async () => {
   const plugin = await core.uiPlugin();
+  // The loader injects `connection` (plugin.inject) before apply runs; pin the
+  // declaration — without it the Cordis context proxy throws at runtime.
+  assert.deepEqual(plugin.inject, ['connection']);
   const registered = [];
   const ctx = {
     connection: { fetch: { register: (r) => registered.push(`${r.methods[0]} ${r.path}`) } },
     logger: { warn() {} },
   };
-  const report = plugin.apply(ctx, { projectRoot: tempDir('sdlc-ui-plugin-') });
-  assert.ok(report.routes.length >= 7, `expected 7 routes, got ${report.routes.length}`);
+  // The registration report comes from the pure helper; apply() itself is the
+  // loader entry and returns nothing (its return would be read as an effect).
+  const report = plugin.registerRoutes(ctx, { projectRoot: tempDir('sdlc-ui-plugin-') });
+  assert.ok(report.length >= 7, `expected 7 routes, got ${report.length}`);
   assert.ok(registered.some((r) => r.includes('/api/sdlc.status')));
   assert.ok(registered.some((r) => r.includes('POST /api/sdlc.config')));
 
   // No connection fence: registers nothing, throws nothing.
-  const empty = plugin.apply({}, {});
-  assert.deepEqual(empty.routes, []);
+  assert.deepEqual(plugin.registerRoutes({}, {}), []);
+});
+
+test('route registration is effect-scoped when the host offers ctx.effect', async () => {
+  const plugin = await core.uiPlugin();
+  const registered = [];
+  const effects = [];
+  const ctx = {
+    connection: { fetch: { register: (r) => registered.push(r) } },
+    logger: { warn() {} },
+    effect: (produce, label) => { effects.push(label); return produce(); },
+  };
+  const report = plugin.registerRoutes(ctx, { projectRoot: tempDir('sdlc-ui-plugin-effect-') });
+  // Every route registers inside a fiber effect, so a restart disposes the
+  // routes before apply re-registers — the connection refuses a second
+  // registration of the same exact path, and the plugin's warn-only fallback
+  // would otherwise silently drop every route after the first reload.
+  assert.equal(registered.length, report.length);
+  assert.equal(effects.length, report.length);
+  assert.ok(effects.every((l) => l.startsWith('sdlc-ui:')), `unexpected effect labels: ${effects[0]}`);
 });
 
 test('plugin fetch handlers serve live responses end-to-end (no host)', async () => {
@@ -200,8 +223,8 @@ test('plugin fetch handlers serve live responses end-to-end (no host)', async ()
       },
       logger: { warn() {} },
     };
-    const report = plugin.apply(ctx, { projectRoot: dir });
-    assert.ok(report.routes.length >= 7);
+    const report = plugin.registerRoutes(ctx, { projectRoot: dir });
+    assert.ok(report.length >= 7);
 
     // GET status through the registered fetch (query/response shaped).
     const statusRes = await handlersByKey.get('GET /api/sdlc.status')();
@@ -263,8 +286,8 @@ test('plugin warns (not throws) when a route registration fails', async () => {
     },
     logger: { warn: (...a) => warnings.push(a.join(' ')) },
   };
-  const report = plugin.apply(ctx, { projectRoot: tempDir('sdlc-ui-plugin-fail-') });
-  assert.deepEqual(report.routes, []);
+  const report = plugin.registerRoutes(ctx, { projectRoot: tempDir('sdlc-ui-plugin-fail-') });
+  assert.deepEqual(report, []);
   assert.ok(warnings.length >= 2, `expected registration warnings, got ${warnings.length}`);
 });
 
