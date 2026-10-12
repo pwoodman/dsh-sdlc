@@ -16,4 +16,14 @@ export const BUNDLES = [
   '@patwoodman/orchestrator-ui',
 ];
 
-export default { PACKAGE, BUNDLES };
+/**
+ * DSH plugin entry. The meta-bundle contributes no rows of its own — the
+ * composition lives in its generated cordis.patch.yml — but the loader expects
+ * every bundle listed in `dsh.profile.bundles` to export `apply`. Without it
+ * the row silently fails to activate and the boot hook reports a missing plugin.
+ */
+export function apply(ctx, config = {}) {
+  return { package: PACKAGE, bundles: BUNDLES };
+}
+
+export default { PACKAGE, BUNDLES, apply };
