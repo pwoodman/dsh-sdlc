@@ -2,7 +2,7 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
-## [0.4.0-beta.5] — published packages actually import
+## [0.4.0-beta.6] — published packages actually import
 
 **Install:** `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` —
 now resolves and boots. Or the tarball path (unchanged).
@@ -25,7 +25,7 @@ now resolves and boots. Or the tarball path (unchanged).
 - **The `0.0.0-stage` artifact.** npm's new staged-publish flow (npm 12 / the
   registry's 202-accept pipeline) creates a placeholder version the first time
   a scope publishes. It is invisible to `latest`/`beta` dist-tags and installs
-  resolve to `0.4.0-beta.5` as expected, but it clutters the version list. The
+  resolve to `0.4.0-beta.6` as expected, but it clutters the version list. The
   placeholder cannot be removed (npm does not allow version deletion).
 
 ## [0.4.0-beta.3] — first public release (2026-10-11)

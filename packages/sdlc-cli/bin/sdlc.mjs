@@ -5,7 +5,7 @@
  * Deterministic control plane over `.sdlc/`: no model call, no network.
  */
 
-import { main } from '../src/cli.mjs';
+import { main } from '../lib/cli.mjs';
 
 const code = await main(process.argv.slice(2));
 process.exit(code ?? 0);

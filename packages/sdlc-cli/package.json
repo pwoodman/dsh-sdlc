@@ -1,14 +1,14 @@
 {
   "name": "@patwoodman/orchestrator-cli",
-  "version": "0.4.0-beta.5",
+  "version": "0.4.0-beta.6",
   "type": "module",
   "description": "The `sdlc` executable: a deterministic control plane over .sdlc/ (no model calls).",
   "bin": {
     "sdlc": "./bin/sdlc.mjs"
   },
-  "main": "src/cli.mjs",
+  "main": "lib/cli.mjs",
   "files": [
-    "src",
+    "lib",
     "bin",
     "locale/*.json",
     "LICENSE",
@@ -23,7 +23,7 @@
     "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
   },
   "exports": {
-    ".": "./src/cli.mjs",
+    ".": "./lib/cli.mjs",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
