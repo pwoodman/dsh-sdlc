@@ -272,5 +272,3 @@ export function apply(ctx, config = {}) {
     if (typeof ctx?.provide === 'function') ctx.provide('sdlc.mockLlm', provider);
   } catch { /* provider registration is host-optional in tests */ }
 }
-
-export default apply;

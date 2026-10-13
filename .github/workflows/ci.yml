@@ -21,8 +21,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
+      # lib/ uses bare cross-package imports (@patwoodman/orchestrator-core, …),
+      # which need node_modules to resolve. A fresh checkout has none, so every
+      # suite importing such a lib/ file failed on CI while passing locally.
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs
       - name: build (zero-dependency src → lib, incl. UI bundle)
-        run: node scripts/build.mjs && node scripts/build-ui.mjs
+        run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: presets are in sync with roles.js
         run: node scripts/gen-presets.mjs --check
       - name: the meta-bundle patch is in sync with its members
@@ -48,7 +53,7 @@ jobs:
           node-version: '22.18'
       - name: install the pinned DSH runtime (v2 omitted this)
         run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: gate:P — deterministic platform facts (no model, no network)
         run: node scripts/validate-platform.mjs --json .validation/gate-P.json
       - uses: actions/upload-artifact@v4
@@ -70,7 +75,7 @@ jobs:
       # "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v4
       - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: install profiles + bundles
         run: node scripts/install-local.mjs --yes --skip-build
       - name: gate:M0 — composition + boot hook + guard + schema
@@ -90,7 +95,7 @@ jobs:
         with:
           node-version: '22.18'
       - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: integration + fault + adversarial layers (L4–L6)
         run: |
           npm run test:integration
@@ -113,7 +118,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: the eight §53 acceptance tests (mock provider, no cost)
         run: npm run test:e2e
       - uses: actions/upload-artifact@v4
@@ -132,7 +137,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs
+      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - run: npm run test:e2e-live
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

@@ -145,7 +145,7 @@ exec node "$DEST/scripts/install-local.mjs" "$@"
 // ── build ──────────────────────────────────────────────────────────────────
 
 if (!SKIP_BUILD) {
-  for (const script of ['gen-presets.mjs', 'gen-bundle-patch.mjs', 'build.mjs', 'build-ui.mjs']) {
+  for (const script of ['gen-presets.mjs', 'build.mjs', 'build-ui.mjs', 'fold-meta.mjs', 'gen-bundle-patch.mjs']) {
     // Absolute script path, no `cwd`: every generator resolves its own root from
     // `import.meta.dirname`, and not chdir-ing keeps this working on hosts where
     // the checkout path is not a normal directory (containers, portals, mounts).

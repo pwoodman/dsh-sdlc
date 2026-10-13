@@ -27,6 +27,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import foldMeta from './lib/fold-meta.cjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const META_DIR = join(ROOT, 'packages', 'sdlc-orchestrator');
@@ -102,7 +103,16 @@ const blocks = MEMBERS.map((member) => {
   return `${rule}${bodyOf(member)}`;
 });
 
-const content = `${HEADER}\n${SELF_ROW}\n${blocks.join('\n')}`;
+// The self-contained meta-bundle (beta.9): when the fold is applied, every
+// member row resolves through the meta package's own exports — `name:` fields
+// rewritten to `@patwoodman/orchestrator/<flat alias>` — so the lead profile
+// holds exactly ONE own-scope package and a GUI uninstall is one remove.
+// Without the fold (worker/probe builds, older checkouts) the verbatim rows
+// keep referencing the member packages as before.
+const folded = foldMeta.isFolded();
+const content = folded
+  ? `${HEADER}\n${SELF_ROW}\n${blocks.map((b) => foldMeta.rewritePatch(b)).join('\n')}`
+  : `${HEADER}\n${SELF_ROW}\n${blocks.join('\n')}`;
 
 if (CHECK) {
   const current = existsSync(TARGET) ? readFileSync(TARGET, 'utf8') : '';

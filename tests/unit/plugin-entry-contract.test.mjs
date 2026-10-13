@@ -4,10 +4,19 @@
  * Two failure classes have already produced dead rows in this suite, and both
  * are invisible until a live DSH boot:
  *
- * 1. Service injection (beta.7): `ctx.connection` read from apply() without the
- *    entry exporting `inject` threw `cannot get property "connection" without
- *    inject` at activation. The loader reads `plugin.inject` from the ENTRY
- *    module's exports, so the declaration must live (or be re-exported) there.
+ * 1. Service injection (beta.7, still the live failure mode): `ctx.connection`
+ *    read from apply() without the entry exporting `inject` threw
+ *    `cannot get property "connection" without inject` at activation. The
+ *    loader reads `plugin.inject` from the ENTRY module's exports, so the
+ *    declaration must live (or be re-exported) there.
+ *
+ *    A named `inject` export is not enough on its own. Cordis
+ *    `Loader.unwrapExports` prefers `.default` (`exports.default ?? exports`).
+ *    `export default apply` makes the plugin the bare function, which has no
+ *    `.inject`, so `Inject.resolve(undefined)` starts the fiber with an empty
+ *    dependency map and the context proxy throws the same error inside
+ *    `registerRoutes` — exactly the `sdlc-ui` activation failure. Entries
+ *    therefore export `apply` and `inject` as named bindings only.
  *
  * 2. The apply() return value (pinned here): the Cordis runner interprets a
  *    plugin's return value as an effect. Verified against @deepseek-ai/cordis
@@ -27,7 +36,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { load, tempDir, cleanup, clientBundleExports } from '../lib/helpers.mjs';
+import { createRequire } from 'node:module';
+import { load, tempDir, cleanup, clientBundleExports, ROOT } from '../lib/helpers.mjs';
+import { join } from 'node:path';
 
 const stubLogger = () => ({ debug() {}, warn() {}, error() {} });
 
@@ -77,12 +88,37 @@ const ENTRIES = [
   },
 ];
 
+/**
+ * Cordis `Loader.unwrapExports`: a default export wins, and a function default
+ * carries no `inject`. Reproduced here so the suite does not depend on cordis
+ * being importable just to state the rule the activation test then executes.
+ */
+function unwrapExports(exports) {
+  if (exports == null) return exports;
+  const unwrapped = exports.default ?? exports;
+  if (!unwrapped.__esModule) return unwrapped;
+  return unwrapped.default ?? unwrapped;
+}
+
 for (const entry of ENTRIES) {
   test(`apply() returns nothing — ${entry.name}`, async () => {
     const mod = await load(entry.load);
     assert.equal(typeof mod.apply, 'function', `${entry.name} exports apply`);
+    // unwrapExports prefers `.default`. A function default is the bare apply
+    // and has no `.inject` — that is the sdlc-ui activation failure. An object
+    // default (the meta-bundle's `{ apply, … }`) is a plugin object and is
+    // fine as long as inject, when required, survives the unwrap.
+    assert.notEqual(
+      mod.default,
+      mod.apply,
+      `${entry.name} must not default-export the apply function — unwrapExports would drop inject`,
+    );
+    const plugin = unwrapExports(mod);
+    assert.equal(typeof plugin.apply, 'function', `${entry.name}: unwrapExports still yields an apply`);
     if (entry.inject) {
+      assert.equal(mod.default, undefined, `${entry.name} inject lives on the namespace; a default export would hide it`);
       assert.deepEqual(mod.inject, entry.inject, `${entry.name} declares its host services in inject`);
+      assert.deepEqual(plugin.inject, entry.inject, `${entry.name}: unwrapExports keeps inject on the plugin object`);
     }
     const dir = tempDir('sdlc-entry-contract-');
     try {
@@ -111,6 +147,73 @@ test('apply() is a regular function on every entry (the documented plugin shape)
     const mod = await load(entry.load);
     assert.ok(mod.apply.prototype, `${entry.name}::apply should stay a regular function`);
   }
+});
+
+test('sdlc-ui activates under Cordis when connection is provided, and fails closed without inject', async () => {
+  // This is the gate the published row has to pass before it can ship.
+  // `registry.plugin` is what the loader calls after `unwrapExports`; a
+  // missing or stripped `inject` puts the fiber in state 3 (failed) with
+  // `cannot get property "connection" without inject` at registerRoutes,
+  // which is the warning DSH prints as "1 entry did not activate sdlc-ui".
+  const require = createRequire(import.meta.url);
+  let cordis;
+  try {
+    cordis = require(join(ROOT, '.tools/dsh/node_modules/@deepseek-ai/cordis/lib/index.js'));
+  } catch (err) {
+    // The vendored runtime is how this suite talks to the real proxy. Skipping
+    // would let the activation bug ship again, so a missing cordis fails here.
+    assert.fail(`@deepseek-ai/cordis is required to gate sdlc-ui activation (${err?.message ?? err})`);
+  }
+  const { Context, Service } = cordis;
+  const entry = await load('packages/sdlc-client-ui/src/index.js');
+  const plugin = unwrapExports(entry);
+  assert.deepEqual(plugin.inject, ['connection']);
+  assert.equal(typeof plugin.apply, 'function');
+  assert.notEqual(plugin, plugin.apply, 'unwrapExports must not reduce the plugin to the bare apply function');
+
+  const root = new Context();
+  const registered = [];
+  class Connection extends Service {
+    constructor(ctx) {
+      super(ctx, 'connection');
+      this.fetch = {
+        register: (route) => {
+          registered.push(`${route.methods[0]} ${route.path}`);
+          return () => {};
+        },
+      };
+    }
+  }
+  const connectionFiber = root.plugin(Connection);
+  await connectionFiber;
+  assert.equal(connectionFiber.state, 2, 'the connection service itself activates');
+
+  const activated = root.plugin(plugin, {});
+  await activated;
+  assert.equal(
+    activated.state,
+    2,
+    `sdlc-ui fiber failed: ${activated._error?.message ?? activated._error}`,
+  );
+  assert.deepEqual(registered, [
+    'GET /api/sdlc.status',
+    'GET /api/sdlc.board',
+    'GET /api/sdlc.task',
+    'GET /api/sdlc.compare',
+    'GET /api/sdlc.config',
+    'GET /api/sdlc.metrics',
+    'POST /api/sdlc.config',
+  ]);
+
+  // The regression: default-exporting apply (or forgetting inject) is fatal,
+  // and the message is the one the host prints at enable time. A bare function
+  // is what unwrapExports returns from `export default apply`.
+  const broken = root.plugin(plugin.apply, {});
+  await Promise.resolve(broken).then(
+    () => assert.fail('bare apply (no inject) must not activate'),
+    (err) => assert.match(err?.message ?? '', /cannot get property "connection" without inject/),
+  );
+  assert.equal(broken.state, 3, 'a plugin that reads connection without inject ends failed, not loaded');
 });
 
 test('the client entry returns nothing and declares its browser services in inject', async () => {

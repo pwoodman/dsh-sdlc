@@ -199,6 +199,26 @@ step('repair: dead own-suite dependencies and any foreign pnpm store', () => {
   return repaired.length ? repaired.join('; ') : 'nothing to repair';
 });
 
+/**
+ * The meta-bundle is SELF-CONTAINED (the members are folded into its
+ * lib/rows/): a lead profile installed by an older tree still carries the four
+ * member modules as plain dependencies — ghost entries a GUI uninstall cannot
+ * remove. Drop them so an upgrade converges on the one-package shape.
+ */
+step('repair: drop member ghosts from the lead (the meta-bundle is self-contained)', () => {
+  const manifestPath = join(HOME, 'profiles', LEAD, 'package.json');
+  if (!existsSync(manifestPath)) return 'no lead profile yet';
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const [bundle] = recipeBundles(LEAD_RECIPE);
+  const deps = { ...(manifest.dependencies ?? {}) };
+  const ghosts = Object.keys(deps).filter((n) => isOwnBundleName(n) && n !== bundle);
+  if (ghosts.length === 0) return 'nothing to repair';
+  for (const ghost of ghosts) delete deps[ghost];
+  manifest.dependencies = deps;
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  return `dropped ${ghosts.length} member ghost${ghosts.length === 1 ? '' : 's'} (${ghosts.join(', ')})`;
+});
+
 step('preflight: package directories present', () => {
   const wanted = new Set([
     ...recipeBundles(LEAD_RECIPE), ...recipeBundles(WORKER_RECIPE), ...recipeBundles(PROBE_RECIPE),
@@ -268,8 +288,8 @@ if (!SKIP_BUILD) {
   // `import.meta.dirname`. Not chdir-ing means the install also works when the
   // checkout lives somewhere node cannot `getcwd()` (containers, portal mounts).
   const gen = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-160);
-  step('build: generated patches (presets + meta-bundle union)', () =>
-    gen('gen-presets.mjs') + gen('gen-bundle-patch.mjs'),
+  step('build: generated patches (presets; members folded into the meta-bundle)', () =>
+    gen('gen-presets.mjs') + gen('build.mjs') + gen('build-ui.mjs') + gen('fold-meta.mjs') + gen('gen-bundle-patch.mjs'),
   );
   step('build: artifacts (build.mjs + build-ui.mjs)', () => {
     const build = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-200);
@@ -359,17 +379,20 @@ function lastLine(text, max = 200) {
   return line.length > max ? `…${line.slice(-max)}` : line;
 }
 
-step(`install: lead bundle into ${LEAD} (the single spec)`, () => {
+step(`install: lead bundle into ${LEAD} (the single, self-contained spec)`, () => {
   const [bundle] = recipeBundles(LEAD_RECIPE);
   sh('dsh', ['plugin', '--profile', LEAD, 'add', `link:${pkgDir(bundle)}`]);
-  const deps = Object.keys(JSON.parse(readFileSync(join(pkgDir(bundle), 'package.json'), 'utf8')).dependencies ?? {});
-  if (deps.length === 0) return `${bundle} (no member modules)`;
+  const deps = Object.keys(JSON.parse(readFileSync(join(pkgDir(bundle), 'package.json'), 'utf8')).dependencies ?? {})
+    .filter((name) => isOwnBundleName(name));
+  if (deps.length === 0) return `${bundle} (self-contained — the members are folded into it)`;
+  // Compat for an UNFOLDED tree (older checkout): members ride as plain
+  // dependencies. The folded shape is asserted by the verify step below.
   const pnpmRes = run('pnpm', ['add', '--dir', join(HOME, 'profiles', LEAD), ...specsFor(deps)], { timeoutMs: 900_000 });
   if (!pnpmRes.ok) {
     const detail = (pnpmRes.stderr || pnpmRes.stdout || String(pnpmRes.error ?? '')).trim().slice(0, 2000);
     throw new Error(`pnpm add (member modules) exited ${pnpmRes.code}\n${detail}`);
   }
-  return `${bundle} + ${deps.length} member modules as plain dependencies`;
+  return `${bundle} + ${deps.length} member modules (unfolded tree)`;
 });
 step(`install: worker bundles into ${WORKER} (guard + report tools ONLY)`, () =>
   lastLine(sh('dsh', ['plugin', '--profile', WORKER, 'add', ...specsFor(recipeBundles(WORKER_RECIPE))]).stdout),
@@ -395,6 +418,20 @@ step('verify: lead profile selects exactly one sdlc bundle', () => {
     );
   }
   return selected[0];
+});
+step('verify: the lead holds exactly ONE own-scope package (one-click GUI uninstall)', () => {
+  const manifest = JSON.parse(readFileSync(join(HOME, 'profiles', LEAD, 'package.json'), 'utf8'));
+  const [bundle] = recipeBundles(LEAD_RECIPE);
+  const own = Object.keys(manifest.dependencies ?? {}).filter((n) => isOwnBundleName(n));
+  if (own.length !== 1 || own[0] !== bundle) {
+    throw new Error(
+      `the lead profile must depend on exactly [${bundle}], found [${own.join(', ') || 'none'}].\n` +
+        `  The meta-bundle is self-contained (members folded into lib/rows/) — member\n` +
+        `  dependencies would leave ghost entries a GUI uninstall cannot remove.\n` +
+        `  Upgrade path: re-run this installer (it drops the ghosts automatically).`,
+    );
+  }
+  return bundle;
 });
 step('verify: lead profile composes the full lead without unexpected duplicate rows', () => {
   const res = sh('dsh', ['--profile', LEAD, '--dump-config']);

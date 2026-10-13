@@ -124,5 +124,3 @@ export function apply(ctx, config = {}) {
     ctx.provide('sdlc.runtime', runtime);
   }
 }
-
-export default apply;

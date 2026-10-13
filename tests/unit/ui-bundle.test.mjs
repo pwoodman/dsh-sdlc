@@ -69,8 +69,23 @@ test('host entry re-exports the plugin surface', () => {
 test('host plugin declares the connection service inject', async () => {
   const entry = await import(`file://${join(PKG, 'src', 'index.js')}`);
   assert.deepEqual(entry.inject, ['connection']);
+  // The loader prefers `.default`. A default that is `apply` has no `.inject`
+  // and activates as `cannot get property "connection" without inject`.
+  assert.equal(entry.default, undefined, 'src entry must not default-export apply');
   const plugin = await core.uiPlugin();
   assert.deepEqual(plugin.inject, ['connection']);
+  assert.equal(plugin.default, undefined, 'server/plugin.js must not default-export apply');
+
+  // lib/index.js is what a published install activates. The source contract
+  // above is not sufficient: a stale or hand-edited build can drop `inject`
+  // or grow a default export after the src/ tree is already correct.
+  const built = await import(`file://${join(PKG, 'lib', 'index.js')}`);
+  assert.deepEqual(built.inject, ['connection'], 'built host entry re-exports inject');
+  assert.equal(typeof built.apply, 'function');
+  assert.equal(built.default, undefined, 'built host entry must not default-export apply');
+  const builtPlugin = await import(`file://${join(PKG, 'lib', 'server', 'plugin.js')}`);
+  assert.equal(builtPlugin.default, undefined, 'built server plugin must not default-export apply');
+  assert.deepEqual(builtPlugin.inject, ['connection']);
 });
 
 test('client bundle factory wires apply + inject under the loader contract', () => {

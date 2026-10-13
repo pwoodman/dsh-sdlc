@@ -42,5 +42,3 @@ export function apply(ctx, config = {}) {
 export {
   ROLES, ROLE_IDS, ROLE_COUNT, presetRows, presetIdFor, presetConfigIdFor, rolesForDomains,
 };
-
-export default apply;

@@ -234,11 +234,12 @@ test('installGuard with no host API returns a usable guard and never throws', as
     assert.equal(plugin.decideToolCall(guard, { toolName: 'write', args: { path: 'src/a.ts' } }).kind, 'deny');
 
     // apply() is the loader entry and returns nothing: the Cordis runner reads
-    // a plugin return value as an effect, so the installer is installGuard and
-    // the default export IS apply (same function, loader-facing contract).
-    assert.equal(plugin.default({}, { worktreeRoot: dir }), undefined);
-    assert.equal(plugin.default, plugin.apply);
-    assert.equal(typeof plugin.default, 'function');
+    // a plugin return value as an effect, so the installer is installGuard.
+    // There is no default export — unwrapExports prefers `.default`, and a
+    // bare function has no `.inject` (see plugin-entry-contract.test.mjs).
+    assert.equal(plugin.apply({}, { worktreeRoot: dir }), undefined);
+    assert.equal(plugin.default, undefined);
+    assert.equal(typeof plugin.apply, 'function');
   } finally {
     cleanup(dir);
   }

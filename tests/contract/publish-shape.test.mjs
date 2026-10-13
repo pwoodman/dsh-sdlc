@@ -146,14 +146,29 @@ test('publish: scoped packages declare public access and a node engine', () => {
   }
 });
 
-test('publish: meta-bundle depends on exact member versions', () => {
+test('publish: the meta-bundle is self-contained — no member dependencies', () => {
+  // The whole point of the fold (beta.9): a profile installs ONE own-scope
+  // package, so the plugin manager's remove button uninstalls everything in
+  // one click — no ghost member entries, nothing refused as "still required".
   const dir = pkgDir('@patwoodman/orchestrator');
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-  for (const member of ['@patwoodman/orchestrator-core', '@patwoodman/orchestrator-tools', '@patwoodman/orchestrator-presets', '@patwoodman/orchestrator-ui']) {
-    assert.equal(pkg.dependencies?.[member], VERSION, `meta-bundle pins ${member}@${VERSION} (saveExact)`);
-  }
+  assert.equal(pkg.dependencies, undefined, 'meta-bundle must not depend on its members anymore');
   assert.ok(!pkg.dependencies?.['@patwoodman/orchestrator-guard'], 'meta-bundle must not pull the guard');
   assert.ok(!pkg.dependencies?.['@patwoodman/orchestrator-cli'], 'meta-bundle must not pull the CLI');
+  // The folded member trees travel inside the meta package…
+  for (const short of ['guard', 'core', 'tools', 'presets', 'ui', 'cli']) {
+    assert.ok(existsSync(join(dir, 'lib', 'rows', short, 'lib')), `meta-bundle folds ${short} under lib/rows/${short}/lib`);
+  }
+  // …resolvable through the flat aliases the folded patch rows use.
+  for (const alias of ['./core', './services', './selftest', './tools', './tools-plugin', './presets', './presets-plugin', './ui']) {
+    assert.ok(pkg.exports?.[alias], `meta-bundle exports ${alias} for the folded rows`);
+  }
+  // …and the generated patch references NO member package as a row name.
+  const patch = readFileSync(join(dir, 'cordis.patch.yml'), 'utf8');
+  const nameLines = patch.split('\n').filter((line) => /name:/.test(line));
+  for (const line of nameLines) {
+    assert.ok(!/@patwoodman\/orchestrator-(core|tools|presets|ui|guard|cli)/.test(line), `folded patch row name must not name a member: ${line.trim()}`);
+  }
 });
 
 test('publish: worker profile never composes the meta-bundle (E6)', () => {

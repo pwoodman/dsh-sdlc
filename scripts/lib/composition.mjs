@@ -150,13 +150,40 @@ export function resolveRowName(name, packages = loadPackages()) {
       ? { ok: true, file: join(entry.dir, main) }
       : { ok: false, reason: `${pkgName} main ${main} does not exist` };
   }
+  // Folded member rows: the meta-bundle copies its members' lib/ trees under
+  // lib/rows/<member>/ and its patch points rows at `meta/rows/<member>[/<x>]`,
+  // resolved through the member's own inner lib/ (see scripts/gen-bundle-patch.mjs).
+  const folded = /^rows\/([a-z-]+)(?:\/(.+))?$/.exec(subpath);
+  if (folded) {
+    const [, member, rest] = folded;
+    const stemDir = join(entry.dir, 'lib', 'rows', member, 'lib');
+    if (!rest) {
+      const main = join(stemDir, 'index.js');
+      return existsSync(main)
+        ? { ok: true, file: main }
+        : { ok: false, reason: `${pkgName}/${subpath} does not resolve to a file` };
+    }
+    const candidates = [join(stemDir, `${rest}.js`), join(stemDir, rest, 'index.js')];
+    const found = candidates.find((c) => existsSync(c));
+    return found ? { ok: true, file: found } : { ok: false, reason: `${pkgName}/${subpath} does not resolve to a file` };
+  }
   const candidates = [
     join(entry.dir, 'src', `${subpath}.js`),
     join(entry.dir, 'lib', `${subpath}.js`),
     join(entry.dir, subpath),
   ];
   const found = candidates.find((c) => existsSync(c));
-  return found ? { ok: true, file: found } : { ok: false, reason: `${pkgName}/${subpath} does not resolve to a file` };
+  if (found) return { ok: true, file: found };
+  // The loader resolves subpaths through the package `exports` map; the folded
+  // meta-bundle (`@patwoodman/orchestrator/services`, `…/ui`, …) has no file at
+  // the literal subpath — its exports map is the resolution.
+  const exported = entry.pkg.exports?.[`./${subpath}`];
+  const target = typeof exported === 'string' ? exported : typeof exported?.default === 'string' ? exported.default : null;
+  if (target) {
+    const file = join(entry.dir, target);
+    if (existsSync(file)) return { ok: true, file };
+  }
+  return { ok: false, reason: `${pkgName}/${subpath} does not resolve to a file` };
 }
 
 /** All rows a profile composes, from its recipe's `bundles` list.

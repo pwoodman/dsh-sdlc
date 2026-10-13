@@ -221,28 +221,27 @@ test('contract: the meta-bundle patch is in sync with its members (generator --c
 
 // ── 3. every row name resolves to a real module ─────────────────────────────
 
-test('contract: our own row names resolve to real src/ (or lib/) files', () => {
+test('contract: our own row names resolve to real src/ (or lib/) files', async () => {
   // Ownership is decided by whether the row's package is one of THIS workspace's
   // manifests, never by a scope literal. The previous `startsWith('@patwoodman/')`
   // filter meant that after `scripts/set-scope.mjs` renamed the suite, every row
   // was skipped and the test passed while checking nothing at all.
   let checked = 0;
+  const { resolveRowName } = await import('../../scripts/lib/composition.mjs');
   for (const { pkg, patch } of allPatchFiles()) {
     for (const row of loadPatch(patch).rows) {
       if (typeof row.name !== 'string') continue;
-      const parts = row.name.split('/');
-      const pkgName = parts.slice(0, 2).join('/');
-      const sub = parts.slice(2).join('/');
-      const entry = byName.get(pkgName);
+      const pkgName = row.name.split('/').slice(0, 2).join('/');
       // @deepseek-ai/* (and any other out-of-workspace package) is external.
-      if (!entry) continue;
+      if (!byName.has(pkgName)) continue;
       checked += 1;
-      const candidates = sub
-        ? [join(entry.dir, 'src', `${sub}.js`), join(entry.dir, 'lib', `${sub}.js`)]
-        : [join(entry.dir, 'src', 'index.js'), join(entry.dir, 'lib', 'index.js')];
+      // Resolve the same way the static composition does: src/ and lib/ files
+      // for plain subpaths, and the package `exports` map for folded aliases
+      // (`@patwoodman/orchestrator/services` → lib/rows/core/lib/services.js).
+      const resolved = resolveRowName(row.name);
       assert.ok(
-        candidates.some((c) => existsSync(c)),
-        `${pkg.name}: row "${row.id}" name "${row.name}" resolves to none of ${candidates.join(', ')}`,
+        resolved.ok,
+        `${pkg.name}: row "${row.id}" name "${row.name}" does not resolve (${resolved.reason})`,
       );
     }
   }

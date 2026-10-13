@@ -83,5 +83,3 @@ export function apply(ctx, config = {}) {
 }
 
 export { COMMANDS, TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, ALL_TOOLS, DEBUG_COMMANDS };
-
-export default apply;

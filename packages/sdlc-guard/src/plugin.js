@@ -155,6 +155,4 @@ export function apply(ctx, config = {}) {
   });
 }
 
-export default apply;
-
 export { GuardPlugin, ORCHESTRATOR_PATHS, PROTECTED_ORCHESTRATOR_PATHS };

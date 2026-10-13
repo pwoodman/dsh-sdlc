@@ -9,7 +9,18 @@
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./client": "./lib/rows/ui/lib/client.js",
+    "./core": "./lib/rows/core/lib/index.js",
+    "./services": "./lib/rows/core/lib/services.js",
+    "./selftest": "./lib/rows/core/lib/selftest.js",
+    "./tools": "./lib/rows/tools/lib/index.js",
+    "./tools-plugin": "./lib/rows/tools/lib/plugin.js",
+    "./presets": "./lib/rows/presets/lib/index.js",
+    "./presets-plugin": "./lib/rows/presets/lib/plugin.js",
+    "./ui": "./lib/rows/ui/lib/index.js",
+    "./guard": "./lib/rows/guard/lib/index.js",
+    "./cli": "./lib/rows/cli/lib/cli.mjs"
   },
   "files": [
     "lib",
@@ -17,18 +28,13 @@
     "locale/*.json",
     "LICENSE",
     "README.md",
-    "icon.svg"
+    "icon.svg",
+    "lib/rows"
   ],
   "scripts": {
-    "build": "node ./build.cjs",
-    "prepack": "node ./build.cjs",
-    "prepare": "node ./build.cjs"
-  },
-  "dependencies": {
-    "@patwoodman/orchestrator-core": "0.4.0-beta.8",
-    "@patwoodman/orchestrator-tools": "0.4.0-beta.8",
-    "@patwoodman/orchestrator-presets": "0.4.0-beta.8",
-    "@patwoodman/orchestrator-ui": "0.4.0-beta.8"
+    "build": "node ../../scripts/build.mjs && node ../../scripts/build-ui.mjs && node ../../scripts/fold-meta.mjs && node ../../scripts/gen-bundle-patch.mjs",
+    "prepack": "node ../../scripts/build.mjs && node ../../scripts/build-ui.mjs && node ../../scripts/fold-meta.mjs && node ../../scripts/gen-bundle-patch.mjs",
+    "prepare": "node ../../scripts/build.mjs && node ../../scripts/build-ui.mjs && node ../../scripts/fold-meta.mjs && node ../../scripts/gen-bundle-patch.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
@@ -42,6 +48,15 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ],
+      "platform": "web"
     }
   },
   "icon": "icon.svg",

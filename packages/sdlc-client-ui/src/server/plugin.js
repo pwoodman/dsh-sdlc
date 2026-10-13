@@ -8,11 +8,17 @@
  *
  * The `connection` service lives in a sibling branch of the Cordis tree, so
  * reading `ctx.connection` from `apply()` requires the service to be declared
- * below: the loader exports this module's `inject` when it activates the row,
- * holds the fiber until the service exists, and puts the implementation in the
- * fiber's store. Without the declaration the context proxy throws
- * `cannot get property "connection" without inject` and the row never
- * activates.
+ * below: the loader reads `inject` from the ENTRY module's namespace when it
+ * activates the row, holds the fiber until the service exists, and puts the
+ * implementation in the fiber's store. Without the declaration the context
+ * proxy throws `cannot get property "connection" without inject` and the row
+ * never activates.
+ *
+ * This module must NOT `export default apply`. Cordis `Loader.unwrapExports`
+ * prefers `.default`, and a bare function has no `.inject` — the loader then
+ * starts the fiber with an empty dependency map and the same error fires at
+ * `registerRoutes` even though the named `inject` export is present. The host
+ * entry (`src/index.js`) therefore re-exports the named bindings only.
  */
 
 import {
@@ -158,5 +164,3 @@ export function apply(ctx, config = {}) {
   // observable without changing the contract.
   st?.contributeSelftest?.({ tools: routes.length ? ['sdlc_ui_routes'] : [] });
 }
-
-export default apply;

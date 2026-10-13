@@ -2,11 +2,29 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
-## [0.4.0-beta.8] — the UI row activates
+## [0.4.0-beta.8] — the UI row activates, and one package means one uninstall
 
 > Published `0.4.0-beta.7` was tagged before these fixes landed — the npm tarball
 > still fails to activate the `sdlc-ui` row. These fixes first ship in
 > `0.4.0-beta.8` (dist-tag `beta`).
+
+### Added
+
+- **The lead installs and uninstalls as ONE package (`@patwoodman/orchestrator`).**
+  Previously the profile carried the meta-bundle plus four member dependencies, so a
+  plugin-manager uninstall left four ghost `@patwoodman/*` entries behind and removing a
+  member first was refused ("still required by @patwoodman/orchestrator") — the uninstall
+  reports from beta testers. The whole dependency closure (core→guard, tools→core,
+  ui→cli — six packages) is now folded into the meta-bundle under `lib/rows/`: every
+  patch row resolves through the meta's own exports (`@patwoodman/orchestrator/services`,
+  `…/tools-plugin`, `…/presets-plugin`, `…/ui`), cross-member imports inside the folded
+  code are rewritten to relative paths, the browser bundle travels with its `dsh.client`
+  manifest under `./client` with its module id rewritten to the serving package, and the
+  meta declares **no member dependencies**. One install, one remove button, nothing left
+  behind. `install-local.mjs` drops the member ghosts from older profiles on upgrade and
+  pins the one-package property as a verify step. The worker/probe profiles keep mounting
+  guard/tools/core as separate bundles (E6) — those packages stay published for CLI
+  profiles; they are simply no longer pulled into the lead.
 
 ### Fixed
 
@@ -18,9 +36,16 @@ All notable changes to the Universal SDLC Orchestrator plugin suite.
   follow) and the entry re-exports it: the loader reads `plugin.inject` from the entry namespace
   when it activates the row, holds the fiber until the connection service exists, and puts the
   implementation in the fiber's store. `scripts/build-ui.mjs` emits the re-export into the
-  generated `lib/index.js` the loader imports. Verified against the real Cordis runtime: without
-  the export the fiber fails with exactly the reported error; with it the row activates and all
-  seven routes register.
+  generated `lib/index.js` the loader imports.
+
+  A named `inject` export is not sufficient while the module also `export default apply`s.
+  `Loader.unwrapExports` prefers `.default`, and a function has no `.inject`, so the fiber still
+  starts with an empty dependency map and dies at the same line in `registerRoutes`. Every
+  loader-facing entry now exports `apply` (and `inject`, where it reads a host service) as named
+  bindings only. Verified against the real Cordis runtime: the bare function fails with exactly
+  the reported error (fiber state 3); the namespace plugin activates and all seven routes register.
+  `tests/unit/plugin-entry-contract.test.mjs` boots that runtime, so a default export or a dropped
+  `inject` fails the suite instead of shipping.
 
 - **Route registration is now effect-scoped (`ctx.effect`).** The connection refuses a second
   registration of the same exact path (`exact Fetch route … is already registered`), so the bare

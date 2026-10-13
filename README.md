@@ -70,6 +70,32 @@ this reason instead of failing later inside `gate:M0`.
 dsh --profile sdlc-web          # the interactive lead (web GUI)
 ```
 
+### Uninstall — one click in the plugin manager
+
+The lead installs exactly **one** package (`@patwoodman/orchestrator`; its
+members are folded inside it), so removing that single entry in the plugin
+manager removes everything — no ghost entries, nothing "still required". From
+the CLI it is the same one spec:
+
+```sh
+dsh plugin --profile sdlc-web remove @patwoodman/orchestrator
+```
+
+A profile installed by a pre-fold release may still list the four members as
+plain dependencies; re-run the installer (or this one command) to clear them:
+
+```sh
+pnpm remove --dir ~/.dsh/profiles/sdlc-web \
+  @patwoodman/orchestrator-core @patwoodman/orchestrator-tools \
+  @patwoodman/orchestrator-presets @patwoodman/orchestrator-ui
+```
+
+On Windows, close a running lead first (`sdlc.db` and the bundle files are held
+open while it runs). A profile directory itself (`~/.dsh/profiles/sdlc-web`) is
+disposable and can always be deleted outright. The `@deepseek-ai/…` bundles you
+see running (for example `dsh-agent-preset-registry`) are DeepSeek Harness's
+own — they ship with the profile template and are not part of this plugin.
+
 ### DeepSeek Harness Desktop — what works today
 
 The Desktop app owns its `desktop` profile and the `dsh` CLI refuses to manage
