@@ -95,6 +95,12 @@ const ENTRIES = [
  * being importable just to state the rule the activation test then executes.
  */
 function unwrapExports(exports) {
+  // Cordis Loader.unwrapExports (cordis-plugin-loader): `.default` wins
+  // unconditionally, then a second time when the winner is itself an ESM
+  // namespace (`__esModule`). A client factory that sets only named exports
+  // survives the first step but loses inject the moment a bundler stamps
+  // `__esModule`; a factory whose default is the bare apply function loses
+  // inject on the first step. Both are the dead-tab failure.
   if (exports == null) return exports;
   const unwrapped = exports.default ?? exports;
   if (!unwrapped.__esModule) return unwrapped;
@@ -271,6 +277,13 @@ test('the client entry returns nothing and declares its browser services in inje
   const { id, exports } = clientBundleExports();
   assert.equal(id, '@patwoodman/orchestrator-ui', 'factory id equals the package name');
   assert.deepEqual(exports.inject, ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote']);
+  // Same unwrap the web loader applies (cordis-plugin-loader unwrapExports):
+  // `.default` wins. The shipped beta.7/beta.8 factories set only named
+  // exports, so a loader that then treats the result as an ESM module
+  // (`__esModule` or `default`-preferred) loses inject and the tab never mounts.
+  const unwrapped = unwrapExports(exports);
+  assert.equal(typeof unwrapped.apply, 'function');
+  assert.deepEqual(unwrapped.inject, exports.inject, 'client unwrapExports keeps inject');
 
   const effects = [];
   const ctx = {

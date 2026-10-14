@@ -42,4 +42,8 @@ export function apply(ctx) {
   )), 'sdlc-ui: sdlc tab title');
 }
 
+// The closure bundle strips this line and re-attaches the same object as
+// `exports.default` (see scripts/build-ui.mjs). The web loader's unwrapExports
+// prefers `.default`; the object — not the bare apply function — is what keeps
+// `inject` visible, so the sidebar tab actually receives slots/locale/remote.
 export default { apply, inject };

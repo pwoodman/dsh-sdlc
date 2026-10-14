@@ -103,6 +103,13 @@ test('client bundle factory wires apply + inject under the loader contract', () 
     ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote'],
     'exports.inject is wired and names exactly the browser services the client apply reads',
   );
+  // The web module table unwraps with `exports.default ?? exports` (the same
+  // Cordis unwrapExports the host loader uses). A factory that only sets
+  // named exports leaves the default branch empty; a factory whose default
+  // is the bare apply function drops inject. Either way the sidebar tab
+  // never receives slots/locale/sidebarRight and the SDLC panel never mounts.
+  assert.equal(exports.default?.apply, exports.apply, 'default export is the plugin object, not the bare apply');
+  assert.deepEqual(exports.default?.inject, exports.inject, 'unwrapExports(default) still carries inject');
 });
 
 test('cordis patch declares the UI row for the web profile only', () => {

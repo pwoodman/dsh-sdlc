@@ -2,6 +2,29 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
+## [0.4.0-beta.9] — the sidebar tab actually mounts
+
+> `0.4.0-beta.8` never reached npm. The Release workflow failed its unit job
+> (the Cordis activation test required a vendored runtime that exists only on
+> this machine), so the `beta` dist-tag stayed on `0.4.0-beta.7`. This release
+> includes everything from beta.8 plus the client-tab fix below.
+
+### Fixed
+
+- **The SDLC sidebar tab never mounted.** The browser loader runs a client
+  factory's return value through the same Cordis `unwrapExports` the host uses
+  (`exports.default ?? exports`, and again when the winner is an ESM
+  namespace). `scripts/build-ui.mjs` assigned `exports.apply` and
+  `exports.inject` and never set `exports.default`, so the moment the loader
+  preferred `.default` the plugin became `undefined` (or, with a bare-function
+  default, lost `inject`). Either way the tab waits forever for
+  `slots` / `locale` / `sidebarRight` and the panel never appears — the
+  failure mode of every published build through beta.7. The factory now sets
+  `exports.default` to `{ apply, inject }`, so both branches of
+  `unwrapExports` keep the service list. `tests/unit/ui-bundle.test.mjs` and
+  the client half of `plugin-entry-contract.test.mjs` evaluate the shipped
+  bundle and assert the unwrapped plugin still carries `inject`.
+
 ## [0.4.0-beta.8] — the UI row activates, and one package means one uninstall
 
 > Published `0.4.0-beta.7` was tagged before these fixes landed — the npm tarball

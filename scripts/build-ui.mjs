@@ -517,6 +517,13 @@ function buildClientBundle() {
     ${compiled.join('\n')}
     exports.apply = (typeof apply !== "undefined") ? apply : undefined;
     exports.inject = (typeof inject !== "undefined") ? inject : undefined;
+    // The web loader runs the factory result through Cordis unwrapExports
+    // (exports.default ?? exports). Without .default the namespace object is
+    // the plugin and inject survives; WITH a missing default on a shape the
+    // host treats as a module, inject is dropped and the tab waits forever
+    // for slots/locale/sidebarRight. Always publish the plugin object as the
+    // default so both branches of unwrapExports keep inject.
+    exports.default = { apply: exports.apply, inject: exports.inject };
     return module.exports;
   `;
   // Inject the CSS as a style tag at factory execution (the tsdown preset pattern, simplified).
