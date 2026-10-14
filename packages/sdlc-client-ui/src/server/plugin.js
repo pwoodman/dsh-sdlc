@@ -43,7 +43,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 function selftest(ctx = null) {
   try {
-    return require('@patwoodman/orchestrator-core/selftest');
+    return require('@patwoodman/dsh-sdlc-flow-core/selftest');
   } catch (err) {
     // Import-without-host (unit tests, partial installs) stays silent, but a
     // boot that EXPECTS the selftest report must not fail invisibly: the

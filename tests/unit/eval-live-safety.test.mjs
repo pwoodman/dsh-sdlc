@@ -22,7 +22,7 @@ const TASKS_DIR = join(dirname(import.meta.dirname), '..', 'eval', 'tasks');
 const HEADLESS = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'];
 // Derived, not literal: this suite is re-scoped in one pass by set-scope.mjs.
 const OWN = ownBundlePrefix();
-const WITH_PLUGIN = [...HEADLESS, `${OWN}orchestrator-core`, `${OWN}orchestrator-tools`];
+const WITH_PLUGIN = [...HEADLESS, `${OWN}dsh-sdlc-flow-core`, `${OWN}dsh-sdlc-flow-tools`];
 
 function makeProfile(home, name, bundles) {
   const dir = join(home, 'profiles', name);

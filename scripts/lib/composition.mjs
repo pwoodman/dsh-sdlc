@@ -27,7 +27,17 @@ export const ROOT = join(import.meta.dirname, '..', '..');
 
 // E6 is checked on the BASENAME, so a re-scoped tree is still caught. See
 // `isOwnBundleName` for why the basename (not the current prefix) is the right key.
-const WORKER_FORBIDDEN_BASENAME = 'orchestrator-core';
+// Derived from the workspace manifests, not a literal: the suite renamed from
+// `orchestrator-core` to `dsh-sdlc-flow-core`, and a literal would have made
+// this check pass on a worker that mounts the host bundle (E6 gone silent).
+// Resolved lazily so synthetic package maps in tests keep working.
+function workerForbiddenBasename(packages = loadPackages()) {
+  for (const name of packages.keys()) {
+    const m = /^@[^/]+\/(.+)$/.exec(name);
+    if (m && m[1].endsWith('-core')) return m[1];
+  }
+  return 'dsh-sdlc-flow-core';
+}
 
 /** Every package directory with a package.json, keyed by package name. */
 export function loadPackages(root = ROOT) {
@@ -59,10 +69,14 @@ export function ownScope(packages = loadPackages()) {
     const m = /^(@[^/]+)\//.exec(name);
     if (m) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
   }
+  // The meta-bundle is the one WITHOUT a member suffix (-core/-tools/-guard/…),
+  // whatever its stem: the suite renamed from `orchestrator` to `dsh-sdlc-flow`,
+  // and a stem literal would pin the scope to the wrong package (or none).
   for (const name of packages.keys()) {
-    if (!/-orchestrator$/.test(name)) continue;
-    const m = /^(@[^/]+)\//.exec(name);
-    if (m && counts.get(m[1]) === Math.max(...counts.values())) return m[1];
+    const m = /^(@[^/]+)\/(.+)$/.exec(name);
+    if (!m) continue;
+    if (/-core$|-tools$|-presets$|-ui$|-guard$|-cli$|-mock-llm$/.test(m[2])) continue;
+    if (counts.get(m[1]) === Math.max(...counts.values())) return m[1];
   }
   return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '@sdlc';
 }
@@ -175,7 +189,7 @@ export function resolveRowName(name, packages = loadPackages()) {
   const found = candidates.find((c) => existsSync(c));
   if (found) return { ok: true, file: found };
   // The loader resolves subpaths through the package `exports` map; the folded
-  // meta-bundle (`@patwoodman/orchestrator/services`, `…/ui`, …) has no file at
+  // meta-bundle (`@patwoodman/dsh-sdlc-flow/services`, `…/ui`, …) has no file at
   // the literal subpath — its exports map is the resolution.
   const exported = entry.pkg.exports?.[`./${subpath}`];
   const target = typeof exported === 'string' ? exported : typeof exported?.default === 'string' ? exported.default : null;
@@ -197,10 +211,10 @@ export function resolveRowName(name, packages = loadPackages()) {
  *
  * An earlier version recursed into dependencies "so the static composition
  * matches what pnpm + the loader compose live". That was wrong and expensive:
- * it let the static gate report a complete lead for the `['@patwoodman/orchestrator']`
+ * it let the static gate report a complete lead for the `['@patwoodman/dsh-sdlc-flow']`
  * recipe while a live single-spec install composed only the meta-bundle's own
  * row. A bundle that is meant to supply rows must declare them in its own
- * patch — see `@patwoodman/orchestrator`, whose patch is generated as the union of
+ * patch — see `@patwoodman/dsh-sdlc-flow`, whose patch is generated as the union of
  * its members' rows by scripts/gen-bundle-patch.mjs.
  */
 export function composeProfile(profile, { packages = loadPackages(), seen = new Set() } = {}) {
@@ -287,7 +301,7 @@ export function validateProfileStatic(profile, { packages = loadPackages() } = {
     const packages = loadPackages();
     for (const bundle of profile.bundles ?? []) {
       const m = /^@[^/]+\/(.+)$/.exec(bundle);
-      if (m && m[1] === WORKER_FORBIDDEN_BASENAME && isOwnBundleName(bundle, packages)) {
+      if (m && m[1] === workerForbiddenBasename(packages) && isOwnBundleName(bundle, packages)) {
         problems.push(`${profile.name} composes host bundle ${bundle} — mounting sdlc-core in a worker starts a second scheduler (E6)`);
       }
     }

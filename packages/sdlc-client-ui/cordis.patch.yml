@@ -7,5 +7,5 @@
 # and no UI in a headless profile).
 - insert:
     - id: sdlc-ui
-      name: '@patwoodman/orchestrator-ui'
+      name: '@patwoodman/dsh-sdlc-flow-ui'
       config: {}

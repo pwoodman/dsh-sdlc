@@ -3,11 +3,11 @@
   "role": "headless-worker",
   "template": "headless",
   "bundles": [
-    "@patwoodman/orchestrator-guard",
-    "@patwoodman/orchestrator-tools"
+    "@patwoodman/dsh-sdlc-flow-guard",
+    "@patwoodman/dsh-sdlc-flow-tools"
   ],
   "mustNotContain": [
-    "@patwoodman/orchestrator-core"
+    "@patwoodman/dsh-sdlc-flow-core"
   ],
   "capabilities": {
     "slashCommands": false,

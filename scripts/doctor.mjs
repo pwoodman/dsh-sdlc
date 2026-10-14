@@ -4,7 +4,7 @@
  *
  * This is the single source of truth behind both:
  *   - `sdlc doctor` / `/sdlc doctor`   (in-session convenience wrapper)
- *   - `npx @patwoodman/orchestrator doctor`  (standalone, no DSH boot required)
+ *   - `npx @patwoodman/dsh-sdlc-flow doctor`  (standalone, no DSH boot required)
  *
  * It runs WITHOUT booting DSH and WITHOUT any LLM call, so it is safe in CI
  * pre-flight. Unlike spec v2's F.2, it does not invent a `/sdlc` slash command
@@ -22,7 +22,7 @@ import { join, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { run } from './lib/harness.mjs';
 import { dshPeerSatisfied } from './lib/semver-lite.mjs';
-import { ownBundlePrefix, isOwnBundleName } from './lib/composition.mjs';
+import { ownBundlePrefix, isOwnBundleName, loadPackages } from './lib/composition.mjs';
 
 // ESM has no bare `require`; the v2 C.8.1 script's `require(...)` calls would
 // have thrown ReferenceError. This is the corrected form.
@@ -171,10 +171,15 @@ function checkProfiles() {
   // Derived from the manifests, not a literal: a scope rename (set-scope.mjs)
   // must not stop doctor recognising that a profile still selects an old-scope
   // copy of the suite, which is exactly the state that composes every row twice.
+  // Basenames are read from the workspace manifests, so a package rename
+  // (orchestrator → dsh-sdlc-flow) cannot desynchronise them either.
   const own = ownBundlePrefix();
+  const pkgs = [...loadPackages().keys()];
+  const base = (suffix) => pkgs.find((n) => n === `${own}${suffix}`) ?? `${own}${suffix}`;
+  const meta = pkgs.find((n) => !/-(core|tools|presets|ui|guard|cli|mock-llm)$/.test(n.slice(n.indexOf('/') + 1))) ?? `${own}dsh-sdlc-flow`;
   for (const [name, required] of [
-    ['sdlc-web', [`${own}orchestrator`]],
-    ['sdlc-worker', [`${own}orchestrator-guard`, `${own}orchestrator-tools`]],
+    ['sdlc-web', [meta]],
+    ['sdlc-worker', [base('dsh-sdlc-flow-guard'), base('dsh-sdlc-flow-tools')]],
   ]) {
     const dir = profileDir(name);
     if (!existsSync(dir)) {

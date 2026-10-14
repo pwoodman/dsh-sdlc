@@ -14,4 +14,4 @@ export { apply, registerRoutes, inject } from './server/plugin.js';
 export * as routes from './routes.js';
 export * as handlers from './server/handlers.js';
 
-export const PACKAGE = '@patwoodman/orchestrator-ui';
+export const PACKAGE = '@patwoodman/dsh-sdlc-flow-ui';

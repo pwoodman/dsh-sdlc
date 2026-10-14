@@ -124,7 +124,7 @@ test('contract: every declared dsh.bundle.patch points at an existing file', () 
   }
 
   // P1/C1: the ordered-list form is also valid — sdlc-presets uses exactly one.
-  const presets = byName.get('@patwoodman/orchestrator-presets');
+  const presets = byName.get('@patwoodman/dsh-sdlc-flow-presets');
   const presetsList = Array.isArray(presets.pkg.dsh.bundle.patch)
     ? presets.pkg.dsh.bundle.patch
     : [presets.pkg.dsh.bundle.patch];
@@ -178,11 +178,11 @@ test('contract: a profile never composes the same row id twice', () => {
     }
   }
 
-  // Errata E6: mounting @patwoodman/orchestrator-core in a worker starts a second
+  // Errata E6: mounting @patwoodman/dsh-sdlc-flow-core in a worker starts a second
   // scheduler and a second writer against sdlc.db.
   const { profile, rows } = composedRows('sdlc-worker');
-  assert.ok(!profile.bundles.includes('@patwoodman/orchestrator-core'),
-    'sdlc-worker bundles must not include @patwoodman/orchestrator-core');
+  assert.ok(!profile.bundles.includes('@patwoodman/dsh-sdlc-flow-core'),
+    'sdlc-worker bundles must not include @patwoodman/dsh-sdlc-flow-core');
   const coreRows = new Set(loadPatch(declaredPatchPaths(packageForDirName('sdlc-core'))[0]).rows.map((r) => r.id));
   for (const row of rows) {
     assert.ok(!coreRows.has(row.id), `sdlc-worker must not compose core row "${row.id}"`);
@@ -193,11 +193,11 @@ test('contract: a profile never composes the same row id twice', () => {
 
 test('contract: the lead recipe composes the whole lead from a single bundle', () => {
   // The DSH loader mounts only the bundles a profile lists and never descends
-  // into a bundle's dependencies, so `['@patwoodman/orchestrator']` must already
+  // into a bundle's dependencies, so `['@patwoodman/dsh-sdlc-flow']` must already
   // declare every lead row in its own patch. Without this, the documented
   // one-spec install composes a single `sdlc-orchestrator` row and nothing else.
   const { profile } = loadProfile('sdlc-web');
-  assert.deepEqual(profile.bundles, ['@patwoodman/orchestrator'], 'the lead installs exactly one sdlc bundle');
+  assert.deepEqual(profile.bundles, ['@patwoodman/dsh-sdlc-flow'], 'the lead installs exactly one sdlc bundle');
 
   const { rows } = composedRows('sdlc-web');
   const ids = new Set(rows.map((r) => r.id));
@@ -237,7 +237,7 @@ test('contract: our own row names resolve to real src/ (or lib/) files', async (
       checked += 1;
       // Resolve the same way the static composition does: src/ and lib/ files
       // for plain subpaths, and the package `exports` map for folded aliases
-      // (`@patwoodman/orchestrator/services` → lib/rows/core/lib/services.js).
+      // (`@patwoodman/dsh-sdlc-flow/services` → lib/rows/core/lib/services.js).
       const resolved = resolveRowName(row.name);
       assert.ok(
         resolved.ok,
@@ -272,7 +272,7 @@ test('contract: sdlc-presets declares exactly the 26 presetIdFor(roleId) rows', 
   // patches never run code — without it the live probe reports zero presets).
   const self = rows.filter((r) => r.id === 'sdlc-presets');
   assert.equal(self.length, 1, 'sdlc-presets declares its self-report plugin row');
-  assert.equal(self[0].name, '@patwoodman/orchestrator-presets/plugin');
+  assert.equal(self[0].name, '@patwoodman/dsh-sdlc-flow-presets/plugin');
   assert.equal(rows.length, 28, 'sdlc-presets declares preset rows + registry + self-report');
 
   const ids = presetRows.map((r) => r.id);
@@ -357,8 +357,8 @@ test('contract: profiles use a valid template and respect mustNotContain', () =>
 
   // Errata E6 explicitly: the worker profile must exclude core.
   const worker = loadProfile('sdlc-worker').profile;
-  assert.ok(worker.mustNotContain.includes('@patwoodman/orchestrator-core'),
-    'sdlc-worker mustNotContain @patwoodman/orchestrator-core');
-  assert.ok(!worker.bundles.includes('@patwoodman/orchestrator-core'),
-    'sdlc-worker bundles must not include @patwoodman/orchestrator-core');
+  assert.ok(worker.mustNotContain.includes('@patwoodman/dsh-sdlc-flow-core'),
+    'sdlc-worker mustNotContain @patwoodman/dsh-sdlc-flow-core');
+  assert.ok(!worker.bundles.includes('@patwoodman/dsh-sdlc-flow-core'),
+    'sdlc-worker bundles must not include @patwoodman/dsh-sdlc-flow-core');
 });

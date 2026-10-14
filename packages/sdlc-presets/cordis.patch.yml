@@ -41,13 +41,13 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
           - id: tool-subagent
             name: "@deepseek-ai/dsh-tool-subagent"
           - id: sdlc-dispatch
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
           - id: sdlc-plan
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-business-analyst
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -68,7 +68,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-requirements-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -89,7 +89,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-product-owner
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -110,7 +110,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-solution-architect
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -131,7 +131,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-security-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -152,7 +152,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-data-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -173,7 +173,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-database-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -194,7 +194,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-ux-designer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -215,7 +215,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-ui-designer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -236,7 +236,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-accessibility-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -257,7 +257,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-frontend-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -278,7 +278,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-backend-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -299,7 +299,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-api-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -320,7 +320,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-integration-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -341,7 +341,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-devops-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -362,7 +362,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-platform-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -383,7 +383,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-qa-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -404,7 +404,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-test-automation-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -425,7 +425,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-e2e-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -446,7 +446,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-visual-qa-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -467,7 +467,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-performance-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -488,7 +488,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-technical-writer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -509,7 +509,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-release-manager
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -530,7 +530,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-code-reviewer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -551,7 +551,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: preset-sdlc-sre-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -572,7 +572,7 @@
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
           - id: sdlc-report
-            name: "@patwoodman/orchestrator-tools"
+            name: "@patwoodman/dsh-sdlc-flow-tools"
     - id: sdlc-presets
-      name: "@patwoodman/orchestrator-presets/plugin"
+      name: "@patwoodman/dsh-sdlc-flow-presets/plugin"
       config: {}

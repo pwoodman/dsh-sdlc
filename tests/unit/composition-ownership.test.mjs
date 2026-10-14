@@ -26,16 +26,18 @@ const mapOf = (...names) =>
   new Map(names.map((name) => [name, { name, dir: `/tmp/${name}`, pkg: { name } }]));
 
 test('ownScope derives the scope from the manifests, not a constant', () => {
-  assert.equal(ownScope(mapOf('@acme/orchestrator', '@acme/orchestrator-core', '@acme/orchestrator-tools')), '@acme');
-  assert.equal(ownScope(mapOf('@my-name/orchestrator-core', '@my-name/orchestrator-tools')), '@my-name');
+  // Basenames are whatever the workspace manifests carry: the meta-bundle is
+  // the one WITHOUT a member suffix (-core/-tools/-guard/…), whatever its stem.
+  assert.equal(ownScope(mapOf('@acme/dsh-sdlc-flow', '@acme/dsh-sdlc-flow-core', '@acme/dsh-sdlc-flow-tools')), '@acme');
+  assert.equal(ownScope(mapOf('@my-name/dsh-sdlc-flow-core', '@my-name/dsh-sdlc-flow-tools')), '@my-name');
   // A single unpublished member still identifies the suite.
-  assert.equal(ownScope(mapOf('@solo/orchestrator-guard')), '@solo');
+  assert.equal(ownScope(mapOf('@solo/dsh-sdlc-flow-guard')), '@solo');
 });
 
 test('ownScope picks the scope that holds the meta-bundle when two are present', () => {
   // The real tree after a scope rename: the packages all moved, but a stray
   // manifest from the previous scope could still be around.
-  const scope = ownScope(mapOf('@old/orchestrator-stale', '@new/orchestrator', '@new/orchestrator-core', '@new/orchestrator-tools'));
+  const scope = ownScope(mapOf('@old/dsh-sdlc-flow-stale', '@new/dsh-sdlc-flow', '@new/dsh-sdlc-flow-core', '@new/dsh-sdlc-flow-tools'));
   assert.equal(scope, '@new');
 });
 
@@ -50,35 +52,35 @@ test('ownBundlePrefix is the scope plus a slash', () => {
 });
 
 test('isOwnBundleName recognises the suite under ANY scope it has lived at', () => {
-  const packages = mapOf('@new/orchestrator', '@new/orchestrator-core', '@new/orchestrator-tools');
+  const packages = mapOf('@new/dsh-sdlc-flow', '@new/dsh-sdlc-flow-core', '@new/dsh-sdlc-flow-tools');
   // Current scope.
-  assert.equal(isOwnBundleName('@new/orchestrator', packages), true);
-  assert.equal(isOwnBundleName('@new/orchestrator-core', packages), true);
+  assert.equal(isOwnBundleName('@new/dsh-sdlc-flow', packages), true);
+  assert.equal(isOwnBundleName('@new/dsh-sdlc-flow-core', packages), true);
   // A scope the tree no longer uses: this is the entry an upgrade must clean up,
   // and the reason the check cannot filter on the current prefix alone.
-  assert.equal(isOwnBundleName('@old/orchestrator', packages), true);
-  assert.equal(isOwnBundleName('@sdlc/orchestrator-tools', packages), true);
+  assert.equal(isOwnBundleName('@old/dsh-sdlc-flow', packages), true);
+  assert.equal(isOwnBundleName('@sdlc/dsh-sdlc-flow-tools', packages), true);
 });
 
 test('isOwnBundleName matches on the basename, so a stale scope is still ours', () => {
-  const packages = mapOf('@new/orchestrator', '@new/orchestrator-core');
+  const packages = mapOf('@new/dsh-sdlc-flow', '@new/dsh-sdlc-flow-core');
   // Deliberate: the alternative — recognising only scopes this tree has used —
   // would need a history of every scope, and the profiles are ours end to end,
   // so an own-basename bundle under an unknown scope is far more likely to be a
   // leftover from a rename than someone else's package.
-  assert.equal(isOwnBundleName('@someone-else/orchestrator', packages), true);
+  assert.equal(isOwnBundleName('@someone-else/dsh-sdlc-flow', packages), true);
 });
 
 test('isOwnBundleName never claims a foreign package or malformed input', () => {
-  const packages = mapOf('@new/orchestrator', '@new/orchestrator-core');
+  const packages = mapOf('@new/dsh-sdlc-flow', '@new/dsh-sdlc-flow-core');
   assert.equal(isOwnBundleName('@deepseek-ai/dsh-base', packages), false);
   assert.equal(isOwnBundleName('@deepseek-ai/dsh-web-app', packages), false);
   assert.equal(isOwnBundleName('@deepseek-ai/dsh-headless', packages), false);
-  assert.equal(isOwnBundleName('orchestrator', packages), false, 'a bare name has no scope');
+  assert.equal(isOwnBundleName('dsh-sdlc-flow', packages), false, 'a bare name has no scope');
   assert.equal(isOwnBundleName(undefined, packages), false);
   assert.equal(isOwnBundleName('', packages), false);
   assert.equal(isOwnBundleName('@new', packages), false);
-  assert.equal(isOwnBundleName('@new/orchestrator-extra', packages), false, 'a prefix of a real basename is not a match');
+  assert.equal(isOwnBundleName('@new/dsh-sdlc-flow-extra', packages), false, 'a prefix of a real basename is not a match');
 });
 
 test('the real tree identifies itself and leaves the platform bundles alone', () => {
@@ -87,6 +89,6 @@ test('the real tree identifies itself and leaves the platform bundles alone', ()
   assert.match(scope, /^@[^/]+$/, `derived scope ${scope}`);
   const names = [...packages.keys()];
   assert.ok(names.every((n) => n.startsWith(`${scope}/`)), 'every workspace package lives under the derived scope');
-  assert.equal(isOwnBundleName(`${scope}/orchestrator`, packages), true);
+  assert.equal(isOwnBundleName(`${scope}/dsh-sdlc-flow`, packages), true);
   assert.equal(isOwnBundleName('@deepseek-ai/dsh-base', packages), false);
 });

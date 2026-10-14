@@ -1,4 +1,4 @@
-# @patwoodman/orchestrator-tools — model tools and the `/sdlc` command surface
+# @patwoodman/dsh-sdlc-flow-tools — model tools and the `/sdlc` command surface
 
 The propose-only tool surface, installed in **both** the lead and worker
 profiles: workers need `sdlc_report_result`, `sdlc_claim_check` and
@@ -13,10 +13,10 @@ privilege (spec L.1 rule 4).
 ## Install
 
 ```sh
-dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard @patwoodman/orchestrator-tools
+dsh plugin --profile sdlc-worker add @patwoodman/dsh-sdlc-flow-guard @patwoodman/dsh-sdlc-flow-tools
 ```
 
-It is also a member of [`@patwoodman/orchestrator`](https://www.npmjs.com/package/@patwoodman/orchestrator),
+It is also a member of [`@patwoodman/dsh-sdlc-flow`](https://www.npmjs.com/package/@patwoodman/dsh-sdlc-flow),
 so a lead install brings it in without a second spec.
 
 ## Requirements

@@ -6,10 +6,10 @@
  * `dsh.profile.bundles`; it does NOT descend into a bundle's `dependencies`. A
  * meta-bundle whose members are ordinary npm dependencies therefore composes
  * NOTHING but its own row — which is what `dsh plugin --profile sdlc-web add
- * @patwoodman/orchestrator` used to produce: one `sdlc-orchestrator` row and no
+ * @patwoodman/dsh-sdlc-flow` used to produce: one `sdlc-orchestrator` row and no
  * services, tools, presets or UI.
  *
- * `@patwoodman/orchestrator` is the one spec the lead installs, so its own patch must
+ * `@patwoodman/dsh-sdlc-flow` is the one spec the lead installs, so its own patch must
  * carry the whole lead composition. That composition is the union of its four
  * members' rows, and this script is the single place that union is assembled:
  * the members keep owning their rows (the worker and probe profiles mount them
@@ -79,7 +79,7 @@ const SELF_ROW = `# ── the meta-bundle's own row ─────────
 # real loader layer rather than data alone (the sdlc-ui self-report pattern).
 - insert:
     - id: sdlc-orchestrator
-      name: '@patwoodman/orchestrator'
+      name: '@patwoodman/dsh-sdlc-flow'
       config: {}
 `;
 
@@ -105,7 +105,7 @@ const blocks = MEMBERS.map((member) => {
 
 // The self-contained meta-bundle (beta.9): when the fold is applied, every
 // member row resolves through the meta package's own exports — `name:` fields
-// rewritten to `@patwoodman/orchestrator/<flat alias>` — so the lead profile
+// rewritten to `@patwoodman/dsh-sdlc-flow/<flat alias>` — so the lead profile
 // holds exactly ONE own-scope package and a GUI uninstall is one remove.
 // Without the fold (worker/probe builds, older checkouts) the verbatim rows
 // keep referencing the member packages as before.

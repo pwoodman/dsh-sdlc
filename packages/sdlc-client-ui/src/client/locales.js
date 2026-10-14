@@ -8,8 +8,8 @@ export const NS = 'sdlc';
 /** English dictionary (the key-set source of truth). */
 export const en = {
   'tab.label': 'SDLC',
-  'tab.title': 'SDLC orchestrator',
-  'status.loading': 'Loading orchestrator status…',
+  'tab.title': 'DSH SDLC Flow',
+  'status.loading': 'Loading flow status…',
   'status.missing': 'Status unavailable: {reason}',
   'status.empty': 'No project initialised — run `sdlc init` first.',
   'status.tasks': '{count} tasks',

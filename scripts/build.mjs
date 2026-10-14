@@ -50,7 +50,7 @@ function walk(dir, base = dir, out = []) {
  *
  * `src/` uses relative imports (`../../sdlc-guard/src/index.js`) so the monorepo
  * tests see one module instance. `lib/` must use bare specifiers
- * (`@patwoodman/orchestrator-guard`) so a published package resolves through
+ * (`@patwoodman/dsh-sdlc-flow-guard`) so a published package resolves through
  * `node_modules`. This transform bridges the two.
  */
 const DIR_TO_PKG = {};
@@ -83,7 +83,7 @@ let built = 0;
 // The UI bundle owns its own build (scripts/build-ui.mjs compiles JSX into
 // the closure-factory client bundle); the generic src/ → lib/ mirror would
 // clobber lib/client.js. Skip it here — build-ui.mjs mirrors + compiles.
-const OWNED_BUILDS = new Set(['@patwoodman/orchestrator-ui']);
+const OWNED_BUILDS = new Set(['@patwoodman/dsh-sdlc-flow-ui']);
 
 for (const dir of packageDirs()) {
   const src = join(dir, 'src');

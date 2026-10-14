@@ -126,15 +126,15 @@ log('treatment bundles:');
 for (const name of BUNDLES) {
   const src = join(ROOT, 'packages', `sdlc-${name}`);
   if (!existsSync(join(src, 'cordis.patch.yml'))) fail(`packages/sdlc-${name} is missing its cordis.patch.yml (run \`npm run build\`)`);
-  const linkDir = join(treatmentDir, 'node_modules', '@sdlc');
-  const link = join(linkDir, `orchestrator-${name}`);
+  const linkDir = join(treatmentDir, 'node_modules', '@patwoodman', 'dsh-sdlc-flow');
+  const link = join(linkDir, name);
   if (CHECK_ONLY) {
-    log(`  [${existsSync(link) ? 'ok' : 'missing'}] @patwoodman/orchestrator-${name}`);
+    log(`  [${existsSync(link) ? 'ok' : 'missing'}] @patwoodman/dsh-sdlc-flow-${name}`);
     continue;
   }
   mkdirSync(linkDir, { recursive: true });
   if (!existsSync(link)) symlinkSync(src, link, 'dir');
-  log(`  [link]    @patwoodman/orchestrator-${name}`);
+  log(`  [link]    @patwoodman/dsh-sdlc-flow-${name}`);
 }
 
 if (!CHECK_ONLY) {
@@ -143,11 +143,11 @@ if (!CHECK_ONLY) {
   doc.dsh ??= { profile: { bundles: [] } };
   doc.dsh.profile.bundles ??= [];
   for (const name of BUNDLES) {
-    const id = `@patwoodman/orchestrator-${name}`;
+    const id = `@patwoodman/dsh-sdlc-flow-${name}`;
     if (!doc.dsh.profile.bundles.includes(id)) doc.dsh.profile.bundles.push(id);
   }
   doc.dependencies ??= {};
-  for (const name of BUNDLES) doc.dependencies[`@patwoodman/orchestrator-${name}`] = `link:../../../../packages/sdlc-${name}`;
+  for (const name of BUNDLES) doc.dependencies[`@patwoodman/dsh-sdlc-flow-${name}`] = `link:../../../../packages/sdlc-${name}`;
   writeFileSync(pkgPath, `${JSON.stringify(doc, null, 2)}\n`);
   log('  [ok]      @patwoodman/* bundles declared in the treatment package.json');
 

@@ -38,6 +38,7 @@ packages/*/dist/
 
 # scratch
 .probe-dsh/
+.pnpm-store/
 
 # workspace-local tooling (shims are reproducible from package.json scripts)
 .tools/

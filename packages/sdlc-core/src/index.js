@@ -34,4 +34,4 @@ export * as yaml from './yaml-lite.js';
 export * as instanceLock from './instance-lock.js';
 export { contributeSelftest, setSelftestMeta, flushSelftest, buildSelftestReport } from './selftest.js';
 
-export const PACKAGE = '@patwoodman/orchestrator-core';
+export const PACKAGE = '@patwoodman/dsh-sdlc-flow-core';

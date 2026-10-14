@@ -9,7 +9,7 @@
 export const SDLC_KIND = 'sdlc';
 
 /** This implementation's identity in the tab system, and the key its body registers under. */
-export const SDLC_ID = '@patwoodman/orchestrator-ui';
+export const SDLC_ID = '@patwoodman/dsh-sdlc-flow-ui';
 
 export function sdlcDefinition(t) {
   return {

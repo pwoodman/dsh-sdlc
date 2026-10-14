@@ -1,4 +1,4 @@
-# @patwoodman/orchestrator-presets — the 26 SDLC role presets
+# @patwoodman/dsh-sdlc-flow-presets — the 26 SDLC role presets
 
 One `@deepseek-ai/dsh-agent-preset` row per SDLC role (lead, planner, architect,
 implementer, tester, verifier, reviewer, integrator, …). A preset's `plugins`
@@ -14,11 +14,11 @@ from the profile's permission row, and the model from the tier overlay.
 
 ## Install
 
-A member of [`@patwoodman/orchestrator`](https://www.npmjs.com/package/@patwoodman/orchestrator)
+A member of [`@patwoodman/dsh-sdlc-flow`](https://www.npmjs.com/package/@patwoodman/dsh-sdlc-flow)
 (lead) and of the boot-probe composition; it can also be mounted directly:
 
 ```sh
-dsh plugin --profile <profile> add @patwoodman/orchestrator-presets
+dsh plugin --profile <profile> add @patwoodman/dsh-sdlc-flow-presets
 ```
 
 The patch also inserts the `agent-preset-registry` row first, so the presets

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "SDLC Orchestrator",
+    "title": "DSH SDLC Flow",
     "description": "Task engine, scheduler, router, verifier, and integration manager. The runtime authority — lead profile only."
   }
 }

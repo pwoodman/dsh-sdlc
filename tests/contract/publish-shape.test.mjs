@@ -22,13 +22,13 @@ import { DSH_PEER_RANGE, dshPeerSatisfied } from '../../scripts/lib/semver-lite.
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
 const SHIPPABLE = [
-  '@patwoodman/orchestrator',
-  '@patwoodman/orchestrator-core',
-  '@patwoodman/orchestrator-guard',
-  '@patwoodman/orchestrator-tools',
-  '@patwoodman/orchestrator-presets',
-  '@patwoodman/orchestrator-ui',
-  '@patwoodman/orchestrator-cli',
+  '@patwoodman/dsh-sdlc-flow',
+  '@patwoodman/dsh-sdlc-flow-core',
+  '@patwoodman/dsh-sdlc-flow-guard',
+  '@patwoodman/dsh-sdlc-flow-tools',
+  '@patwoodman/dsh-sdlc-flow-presets',
+  '@patwoodman/dsh-sdlc-flow-ui',
+  '@patwoodman/dsh-sdlc-flow-cli',
 ];
 
 function pkgDir(name) {
@@ -55,17 +55,17 @@ test('publish: shippable bundles are public, licensed, and versioned with root',
 });
 
 test('publish: mock-llm stays private (test-only, never published)', () => {
-  const dir = pkgDir('@patwoodman/orchestrator-mock-llm');
+  const dir = pkgDir('@patwoodman/dsh-sdlc-flow-mock-llm');
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
   assert.equal(pkg.private, true, 'mock-llm must stay private');
 });
 
 test('publish: every bundle declares the DSH peer range and declares its patch', () => {
-  for (const name of [...SHIPPABLE, '@patwoodman/orchestrator-mock-llm']) {
+  for (const name of [...SHIPPABLE, '@patwoodman/dsh-sdlc-flow-mock-llm']) {
     const dir = pkgDir(name);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
     assert.equal(pkg.peerDependencies?.['@deepseek-ai/dsh'], DSH_PEER_RANGE, `${name} declares dsh peer ${DSH_PEER_RANGE} (P36, beta.2)`);
-    if (name === '@patwoodman/orchestrator-cli') continue; // CLI is not a DSH bundle
+    if (name === '@patwoodman/dsh-sdlc-flow-cli') continue; // CLI is not a DSH bundle
     const patch = pkg.dsh?.bundle?.patch;
     assert.ok(patch, `${name} declares dsh.bundle.patch`);
     for (const rel of Array.isArray(patch) ? patch : [patch]) {
@@ -99,16 +99,18 @@ test('publish: display metadata (locale title/description) exists and is exporte
   }
 });
 
-test('publish: per-package build entry exists and is runnable offline', () => {
+test('publish: per-package build entry exists and no lifecycle rebuild ships', () => {
+  // beta.10 intentionally REMOVED prepack/prepare: the workspace build already
+  // produces lib/ before publish, and npm's pack stages only `files` (lib/,
+  // not src/ or build.cjs), so a lifecycle rebuild inside the pack dies with
+  // ENOENT and leaves the package unpublished. The Release workflow publishes
+  // with --ignore-scripts so the already-built lib/ is what ships.
   for (const name of SHIPPABLE) {
     const dir = pkgDir(name);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
     assert.ok(pkg.scripts?.build, `${name} has a build script`);
-    assert.ok(pkg.scripts?.prepack, `${name} builds on prepack`);
-    // `prepack` only covers `npm pack`/`npm publish`. A git/GitHub or `file:`
-    // install runs `prepare` instead — without it the consumer gets a package
-    // with no lib/ and the loader reports a missing host entry.
-    assert.ok(pkg.scripts?.prepare, `${name} builds on prepare (git and file: installs)`);
+    assert.ok(!pkg.scripts?.prepack, `${name} must not rebuild on prepack (beta.10: ENOENT inside npm pack)`);
+    assert.ok(!pkg.scripts?.prepare, `${name} must not rebuild on prepare (beta.10: ENOENT inside npm pack)`);
   }
 });
 
@@ -123,7 +125,7 @@ test('publish: bundles ship and export a package-root icon and their patch', () 
   for (const name of SHIPPABLE) {
     const dir = pkgDir(name);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-    if (name === '@patwoodman/orchestrator-cli') continue; // the CLI is not a bundle
+    if (name === '@patwoodman/dsh-sdlc-flow-cli') continue; // the CLI is not a bundle
     assert.equal(pkg.icon, 'icon.svg', `${name} declares a package-root icon`);
     assert.ok(existsSync(join(dir, 'icon.svg')), `${name} ships icon.svg`);
     assert.ok(readFileSync(join(dir, 'icon.svg')).length <= MAX_ICON_BYTES, `${name} icon is under 256 KiB`);
@@ -150,11 +152,11 @@ test('publish: the meta-bundle is self-contained — no member dependencies', ()
   // The whole point of the fold (beta.9): a profile installs ONE own-scope
   // package, so the plugin manager's remove button uninstalls everything in
   // one click — no ghost member entries, nothing refused as "still required".
-  const dir = pkgDir('@patwoodman/orchestrator');
+  const dir = pkgDir('@patwoodman/dsh-sdlc-flow');
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
   assert.equal(pkg.dependencies, undefined, 'meta-bundle must not depend on its members anymore');
-  assert.ok(!pkg.dependencies?.['@patwoodman/orchestrator-guard'], 'meta-bundle must not pull the guard');
-  assert.ok(!pkg.dependencies?.['@patwoodman/orchestrator-cli'], 'meta-bundle must not pull the CLI');
+  assert.ok(!pkg.dependencies?.['@patwoodman/dsh-sdlc-flow-guard'], 'meta-bundle must not pull the guard');
+  assert.ok(!pkg.dependencies?.['@patwoodman/dsh-sdlc-flow-cli'], 'meta-bundle must not pull the CLI');
   // The folded member trees travel inside the meta package…
   for (const short of ['guard', 'core', 'tools', 'presets', 'ui', 'cli']) {
     assert.ok(existsSync(join(dir, 'lib', 'rows', short, 'lib')), `meta-bundle folds ${short} under lib/rows/${short}/lib`);
@@ -167,13 +169,13 @@ test('publish: the meta-bundle is self-contained — no member dependencies', ()
   const patch = readFileSync(join(dir, 'cordis.patch.yml'), 'utf8');
   const nameLines = patch.split('\n').filter((line) => /name:/.test(line));
   for (const line of nameLines) {
-    assert.ok(!/@patwoodman\/orchestrator-(core|tools|presets|ui|guard|cli)/.test(line), `folded patch row name must not name a member: ${line.trim()}`);
+    assert.ok(!/@patwoodman\/dsh-sdlc-flow-(core|tools|presets|ui|guard|cli)/.test(line), `folded patch row name must not name a member: ${line.trim()}`);
   }
 });
 
 test('publish: worker profile never composes the meta-bundle (E6)', () => {
   const worker = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-worker', 'profile.json'), 'utf8'));
-  assert.ok(!worker.bundles.includes('@patwoodman/orchestrator'), 'worker must not install the meta-bundle (it pulls core)');
+  assert.ok(!worker.bundles.includes('@patwoodman/dsh-sdlc-flow'), 'worker must not install the meta-bundle (it pulls core)');
   const web = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-web', 'profile.json'), 'utf8'));
-  assert.deepEqual(web.bundles, ['@patwoodman/orchestrator'], 'lead installs exactly one spec');
+  assert.deepEqual(web.bundles, ['@patwoodman/dsh-sdlc-flow'], 'lead installs exactly one spec');
 });

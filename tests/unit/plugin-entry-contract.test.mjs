@@ -50,11 +50,11 @@ const stubLogger = () => ({ debug() {}, warn() {}, error() {} });
  */
 const ENTRIES = [
   {
-    name: '@patwoodman/orchestrator (meta-bundle)',
+    name: '@patwoodman/dsh-sdlc-flow (meta-bundle)',
     load: 'packages/sdlc-orchestrator/src/index.js',
   },
   {
-    name: '@patwoodman/orchestrator-core/services',
+    name: '@patwoodman/dsh-sdlc-flow-core/services',
     load: 'packages/sdlc-core/src/services.js',
     config: (dir) => ({
       projectRoot: dir, storage: { dbPath: '.sdlc/sdlc.db' }, safety: { instanceLock: false }, service: 'tasks',
@@ -64,24 +64,24 @@ const ENTRIES = [
     dispose: async (mod, dir) => mod.closeRuntime(dir),
   },
   {
-    name: '@patwoodman/orchestrator-guard/plugin',
+    name: '@patwoodman/dsh-sdlc-flow-guard/plugin',
     load: 'packages/sdlc-guard/src/plugin.js',
     config: (dir) => ({ worktreeRoot: dir }),
   },
   {
-    name: '@patwoodman/orchestrator-mock-llm',
+    name: '@patwoodman/dsh-sdlc-flow-mock-llm',
     load: 'packages/sdlc-mock-llm/src/index.js',
   },
   {
-    name: '@patwoodman/orchestrator-presets/plugin',
+    name: '@patwoodman/dsh-sdlc-flow-presets/plugin',
     load: 'packages/sdlc-presets/src/plugin.js',
   },
   {
-    name: '@patwoodman/orchestrator-tools/plugin',
+    name: '@patwoodman/dsh-sdlc-flow-tools/plugin',
     load: 'packages/sdlc-tools/src/plugin.js',
   },
   {
-    name: '@patwoodman/orchestrator-ui (host)',
+    name: '@patwoodman/dsh-sdlc-flow-ui (host)',
     load: 'packages/sdlc-client-ui/src/index.js',
     // Host services this entry reads from ctx: the loader must see them in
     // `inject`, or activation throws (`cannot get property … without inject`).
@@ -275,7 +275,7 @@ test('the client entry returns nothing and declares its browser services in inje
   // Driven through the SHIPPED bundle (lib/client.js) — the src/ tree is raw
   // JSX that node cannot import, and the bundle is what the web loader runs.
   const { id, exports } = clientBundleExports();
-  assert.equal(id, '@patwoodman/orchestrator-ui', 'factory id equals the package name');
+  assert.equal(id, '@patwoodman/dsh-sdlc-flow-ui', 'factory id equals the package name');
   assert.deepEqual(exports.inject, ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote']);
   // Same unwrap the web loader applies (cordis-plugin-loader unwrapExports):
   // `.default` wins. The shipped beta.7/beta.8 factories set only named

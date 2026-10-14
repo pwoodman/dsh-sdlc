@@ -3,7 +3,7 @@
  *
  * `src/` uses relative imports (`../../sdlc-guard/src/index.js`) so the monorepo
  * tests see one module instance and `instanceof` works across packages.
- * `lib/` must use bare npm specifiers (`@patwoodman/orchestrator-guard`) so a
+ * `lib/` must use bare npm specifiers (`@patwoodman/dsh-sdlc-flow-guard`) so a
  * published package resolves through `node_modules`.
  *
  * This module is the single source of truth for that transform. It is used by:

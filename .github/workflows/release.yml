@@ -3,11 +3,11 @@ name: Release
 # Cuts a beta release: verifies the tree, builds the no-clone tarball, attaches
 # it to a GitHub Release, and — when the repository variable PUBLISH_NPM is true
 # and an NPM_TOKEN secret exists — publishes the packages so
-# `dsh plugin --profile sdlc-web add <scope>/orchestrator` works exactly like
+# `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` works exactly like
 # dsh-context / dsh-proactive.
 #
 #   node scripts/set-scope.mjs @your-npm-username   # once, if you do not own the scope
-#   git tag v0.4.0-beta.10 && git push origin v0.4.0-beta.10
+#   git tag v0.4.0-beta.11 && git push origin v0.4.0-beta.11
 #
 # The tag must match package.json's version (checked below), so the release name,
 # the tarball name and the npm versions can never drift apart.
@@ -127,7 +127,7 @@ jobs:
           export NODE_AUTH_TOKEN="$NPM_TOKEN"
           version="$(node -p "require('./package.json').version")"
           # A prerelease must never take the `latest` dist-tag: `npm install
-          # @patwoodman/orchestrator` would then hand a beta to everyone. Betas
+          # @patwoodman/dsh-sdlc-flow` would then hand a beta to everyone. Betas
           # publish under `beta`; only a stable version moves `latest`.
           case "$version" in
             *-*) dist_tag=beta ;;

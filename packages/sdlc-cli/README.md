@@ -1,4 +1,4 @@
-# @patwoodman/orchestrator-cli — the `sdlc` executable
+# @patwoodman/dsh-sdlc-flow-cli — the `sdlc` executable
 
 A deterministic control plane over `.sdlc/` that makes **no model calls**:
 `init`, `status`, `tasks`, `claim`, `report`, `verify`, `decide`, `debug`
@@ -10,7 +10,7 @@ terminal or CI, and it is the surface `npm run doctor` reports on.
 ## Install
 
 ```sh
-npm install -g @patwoodman/orchestrator-cli
+npm install -g @patwoodman/dsh-sdlc-flow-cli
 sdlc status
 ```
 

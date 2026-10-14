@@ -602,7 +602,7 @@ function rewriteImports(text) {
       const pkg = DIR_TO_PKG[`sdlc-${dir}`];
       if (!pkg) return _m;
       const stem = file.split('/').pop();
-      const MAIN_STEMS = { '@patwoodman/orchestrator-cli': 'cli' };
+      const MAIN_STEMS = { '@patwoodman/dsh-sdlc-flow-cli': 'cli' };
       return (stem === 'index' || stem === MAIN_STEMS[pkg]) ? `from '${pkg}'` : `from '${pkg}/${file}'`;
     },
   );
@@ -620,4 +620,4 @@ for (const rel of walk(join(SRC, 'client'))) copyRewrite(join(SRC, 'client', rel
 copyRewrite(join(SRC, 'routes.js'), join(LIB, 'routes.js'));
 writeFileSync(join(LIB, 'index.js'), hostEntry);
 writeFileSync(join(LIB, 'client.js'), clientBundle);
-process.stdout.write(`  @patwoodman/orchestrator-ui built client bundle (${clientBundle.length} bytes) → lib/\n`);
+process.stdout.write(`  @patwoodman/dsh-sdlc-flow-ui built client bundle (${clientBundle.length} bytes) → lib/\n`);

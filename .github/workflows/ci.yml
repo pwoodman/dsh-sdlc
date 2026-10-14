@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      # lib/ uses bare cross-package imports (@patwoodman/orchestrator-core, …),
+      # lib/ uses bare cross-package imports (@patwoodman/dsh-sdlc-flow-core, …),
       # which need node_modules to resolve. A fresh checkout has none, so every
       # suite importing such a lib/ file failed on CI while passing locally.
       - name: link the workspace packages into node_modules

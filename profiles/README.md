@@ -13,10 +13,10 @@ dsh --profile sdlc-worker --from-default-profile headless --dump-config
 dsh --profile sdlc-probe  --from-default-profile sdk      --dump-config
 
 # registry form (once published)
-dsh plugin --profile sdlc-web    add @patwoodman/orchestrator
-dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard @patwoodman/orchestrator-tools
-dsh plugin --profile sdlc-probe  add @patwoodman/orchestrator-core @patwoodman/orchestrator-tools \
-                                     @patwoodman/orchestrator-presets @patwoodman/orchestrator-guard
+dsh plugin --profile sdlc-web    add @patwoodman/dsh-sdlc-flow
+dsh plugin --profile sdlc-worker add @patwoodman/dsh-sdlc-flow-guard @patwoodman/dsh-sdlc-flow-tools
+dsh plugin --profile sdlc-probe  add @patwoodman/dsh-sdlc-flow-core @patwoodman/dsh-sdlc-flow-tools \
+                                     @patwoodman/dsh-sdlc-flow-presets @patwoodman/dsh-sdlc-flow-guard
 ```
 
 From a source checkout, `node scripts/install-local.mjs` does all of it in one
@@ -32,6 +32,6 @@ that closes E6:
 
 | Profile | Template | Bundles | Property |
 |---|---|---|---|
-| `sdlc-web` | `web` | `@patwoodman/orchestrator` (the generated meta-bundle layer: core + tools + presets + ui rows) | interactive lead; holds the instance lock; slash commands and approvals work |
+| `sdlc-web` | `web` | `@patwoodman/dsh-sdlc-flow` (the generated meta-bundle layer: core + tools + presets + ui rows) | interactive lead; holds the instance lock; slash commands and approvals work |
 | `sdlc-worker` | `headless` | guard + tools | **never** core — mounting core in a worker would start a second scheduler and a second DB writer |
 | `sdlc-probe` | `sdk` | core + tools + presets + guard | deterministic boot probe; boots the full composition with no UI, no prompt and no model call |

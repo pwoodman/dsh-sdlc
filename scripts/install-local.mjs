@@ -3,7 +3,7 @@
  * scripts/install-local.mjs — install the orchestrator from a source checkout.
  *
  * This is the "works today" path. The published-npm path
- * (`npx @patwoodman/orchestrator init`) is a thin wrapper that downloads the packages
+ * (`npx @patwoodman/dsh-sdlc-flow init`) is a thin wrapper that downloads the packages
  * first and then runs exactly these steps.
  *
  * Corrected against the real CLI (spec v2 Quick Start / Part F are wrong):
@@ -25,7 +25,7 @@
  *
  * Idempotent, non-interactive and safe to re-run.
  *
- * The lead gets exactly ONE sdlc bundle. `@patwoodman/orchestrator`'s patch is
+ * The lead gets exactly ONE sdlc bundle. `@patwoodman/dsh-sdlc-flow`'s patch is
  * GENERATED as the union of its members' rows (scripts/gen-bundle-patch.mjs),
  * because the DSH loader mounts only the bundles a profile lists and never
  * descends into a bundle's dependencies. The four members are installed as
@@ -92,8 +92,8 @@ const WORKER_RECIPE = 'sdlc-worker';
  */
 const OWN_PREFIX = ownBundlePrefix();
 
-/** `@scope/orchestrator-core` in this tree — used only in remediation text. */
-const CORE_PACKAGE = [...PKG_DIR.keys()].find((name) => name.endsWith('-core')) ?? `${OWN_PREFIX}orchestrator-core`;
+/** `@scope/dsh-sdlc-flow-core` in this tree — used only in remediation text. */
+const CORE_PACKAGE = [...PKG_DIR.keys()].find((name) => name.endsWith('-core')) ?? `${OWN_PREFIX}dsh-sdlc-flow-core`;
 
 
 const steps = [];
@@ -352,7 +352,7 @@ step(`bundles: ${PROBE} selects exactly the ${PROBE_RECIPE} recipe`, () => syncP
 // The recipe files are the single source of truth for WHAT is mounted; this
 // section only decides HOW each profile gets there.
 //
-//   lead   — ONE bundle (`@patwoodman/orchestrator`), whose generated patch declares
+//   lead   — ONE bundle (`@patwoodman/dsh-sdlc-flow`), whose generated patch declares
 //            the whole lead composition. Its four members are installed as
 //            ordinary module dependencies (`pnpm add`) so the row names resolve
 //            from the profile's node_modules. They must NOT be bundles here:

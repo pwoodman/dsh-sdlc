@@ -52,10 +52,15 @@ const PROBE_PROFILE = process.env.SDLC_PROBE_PROFILE || 'sdlc-probe';
 // scope literal: `scripts/set-scope.mjs` renames the suite in one pass, and a
 // literal would make this gate fail (or, worse, skip) on a correctly re-scoped
 // tree — the exact trap the installer and the static composition checks fell into.
+// Basenames come from the manifests too, so a package rename
+// (orchestrator → dsh-sdlc-flow) cannot desynchronise them either.
 const OWN = ownBundlePrefix();
-const SELF_PACKAGES = [`${OWN}orchestrator-core`, `${OWN}orchestrator-tools`, `${OWN}orchestrator-presets`];
-const LEAD_META_PACKAGE = `${OWN}orchestrator`;
-const LEAD_UI_PACKAGE = `${OWN}orchestrator-ui`;
+const _pkgs = [...loadPackages().keys()];
+const _base = (suffix) => _pkgs.find((n) => n === `${OWN}${suffix}`) ?? `${OWN}${suffix}`;
+const _meta = _pkgs.find((n) => !/-(core|tools|presets|ui|guard|cli|mock-llm)$/.test(n.slice(n.indexOf('/') + 1))) ?? `${OWN}dsh-sdlc-flow`;
+const SELF_PACKAGES = [_base('dsh-sdlc-flow-core'), _base('dsh-sdlc-flow-tools'), _base('dsh-sdlc-flow-presets')];
+const LEAD_META_PACKAGE = _meta;
+const LEAD_UI_PACKAGE = _base('dsh-sdlc-flow-ui');
 const LEAD_UI_ROW = 'sdlc-ui';
 const ROLE_COUNT = 26;
 
@@ -209,7 +214,7 @@ const checks = [
     title: `lead profile ${LEAD_PROFILE} composes the sdlc bundles`,
     fn() {
       if (leadBundles) {
-        // Single-spec install: the lead declares the @patwoodman/orchestrator
+        // Single-spec install: the lead declares the @patwoodman/dsh-sdlc-flow
         // meta-bundle; its dependencies provide the rows. Unpacked installs
         // (core+tools+presets listed directly) are also accepted.
         const viaMeta = leadBundles.includes(LEAD_META_PACKAGE);
@@ -274,7 +279,8 @@ const checks = [
       // Negative control: the checker must notice a forced duplicate. Use
       // the guard bundle twice (a small patch with no meta indirection), so
       // the duplicate survives regardless of the seen-set dedup.
-      const forced = composeProfile({ bundles: [`${OWN}orchestrator-guard`, `${OWN}orchestrator-guard`] }, { packages });
+      const _guard = _base('dsh-sdlc-flow-guard');
+      const forced = composeProfile({ bundles: [_guard, _guard] }, { packages });
       if (forced.duplicates.length === 0) throw new Error('duplicate detection is not working (negative control failed)');
       return { detail: `static: ${new Set(report.composition.ids).size} unique ids across the composed bundles (negative control passed)` };
     },

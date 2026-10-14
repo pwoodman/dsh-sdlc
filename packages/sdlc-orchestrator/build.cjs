@@ -12,7 +12,7 @@ const DIR = __dirname;
 mkdirSync(join(DIR, 'lib'), { recursive: true });
 cpSync(join(DIR, 'src', 'index.js'), join(DIR, 'lib', 'index.js'));
 if (!existsSync(join(DIR, 'lib', 'index.js'))) {
-  console.error('  @patwoodman/orchestrator FAIL — lib/index.js missing after build');
+  console.error('  @patwoodman/dsh-sdlc-flow FAIL — lib/index.js missing after build');
   process.exit(1);
 }
-console.log('  @patwoodman/orchestrator built → lib/');
+console.log('  @patwoodman/dsh-sdlc-flow built → lib/');

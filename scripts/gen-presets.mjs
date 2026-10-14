@@ -4,7 +4,7 @@
  *
  * The patch file is a build artifact of the role registry: keeping it generated
  * (and checked in) means the roster has ONE source of truth while the DSH loader
- * still sees a static patch. `pnpm --filter @patwoodman/orchestrator-presets gen`
+ * still sees a static patch. `pnpm --filter @patwoodman/dsh-sdlc-flow-presets gen`
  * regenerates it; a unit test asserts the checked-in file matches roles.js.
  *
  *   node scripts/gen-presets.mjs [--check]

@@ -8,12 +8,12 @@
  * beyond its own presence.
  */
 
-export const PACKAGE = '@patwoodman/orchestrator';
+export const PACKAGE = '@patwoodman/dsh-sdlc-flow';
 export const BUNDLES = [
-  '@patwoodman/orchestrator-core',
-  '@patwoodman/orchestrator-tools',
-  '@patwoodman/orchestrator-presets',
-  '@patwoodman/orchestrator-ui',
+  '@patwoodman/dsh-sdlc-flow-core',
+  '@patwoodman/dsh-sdlc-flow-tools',
+  '@patwoodman/dsh-sdlc-flow-presets',
+  '@patwoodman/dsh-sdlc-flow-ui',
 ];
 
 /**

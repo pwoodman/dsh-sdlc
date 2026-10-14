@@ -24,7 +24,7 @@ import { collectCoverage, collectAudit, hasCommand } from '../../eval/collect-ar
 
 const TASKS_DIR = join(dirname(import.meta.dirname), '..', 'eval', 'tasks');
 const HEADLESS = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'];
-const WITH_PLUGIN = [...HEADLESS, '@patwoodman/orchestrator-core', '@patwoodman/orchestrator-tools'];
+const WITH_PLUGIN = [...HEADLESS, '@patwoodman/dsh-sdlc-flow-core', '@patwoodman/dsh-sdlc-flow-tools'];
 
 function makeProfile(home, name, bundles) {
   const dir = join(home, 'profiles', name);

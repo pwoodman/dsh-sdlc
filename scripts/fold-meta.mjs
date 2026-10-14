@@ -14,4 +14,4 @@
 import fold from './lib/fold-meta.cjs';
 
 const folded = fold.fold();
-process.stdout.write(`fold-meta: folded ${folded.join(', ')} into @patwoodman/orchestrator (lib/rows/)\n`);
+process.stdout.write(`fold-meta: folded ${folded.join(', ')} into @patwoodman/dsh-sdlc-flow (lib/rows/)\n`);

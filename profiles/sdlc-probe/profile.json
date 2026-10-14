@@ -3,10 +3,10 @@
   "role": "boot-probe",
   "template": "sdk",
   "bundles": [
-    "@patwoodman/orchestrator-core",
-    "@patwoodman/orchestrator-tools",
-    "@patwoodman/orchestrator-presets",
-    "@patwoodman/orchestrator-guard"
+    "@patwoodman/dsh-sdlc-flow-core",
+    "@patwoodman/dsh-sdlc-flow-tools",
+    "@patwoodman/dsh-sdlc-flow-presets",
+    "@patwoodman/dsh-sdlc-flow-guard"
   ],
   "mustNotContain": [],
   "capabilities": {

@@ -1,7 +1,7 @@
 /**
  * scripts/lib/fold-meta.cjs — fold the member packages into the meta-bundle.
  *
- * WHY: a profile installs ONE bundle (`@patwoodman/orchestrator`) but used to
+ * WHY: a profile installs ONE bundle (`@patwoodman/dsh-sdlc-flow`) but used to
  * carry FIVE `@patwoodman/*` entries (the meta plus four member dependencies),
  * so a GUI uninstall left four ghost entries behind and removing a member
  * first was refused by the package manager. Folding the members into the
@@ -22,10 +22,10 @@
  *
  *   PATCH (row `name:` fields and preset `plugins:` lists in cordis.patch.yml):
  *   rewritten to FLAT one-segment aliases on the meta package
- *   (`@patwoodman/orchestrator/services`, `…/tools-plugin`, `…/tools`,
+ *   (`@patwoodman/dsh-sdlc-flow/services`, `…/tools-plugin`, `…/tools`,
  *   `…/presets-plugin`, `…/ui`) — the loader resolves row/plugin names through
  *   the package `exports` map, and one segment is the shape the loader already
- *   resolves today (`@patwoodman/orchestrator-core/services`).
+ *   resolves today (`@patwoodman/dsh-sdlc-flow-core/services`).
  *
  * The worker and probe profiles keep mounting guard/tools/core/presets as
  * separate bundles (E6), so the member packages stay published and their own
@@ -142,7 +142,7 @@ function rewritePatch(text) {
     const member = FOLD.find((f) => memberName(f.dir) === name);
     const entry = FLAT_ALIAS[member.short + (sub || '')];
     if (!entry) return m; // unknown subpath: leave verbatim (the --check pass flags it)
-    return `${quote}@patwoodman/orchestrator/${entry[1]}${quote}`;
+    return `${quote}@patwoodman/dsh-sdlc-flow/${entry[1]}${quote}`;
   });
 }
 
@@ -171,7 +171,7 @@ function foldMemberLib({ dir, short }) {
     let rewritten = rewriteCode(text, join(file, '..'));
     // The browser module id MUST equal the SERVING package's name (DSH's client
     // loader keys the module table by it), so inside the folded client bundle
-    // every `@patwoodman/orchestrator-ui` string — module id, style-tag id and
+    // every `@patwoodman/dsh-sdlc-flow-ui` string — module id, style-tag id and
     // `dataset.plugin` — becomes the meta package's name.
     if (short === 'ui' && file.endsWith(join('lib', 'client.js'))) {
       rewritten = rewritten.split(pkg.name).join('@@META@@');

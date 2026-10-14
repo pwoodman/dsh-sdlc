@@ -1,8 +1,8 @@
-# dsh-plugin-sdlc — Universal SDLC Orchestrator (DSH plugin suite)
+# dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Beta (0.4.0-beta.10).** Install with one command from a source checkout
+> **Beta (0.4.0-beta.11).** Install with one command from a source checkout
 > (`npm run install:local`), or the registry form
-> (`dsh plugin --profile sdlc-web add @patwoodman/orchestrator`) once published — see
+> (`dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow`) once published — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
 > limitations. No confirmatory A/B evidence yet — no "beats plain DSH" claim is
 > supported.
@@ -72,13 +72,13 @@ dsh --profile sdlc-web          # the interactive lead (web GUI)
 
 ### Uninstall — one click in the plugin manager
 
-The lead installs exactly **one** package (`@patwoodman/orchestrator`; its
+The lead installs exactly **one** package (`@patwoodman/dsh-sdlc-flow`; its
 members are folded inside it), so removing that single entry in the plugin
 manager removes everything — no ghost entries, nothing "still required". From
 the CLI it is the same one spec:
 
 ```sh
-dsh plugin --profile sdlc-web remove @patwoodman/orchestrator
+dsh plugin --profile sdlc-web remove @patwoodman/dsh-sdlc-flow
 ```
 
 A profile installed by a pre-fold release may still list the four members as
@@ -86,8 +86,8 @@ plain dependencies; re-run the installer (or this one command) to clear them:
 
 ```sh
 pnpm remove --dir ~/.dsh/profiles/sdlc-web \
-  @patwoodman/orchestrator-core @patwoodman/orchestrator-tools \
-  @patwoodman/orchestrator-presets @patwoodman/orchestrator-ui
+  @patwoodman/dsh-sdlc-flow-core @patwoodman/dsh-sdlc-flow-tools \
+  @patwoodman/dsh-sdlc-flow-presets @patwoodman/dsh-sdlc-flow-ui
 ```
 
 On Windows, close a running lead first (`sdlc.db` and the bundle files are held
@@ -120,21 +120,21 @@ and no restart):
 
 ```sh
 dsh --profile sdlc-web --from-default-profile web --dump-config   # create once
-dsh plugin --profile sdlc-web add @patwoodman/orchestrator              # core + tools + presets + ui
+dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow              # core + tools + presets + ui
 dsh --profile sdlc-web
 ```
 
-Or fill `@patwoodman/orchestrator` into the **Add plugin** wizard on the Plugins page.
+Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugins page.
 
 The worker profile is deliberately *unpacked*, because mounting the host services
 there would start a second scheduler and a second writer against `sdlc.db`
 (errata E6):
 
 ```sh
-dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard @patwoodman/orchestrator-tools
+dsh plugin --profile sdlc-worker add @patwoodman/dsh-sdlc-flow-guard @patwoodman/dsh-sdlc-flow-tools
 ```
 
-`@patwoodman/orchestrator`'s patch layer is generated from its four members
+`@patwoodman/dsh-sdlc-flow`'s patch layer is generated from its four members
 (`node scripts/gen-bundle-patch.mjs`) — the DSH loader mounts only the bundles a
 profile lists and never descends into a bundle's `dependencies`. In the lead the
 members are ordinary module dependencies; adding them as bundles *as well*
@@ -143,7 +143,7 @@ composes every row twice.
 #### Publishing under your own npm scope
 
 The packages ship as `@patwoodman/*`. If your npm account does not own that scope,
-`npm publish` answers **403** and nobody can resolve `@patwoodman/orchestrator`. Fix it
+`npm publish` answers **403** and nobody can resolve `@patwoodman/dsh-sdlc-flow`. Fix it
 in one command:
 
 ```sh
@@ -156,7 +156,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.10 && git push origin v0.4.0-beta.10
+git tag v0.4.0-beta.11 && git push origin v0.4.0-beta.11
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
@@ -190,7 +190,7 @@ node scripts/build-release.mjs        # → dist/dsh-sdlc-<version>.tgz + dsh-sd
 ### Update
 
 ```sh
-dsh plugin --profile sdlc-web update @patwoodman/orchestrator@latest
+dsh plugin --profile sdlc-web update @patwoodman/dsh-sdlc-flow@latest
 ```
 
 ## Layout

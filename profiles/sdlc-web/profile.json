@@ -3,7 +3,7 @@
   "role": "interactive-lead",
   "template": "web",
   "bundles": [
-    "@patwoodman/orchestrator"
+    "@patwoodman/dsh-sdlc-flow"
   ],
   "mustNotContain": [],
   "capabilities": {

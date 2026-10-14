@@ -5,7 +5,7 @@
  *
  * WHY THIS EXISTS. The build is zero-dependency (deviation D0): `lib/` mirrors
  * `src/` with cross-package relative imports rewritten to bare npm specifiers
- * (`@patwoodman/orchestrator-core`), which a PUBLISHED package resolves through
+ * (`@patwoodman/dsh-sdlc-flow-core`), which a PUBLISHED package resolves through
  * `node_modules`. Inside this workspace there is no lockfile and no install, so
  * a fresh clone (CI!) has no `node_modules` at all — and every test that imports
  * such a `lib/` file (the CLI suites, for one) fails with ERR_MODULE_NOT_FOUND

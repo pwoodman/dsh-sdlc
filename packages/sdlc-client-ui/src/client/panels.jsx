@@ -15,7 +15,7 @@ export function Missing({ reason }) {
 }
 
 export function StatusPanel({ snapshot, onReload }) {
-  if (snapshot.phase === 'loading') return <div aria-live="polite">Loading orchestrator status…</div>;
+  if (snapshot.phase === 'loading') return <div aria-live="polite">Loading flow status…</div>;
   if (snapshot.phase === 'missing') return <Missing reason={snapshot.reason} />;
   const { tasks, spend, projects } = snapshot.data;
   if (tasks.total === 0) return <div>No project initialised — run `sdlc init` first.</div>;

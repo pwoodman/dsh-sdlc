@@ -1,6 +1,35 @@
-# Changelog — dsh-plugin-sdlc
+# Changelog — dsh-sdlc-flow
 
-All notable changes to the Universal SDLC Orchestrator plugin suite.
+All notable changes to the DSH SDLC Flow plugin suite.
+
+## [0.4.0-beta.11] — renamed to `dsh-sdlc-flow`
+
+### Changed
+
+- **The suite is no longer "orchestrator".** Every package moved from
+  `@patwoodman/orchestrator*` to `@patwoodman/dsh-sdlc-flow*` — the lead is now
+  `@patwoodman/dsh-sdlc-flow`, with `-core`, `-tools`, `-presets`, `-ui`,
+  `-guard`, and `-cli` members. Display titles in the Plugin Manager read
+  "DSH SDLC Flow" / "SDLC Dashboard" instead of the generic "SDLC Orchestrator".
+  The old `@patwoodman/orchestrator*` names stay on npm at `0.4.0-beta.9` and
+  below; `beta.11` is the first release under the new names, so there is no
+  upgrade path to migrate — install the new spec:
+  `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow`.
+- **Name-derived script constants are manifest-derived.** `doctor`,
+  `validate-m0`, and the composition helpers used to append hardcoded
+  `orchestrator*` suffixes to the scope prefix; they now read member basenames
+  from the workspace manifests, so the next rename cannot desynchronise them
+  the way the bulk rename initially did (caught before commit: E6 worker-guard
+  check, M0 self-package list, doctor's required-bundle list).
+
+### Fixed
+
+- **`publish-shape` test contradicted the beta.10 publish fix.** It still
+  asserted every package ships `prepack`/`prepare` rebuild hooks — the exact
+  hooks beta.10 removed because npm's pack stages only `files` and the rebuild
+  died with `ENOENT`, leaving `core`, `guard`, and `ui` unpublished. The test
+  now pins the absence of lifecycle rebuilds, so a reintroduced hook fails
+  loudly instead of silently stranding worker-profile packages on an old beta.
 
 ## [0.4.0-beta.10] — the worker packages actually publish
 
@@ -47,13 +76,13 @@ All notable changes to the Universal SDLC Orchestrator plugin suite.
 
 ### Added
 
-- **The lead installs and uninstalls as ONE package (`@patwoodman/orchestrator`).**
+- **The lead installs and uninstalls as ONE package (`@patwoodman/dsh-sdlc-flow`).**
   Previously the profile carried the meta-bundle plus four member dependencies, so a
   plugin-manager uninstall left four ghost `@patwoodman/*` entries behind and removing a
-  member first was refused ("still required by @patwoodman/orchestrator") — the uninstall
+  member first was refused ("still required by @patwoodman/dsh-sdlc-flow") — the uninstall
   reports from beta testers. The whole dependency closure (core→guard, tools→core,
   ui→cli — six packages) is now folded into the meta-bundle under `lib/rows/`: every
-  patch row resolves through the meta's own exports (`@patwoodman/orchestrator/services`,
+  patch row resolves through the meta's own exports (`@patwoodman/dsh-sdlc-flow/services`,
   `…/tools-plugin`, `…/presets-plugin`, `…/ui`), cross-member imports inside the folded
   code are rewritten to relative paths, the browser bundle travels with its `dsh.client`
   manifest under `./client` with its module id rewritten to the serving package, and the
@@ -91,7 +120,7 @@ All notable changes to the Universal SDLC Orchestrator plugin suite.
   fiber's effects (the session-controller pattern), so a restart disposes the routes before
   `apply` runs again. Plain contexts (unit tests, import-without-host) still register directly.
 
-- **The UI's selftest contribution was dead code.** `require('@patwoodman/orchestrator-core/selftest.js')`
+- **The UI's selftest contribution was dead code.** `require('@patwoodman/dsh-sdlc-flow-core/selftest.js')`
   used a `.js`-suffixed subpath, but core's exports map (`"./*": "./lib/*.js"`) resolves that to
   `lib/selftest.js.js`, so the require never resolved and the catch hid it — no `sdlc_ui_routes`
   contribution and no version metadata ever reached the boot-hook report, in any environment. The
@@ -120,7 +149,7 @@ All notable changes to the Universal SDLC Orchestrator plugin suite.
 
 ## [0.4.0-beta.6] — published packages actually import
 
-**Install:** `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` —
+**Install:** `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` —
 now resolves and boots. Or the tarball path (unchanged).
 
 ### Fixed
@@ -132,8 +161,8 @@ now resolves and boots. Or the tarball path (unchanged).
   installed from npm has no `../sdlc-*/src/` directory — every row except the
   presets failed with `ERR_MODULE_NOT_FOUND`, so the lead composed 223 rows and
   12 of 13 plugins refused to activate. `build.mjs` and `build-ui.mjs` now rewrite
-  cross-package relative imports to bare npm specifiers (`@patwoodman/orchestrator-guard`,
-  `@patwoodman/orchestrator-core/config`, …) when building `lib/`. The `src/`
+  cross-package relative imports to bare npm specifiers (`@patwoodman/dsh-sdlc-flow-guard`,
+  `@patwoodman/dsh-sdlc-flow-core/config`, …) when building `lib/`. The `src/`
   tree keeps relative imports so tests see one module instance and `instanceof`
   works across packages. A contract test asserts every built `lib/` file has no
   remaining cross-package relative imports.
@@ -237,7 +266,7 @@ tar xzf dsh-sdlc-beta.tgz && cd dsh-sdlc-*/ && ./install.sh
 ### Fixed (source checkout — the beta.2 body of work)
 
 **Install:** `npm run install:local` (one command, idempotent), or the registry
-form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published.
+form `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` once published.
 - **A fresh clone could not run anything.** `.gitignore` had a bare `lib/`
   pattern, which (in gitignore syntax) matches a directory named `lib` **at any
   depth**. It therefore excluded `scripts/lib/`, `tests/lib/` and `eval/lib/` —
@@ -254,8 +283,8 @@ form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published
 - **The documented one-spec lead install composed nothing.** The DSH loader
   mounts only the bundles listed in `dsh.profile.bundles` and loads each one's
   **own** `dsh.bundle.patch`; it never descends into a bundle's `dependencies`.
-  `@patwoodman/orchestrator`'s patch declared only its own row, so
-  `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` produced a single
+  `@patwoodman/dsh-sdlc-flow`'s patch declared only its own row, so
+  `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` produced a single
   `sdlc-orchestrator` row and no services, tools, presets or UI. Its patch is now
   **generated** as the union of its four members'
   (`scripts/gen-bundle-patch.mjs`, checked in and verified by
@@ -334,7 +363,7 @@ form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published
 ### Added
 
 **Install:** `npm run install:local` (one command, idempotent), or the registry
-form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published.
+form `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` once published.
 
 - **A no-clone beta install.** `node scripts/build-release.mjs` produces
   `dist/dsh-sdlc-<version>.tgz` (+ a stable `dsh-sdlc-beta.tgz` alias): the whole
@@ -409,15 +438,15 @@ form `dsh plugin --profile sdlc-web add @patwoodman/orchestrator` once published
 Requires Node ≥ 22.5, `dsh` 0.2.0-rc.2, pnpm, and a POSIX host with git.
 
 ### Added
-- `sdlc-client-ui` (`@patwoodman/orchestrator-ui`, `sdlc-web` only): SDLC
+- `sdlc-client-ui` (`@patwoodman/dsh-sdlc-flow-ui`, `sdlc-web` only): SDLC
   right-sidebar tab with Status, Board, validated Config editor (8 fields),
   and side-by-side Review (time/tokens/tracepaths). Host routes
   (`/api/sdlc.status`, `/api/sdlc.board`, `/api/sdlc.task`,
   `/api/sdlc.compare`, `/api/sdlc.config` GET+POST, `/api/sdlc.metrics`)
   read the live `sdlc.db`; the browser bundle builds offline with zero
   dependencies (`node scripts/build-ui.mjs`, wired into `npm run build`).
-- `@patwoodman/orchestrator` meta-bundle: the full lead (core+tools+presets+ui) in
-  ONE install spec — `dsh plugin --profile sdlc-web add @patwoodman/orchestrator`.
+- `@patwoodman/dsh-sdlc-flow` meta-bundle: the full lead (core+tools+presets+ui) in
+  ONE install spec — `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow`.
   `node scripts/install-local.mjs` is now a single command (profiles +
   bundles + M0 verify). Worker installs stay unpacked (guard+tools, E6).
 - Publish-ready packages: MIT license, `locale/en.json`+`locale/zh.json`

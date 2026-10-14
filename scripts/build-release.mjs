@@ -21,7 +21,7 @@
  * does not resolve a linked package's dependencies, which is what lets the
  * unpublished `@patwoodman/*` members resolve to the local tree instead of a registry
  * that has never heard of them. A `file:` spec would send pnpm to the registry
- * for `@patwoodman/orchestrator-core@0.4.0-beta.2` and fail.
+ * for `@patwoodman/dsh-sdlc-flow-core@0.4.0-beta.2` and fail.
  *
  *   node scripts/build-release.mjs [--skip-build] [--out <dir>]
  */

@@ -22,9 +22,9 @@ if (existsSync(WORKSPACE_BUILDER)) {
   // Standalone pack: lib/ must already exist (built before pack).
   for (const f of ['lib/index.js', 'lib/client.js']) {
     if (!existsSync(join(DIR, f))) {
-      console.error(`  @patwoodman/orchestrator-ui FAIL — ${f} missing (run the workspace build first)`);
+      console.error(`  @patwoodman/dsh-sdlc-flow-ui FAIL — ${f} missing (run the workspace build first)`);
       process.exit(1);
     }
   }
-  console.log('  @patwoodman/orchestrator-ui lib/ verified');
+  console.log('  @patwoodman/dsh-sdlc-flow-ui lib/ verified');
 }
