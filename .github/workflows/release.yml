@@ -7,7 +7,7 @@ name: Release
 # dsh-context / dsh-proactive.
 #
 #   node scripts/set-scope.mjs @your-npm-username   # once, if you do not own the scope
-#   git tag v0.4.0-beta.9 && git push origin v0.4.0-beta.9
+#   git tag v0.4.0-beta.10 && git push origin v0.4.0-beta.10
 #
 # The tag must match package.json's version (checked below), so the release name,
 # the tarball name and the npm versions can never drift apart.
@@ -145,7 +145,12 @@ jobs:
               echo "skip $name@$version (already published)"; continue
             fi
             echo "publishing $name@$version"
-            ( cd "packages/$dir" && npm publish --access public --tag "$dist_tag" )
+            # prepack/prepare must not run here: `files` ships lib/ only, so a
+            # lifecycle script that rebuilds from src/ fails inside npm's pack
+            # (ENOENT build.cjs) and, with `set -e` swallowed by a subshell
+            # mistake, the loop used to continue and leave the worker packages
+            # unpublished. `--ignore-scripts` packs the built lib/ as-is.
+            ( cd "packages/$dir" && npm publish --access public --tag "$dist_tag" --ignore-scripts )
           done
 
       - name: explain an npm refusal

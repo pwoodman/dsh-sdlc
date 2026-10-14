@@ -2,6 +2,20 @@
 
 All notable changes to the Universal SDLC Orchestrator plugin suite.
 
+## [0.4.0-beta.10] — the worker packages actually publish
+
+### Fixed
+
+- **`npm publish` of `core`, `guard`, and `ui` died inside `prepack`.** Every
+  member's `prepack`/`prepare` ran `node ./build.cjs`, which rebuilds `lib/`
+  from `src/`. npm's pack only stages the `files` list (`lib/`, not `src/` or
+  `build.cjs`), so the lifecycle script exited `ENOENT` and those three
+  packages never reached the registry — the `0.4.0-beta.9` release published
+  the lead, tools, presets, and cli, and silently left the worker profile's
+  packages on `0.4.0-beta.7`. Lifecycle rebuild scripts are gone (the
+  workspace `build` script already produces `lib/` before publish) and the
+  Release workflow publishes with `--ignore-scripts`.
+
 ## [0.4.0-beta.9] — the sidebar tab actually mounts
 
 > `0.4.0-beta.8` never reached npm. The Release workflow failed its unit job

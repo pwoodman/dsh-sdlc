@@ -1,6 +1,6 @@
 # dsh-plugin-sdlc — Universal SDLC Orchestrator (DSH plugin suite)
 
-> **Beta (0.4.0-beta.9).** Install with one command from a source checkout
+> **Beta (0.4.0-beta.10).** Install with one command from a source checkout
 > (`npm run install:local`), or the registry form
 > (`dsh plugin --profile sdlc-web add @patwoodman/orchestrator`) once published — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -156,7 +156,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.9 && git push origin v0.4.0-beta.9
+git tag v0.4.0-beta.10 && git push origin v0.4.0-beta.10
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the

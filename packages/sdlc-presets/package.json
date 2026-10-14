@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/orchestrator-presets",
-  "version": "0.4.0-beta.9",
+  "version": "0.4.0-beta.10",
   "type": "module",
   "description": "26 dsh-agent-preset rows — one per SDLC role (patch declares them; no host code).",
   "main": "lib/index.js",
@@ -22,10 +22,8 @@
     "icon.svg"
   ],
   "scripts": {
-    "build": "node ./build.cjs",
-    "gen": "node ../../scripts/gen-presets.mjs",
-    "prepack": "node ./build.cjs",
-    "prepare": "node ./build.cjs"
+    "build": "node ../../scripts/build.mjs",
+    "gen": "node ../../scripts/gen-presets.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
