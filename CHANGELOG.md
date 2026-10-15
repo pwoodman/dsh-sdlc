@@ -2,6 +2,28 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.13] — CI green for the first time since the fold
+
+### Fixed
+
+- **Every `dsh plugin add` failed on CI with `ERR_PNPM_ADDING_TO_ROOT`.**
+  Root cause, finally nailed with a real pnpm 9.12.0 (not the shim that
+  silently redirects to v12): pnpm 9 refuses *any* add whose cwd is a
+  workspace root, with no multi-pattern exception — and DSH writes a
+  single-pattern workspace (`packages: ['.']`) into every profile, so the
+  profile *is* its own workspace root. pnpm 10+ only refuses multi-pattern
+  roots, which is why every local machine (pnp shim → v12 binary) passed
+  while CI (pinned pnpm 9.12.0 via `packageManager`) failed all 38 runs
+  since the beta.9 fold. The installer now forwards
+  `--ignore-workspace-root-check` to the profile-local pnpm (a no-op on
+  pnpm 10+). All five CI jobs pass: unit, gate-platform, gate-m0, gates
+  (M1–M8), e2e.
+- **CI `gate-m0` never linked the workspace before installing.** The
+  `gate-m0`, `gates`, and `e2e` jobs missed the `link-workspace.mjs` step
+  the `unit` job had since beta.6, so `lib/` bare cross-package imports
+  had no `node_modules` entries and the live boot probe failed its member
+  imports (M0-03/M0-04/M0-12). All three jobs now link first.
+
 ## [0.4.0-beta.12] — CI installs from a clean tree; npm first-publish diagnosis
 
 ### Fixed
