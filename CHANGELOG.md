@@ -2,6 +2,20 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.12] — CI installs from a clean tree; npm first-publish diagnosis
+
+### Fixed
+
+- **CI `gate-m0` failed on every fresh checkout while passing locally.** The
+  `gate-m0` (and `gates`, `e2e`) jobs never ran `node
+  scripts/link-workspace.mjs`, so `lib/`'s bare cross-package imports
+  (`@patwoodman/dsh-sdlc-flow-guard` from core, `…-core` from tools) had no
+  `node_modules` entries. The linked member deps then failed their imports in
+  the live boot probe (`M0-03` tools, `M0-04` commands, `M0-12` selftest),
+  even though every offline test passed — the `unit` job already had the
+  link step since beta.6. All three jobs now link the workspace before
+  building, matching the Release workflow.
+
 ## [0.4.0-beta.11] — renamed to `dsh-sdlc-flow`
 
 ### Changed

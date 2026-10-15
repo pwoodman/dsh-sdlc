@@ -75,6 +75,12 @@ jobs:
       # "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v4
       - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      # lib/ resolves cross-package imports through node_modules; a fresh
+      # checkout has none. Without this the linked member deps have no
+      # node_modules entries and the live boot probe fails its imports
+      # (M0-03/M0-04/M0-12), even though every offline test passes.
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs
       - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: install profiles + bundles
         run: node scripts/install-local.mjs --yes --skip-build
@@ -95,6 +101,10 @@ jobs:
         with:
           node-version: '22.18'
       - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      # Same workspace-link requirement as gate-m0: M1..M8 resolve
+      # cross-package lib/ imports through node_modules.
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs
       - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: integration + fault + adversarial layers (L4–L6)
         run: |
@@ -118,6 +128,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
+      # e2e imports lib/ cross-package modules (mock LLM, core) through
+      # node_modules, same as every other job.
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs
       - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: the eight §53 acceptance tests (mock provider, no cost)
         run: npm run test:e2e
