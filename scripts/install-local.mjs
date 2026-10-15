@@ -36,7 +36,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { run } from './lib/harness.mjs';
 import { dshPeerSatisfied } from './lib/semver-lite.mjs';
 import { ownBundlePrefix, isOwnBundleName } from './lib/composition.mjs';
@@ -388,31 +387,19 @@ function specsFor(names) {
 }
 
 /**
- * Run `dsh plugin …` from a neutral cwd OUTSIDE the source checkout.
+ * `dsh plugin … add` flags forwarded verbatim to the profile-local pnpm.
  *
- * pnpm walks UP from the invocation cwd to find a `pnpm-workspace.yaml`. This
- * repo IS a workspace (`pnpm-workspace.yaml: packages/*`), so running the
- * installer from the checkout makes every `dsh plugin add link:…` execute
- * inside that workspace — and pnpm 10 refuses with ERR_PNPM_ADDING_TO_ROOT
- * instead of adding the link to the profile. Local runs historically passed
- * because shells usually `cd` elsewhere first; CI always runs at the repo
- * root, so every bundle install failed there since the workspace file was
- * added. A temp dir has no workspace file above it, so pnpm treats the
- * profile dir as its own project.
+ * pnpm 9 refuses ANY `pnpm add` whose cwd is a workspace root with
+ * ERR_PNPM_ADDING_TO_ROOT unless `--ignore-workspace-root-check` is set (pnpm
+ * 10+ only refuses multi-pattern workspaces, which is why a pnpm-12 machine
+ * passes while CI's pinned pnpm 9.12.0 fails). DSH always creates a
+ * single-pattern workspace in the profile (`packages: ['.']`), so every
+ * bundle install trips the pnpm 9 guard: the profile IS its own workspace
+ * root and the add is exactly what the user asked for. The flag is
+ * pass-through (DSH forwards unknown args to pnpm), a no-op on pnpm 10+,
+ * and documented in `dsh plugin --help` output.
  */
-function shOutsideWorkspace(cmd, args, opts = {}) {
-  // withTempDir() removes the dir when the callback returns, so create the
-  // neutral cwd here and clean it up after the command (success or failure).
-  // PATH is inherited from process.env via run(), so `dsh`/`pnpm` resolve
-  // exactly as they do for every other step — only the cwd changes.
-  const neutral = join(tmpdir(), `sdlc-install-cwd-${process.pid}-${Date.now()}`);
-  mkdirSync(neutral, { recursive: true });
-  try {
-    return sh(cmd, args, { ...opts, cwd: neutral });
-  } finally {
-    rmSync(neutral, { recursive: true, force: true });
-  }
-}
+const ADD_FLAGS = ['--ignore-workspace-root-check'];
 
 /**
  * A one-line summary of a tool's stdout for the step log. `dsh plugin add`
@@ -428,7 +415,7 @@ function lastLine(text, max = 200) {
 
 step(`install: lead bundle into ${LEAD} (the single, self-contained spec)`, () => {
   const [bundle] = recipeBundles(LEAD_RECIPE);
-  shOutsideWorkspace('dsh', ['plugin', '--profile', LEAD, 'add', `link:${pkgDir(bundle)}`]);
+  sh('dsh', ['plugin', '--profile', LEAD, 'add', ...ADD_FLAGS, `link:${pkgDir(bundle)}`]);
   const deps = Object.keys(JSON.parse(readFileSync(join(pkgDir(bundle), 'package.json'), 'utf8')).dependencies ?? {})
     .filter((name) => isOwnBundleName(name));
   if (deps.length === 0) return `${bundle} (self-contained — the members are folded into it)`;
@@ -442,10 +429,10 @@ step(`install: lead bundle into ${LEAD} (the single, self-contained spec)`, () =
   return `${bundle} + ${deps.length} member modules (unfolded tree)`;
 });
 step(`install: worker bundles into ${WORKER} (guard + report tools ONLY)`, () =>
-  lastLine(shOutsideWorkspace('dsh', ['plugin', '--profile', WORKER, 'add', ...specsFor(recipeBundles(WORKER_RECIPE))]).stdout),
+  lastLine(sh('dsh', ['plugin', '--profile', WORKER, 'add', ...ADD_FLAGS, ...specsFor(recipeBundles(WORKER_RECIPE))]).stdout),
 );
 step(`install: probe bundles into ${PROBE} (recipe composition incl. the guard)`, () =>
-  lastLine(shOutsideWorkspace('dsh', ['plugin', '--profile', PROBE, 'add', ...specsFor(recipeBundles(PROBE_RECIPE))]).stdout),
+  lastLine(sh('dsh', ['plugin', '--profile', PROBE, 'add', ...ADD_FLAGS, ...specsFor(recipeBundles(PROBE_RECIPE))]).stdout),
 );
 
 // ── verification ───────────────────────────────────────────────────────────
