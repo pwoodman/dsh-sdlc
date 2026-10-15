@@ -123,17 +123,24 @@ function sh(cmd, args, opts = {}) {
     const detail = (res.stderr || res.stdout || String(res.error ?? '')).trim().slice(0, 1500);
     // `dsh plugin` buries the pnpm reason in a per-operation log file. Surface
     // its tail so CI failures are diagnosable without SSH-ing into the runner.
+    // Note: the log only captures piped output; CLI-inherited pnpm output goes
+    // to our own stdout/stderr instead, so capture the tail of THOSE too.
+    const ownTail = [res.stdout, res.stderr].map((t) => String(t ?? '').trim().split('\n').slice(-12).join('\n')).join('\n').trim().slice(-1200);
     let logTail = '';
     if (cmd === 'dsh') {
       const m = /diagnostics:\s*(\S+)/.exec(detail);
       if (m) {
         try {
-          const lines = readFileSync(m[1], 'utf8').trim().split('\n');
-          logTail = `\n--- pnpm.log tail (${m[1]}) ---\n${lines.slice(-25).join('\n')}`;
-        } catch { /* the log path may itself be missing */ }
+          const text = readFileSync(m[1], 'utf8').trim();
+          logTail = text
+            ? `\n--- pnpm.log tail (${m[1]}) ---\n${text.split('\n').slice(-25).join('\n')}`
+            : `\n--- pnpm.log (${m[1]}) is EMPTY: pnpm inherited our stdio, so its error is in our own output tail above; the empty log only records the exit code ---`;
+        } catch {
+          logTail = `\n--- pnpm.log (${m[1]}) is unreadable ---`;
+        }
       }
     }
-    throw new Error(`${cmd} ${args.join(' ')} exited ${res.code}\n${detail}${logTail}`);
+    throw new Error(`${cmd} ${args.join(' ')} exited ${res.code}\n--- own output tail ---\n${ownTail}\n${detail}${logTail}`);
   }
   return res;
 }
