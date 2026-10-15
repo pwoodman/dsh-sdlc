@@ -121,7 +121,19 @@ function sh(cmd, args, opts = {}) {
   const res = run(cmd, args, { timeoutMs: 900_000, ...opts });
   if (!res.ok) {
     const detail = (res.stderr || res.stdout || String(res.error ?? '')).trim().slice(0, 1500);
-    throw new Error(`${cmd} ${args.join(' ')} exited ${res.code}\n${detail}`);
+    // `dsh plugin` buries the pnpm reason in a per-operation log file. Surface
+    // its tail so CI failures are diagnosable without SSH-ing into the runner.
+    let logTail = '';
+    if (cmd === 'dsh') {
+      const m = /diagnostics:\s*(\S+)/.exec(detail);
+      if (m) {
+        try {
+          const lines = readFileSync(m[1], 'utf8').trim().split('\n');
+          logTail = `\n--- pnpm.log tail (${m[1]}) ---\n${lines.slice(-25).join('\n')}`;
+        } catch { /* the log path may itself be missing */ }
+      }
+    }
+    throw new Error(`${cmd} ${args.join(' ')} exited ${res.code}\n${detail}${logTail}`);
   }
   return res;
 }
