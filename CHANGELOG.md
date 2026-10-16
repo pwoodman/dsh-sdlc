@@ -2,7 +2,7 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
-## [0.4.0-beta.16] — publish safety: a broken tree can no longer reach npm
+## [0.4.0-beta.17] — publish safety: a broken tree can no longer reach npm
 
 ### Added
 
