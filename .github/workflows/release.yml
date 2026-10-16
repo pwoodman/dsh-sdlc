@@ -216,13 +216,24 @@ jobs:
             ( cd "packages/$dir" && npm publish --access public --tag "$dist_tag" --ignore-scripts --provenance )
           done
           # Post-publish proof: every member resolves at the published version.
+          # npm replicates publishes across its CDN, so a freshly published
+          # version can 404 for a few minutes (observed on beta.17: 6/7
+          # members published, then the verification read hit a cold replica
+          # and failed the step). Poll each member with backoff instead of
+          # reading once — a version that never appears still fails closed.
           for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
             name="$(node -p "require('./packages/$dir/package.json').name")"
             private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
             if [ "$private" = "true" ]; then continue; fi
-            seen="$(npm view "$name@$version" version)"
+            seen=""
+            for attempt in 1 2 3 4 5 6; do
+              seen="$(npm view "$name@$version" version 2>/dev/null || true)"
+              if [ "$seen" = "$version" ]; then break; fi
+              echo "waiting for $name@$version on the registry (attempt $attempt, saw '${seen:-<nothing>}')"
+              sleep 60
+            done
             if [ "$seen" != "$version" ]; then
-              echo "::error::$name@$version not visible after publish (saw $seen)"
+              echo "::error::$name@$version not visible after publish (saw '${seen:-<nothing>}')"
               exit 1
             fi
             echo "verified $name@$seen on the registry"
