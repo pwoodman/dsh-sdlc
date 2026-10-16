@@ -472,7 +472,13 @@ const checks = [
       if (unresolved.length) throw new Error(unresolved.join('; '));
       const reports = profiles.map((p) => staticReports.get(p.name));
       const failed = reports.filter((r) => r && !r.ok);
-      if (failed.length) throw new Error(failed.map((r) => `${r.profile.name}: ${r.problems.join('; ')}`).join(' | '));
+      if (failed.length) {
+        throw new Error(failed.map((r) => {
+          const label = r.composition?.profile ?? r.profile?.name ?? 'unknown-profile';
+          const probs = r.problems ?? [];
+          return `${label}: ${probs.join('; ')}`;
+        }).join(' | '));
+      }
       // E2: no profile may name a DSH template outside the closed set.
       for (const profile of profiles) {
         if (!['acp', 'web', 'headless', 'sdk', 'sdk-minimal'].includes(profile.template)) {

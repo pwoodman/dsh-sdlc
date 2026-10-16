@@ -306,14 +306,15 @@ if (!SKIP_BUILD) {
   // Absolute script paths and no `cwd`: each generator resolves its own root from
   // `import.meta.dirname`. Not chdir-ing means the install also works when the
   // checkout lives somewhere node cannot `getcwd()` (containers, portal mounts).
+  // Order matters: fold-meta.mjs copies each member's built lib/ into the
+  // meta-bundle's lib/rows/, but build.mjs starts by wiping lib/ — so a second
+  // bare build AFTER the fold deletes the folded tree (M0-11 then fails with
+  // "@patwoodman/dsh-sdlc-flow/services does not resolve to a file"). Build
+  // once, fold once, generate the patch last; never rebuild after folding.
   const gen = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-160);
-  step('build: generated patches (presets; members folded into the meta-bundle)', () =>
+  step('build: artifacts + fold + generated patches', () =>
     gen('gen-presets.mjs') + gen('build.mjs') + gen('build-ui.mjs') + gen('fold-meta.mjs') + gen('gen-bundle-patch.mjs'),
   );
-  step('build: artifacts (build.mjs + build-ui.mjs)', () => {
-    const build = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-200);
-    return build('build.mjs') + build('build-ui.mjs');
-  });
 }
 
 // ── profiles ───────────────────────────────────────────────────────────────

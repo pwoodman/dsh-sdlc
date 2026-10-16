@@ -77,8 +77,35 @@ function rewriteImports(text) {
   );
 }
 
+/**
+ * Back up the meta-bundle's folded member tree (lib/rows/) before a rebuild
+ * wipes lib/, so it can be restored after the src/ mirror. Returns null when
+ * there is nothing to preserve (fresh checkout, fold not yet run).
+ */
+function backupRows(lib) {
+  const rows = join(lib, 'rows');
+  if (!existsSync(rows)) return null;
+  const tmp = join(ROOT, '.validation', `.rows-backup-${process.pid}`);
+  rmSync(tmp, { recursive: true, force: true });
+  mkdirSync(join(tmp, '..'), { recursive: true });
+  cpSync(rows, tmp, { recursive: true });
+  return tmp;
+}
+
+function restoreRows(lib, tmp) {
+  const rows = join(lib, 'rows');
+  rmSync(rows, { recursive: true, force: true });
+  cpSync(tmp, rows, { recursive: true });
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 let failed = 0;
 let built = 0;
+
+// The meta-bundle (packages/sdlc-orchestrator) carries the folded member tree
+// at lib/rows/ (see scripts/fold-meta.mjs). Its name is manifest-derived so a
+// rename cannot desynchronise the preserve rule below.
+const META_PACKAGE = JSON.parse(readFileSync(join(PKG_ROOT, 'sdlc-orchestrator', 'package.json'), 'utf8')).name;
 
 // The UI bundle owns its own build (scripts/build-ui.mjs compiles JSX into
 // the closure-factory client bundle); the generic src/ → lib/ mirror would
@@ -136,6 +163,17 @@ for (const dir of packageDirs()) {
     continue;
   }
 
+  // The meta-bundle's folded member tree (lib/rows/, written by
+  // scripts/fold-meta.mjs AFTER this build) lives inside this package's lib/
+  // but is NOT part of its src/ mirror. A rebuild must preserve it: wiping
+  // lib/ wholesale deletes lib/rows/ and the install then fails M0-11 with
+  // "@patwoodman/dsh-sdlc-flow/services does not resolve to a file" — while
+  // the committed patch still names the folded aliases. So: back the folded
+  // tree up before the wipe and restore it after the mirror. (Re-running
+  // fold-meta.mjs would also work, but the member lib/ trees it copies may
+  // not exist yet at this point in a full build — the fold step runs last.)
+  const isMeta = name === META_PACKAGE;
+  const rowsBackup = isMeta ? backupRows(lib) : null;
   rmSync(lib, { recursive: true, force: true });
   mkdirSync(lib, { recursive: true });
   for (const rel of files) {
@@ -144,6 +182,7 @@ for (const dir of packageDirs()) {
     mkdirSync(join(dest, '..'), { recursive: true });
     writeFileSync(dest, srcText);
   }
+  if (isMeta && rowsBackup) restoreRows(lib, rowsBackup);
 
   // Keep the package entrypoint honest: lib/ main must resolve.
   const main = pkg.main ?? 'lib/index.js';
