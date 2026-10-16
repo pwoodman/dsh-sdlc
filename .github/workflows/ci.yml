@@ -167,6 +167,12 @@ jobs:
       - name: build the no-clone tarball
         run: node scripts/build-release.mjs
       - name: smoke 1/2 — tarball install from scratch
+        # doctor's two environment errors (no provider credentials on a
+        # clean runner; unpack dir is not a git repo) are EXPECTED here —
+        # they describe the sandbox, not the install. What must hold: the
+        # install itself completes, the profiles exist, and the M0 gate is
+        # green. M0 is asserted explicitly below; doctor runs with its two
+        # environment checks demoted so a healthy install is green.
         run: |
           set -euo pipefail
           rm -rf "$HOME/.dsh-test-smoke" /tmp/smoke-tarball
@@ -174,7 +180,8 @@ jobs:
           tar xzf dist/dsh-sdlc-beta.tgz -C /tmp/smoke-tarball
           cd /tmp/smoke-tarball/dsh-sdlc-*/
           DSH_HOME="$HOME/.dsh-test-smoke" ./install.sh
-          DSH_HOME="$HOME/.dsh-test-smoke" node scripts/doctor.mjs
+          DSH_HOME="$HOME/.dsh-test-smoke" node scripts/doctor.mjs --allow-no-credentials --allow-no-repo
+          DSH_HOME="$HOME/.dsh-test-smoke" node scripts/validate-m0.mjs
       - name: smoke 2/2 — registry-shape install (packed lib/ only)
         # npm pack stages exactly `files` (lib/, never src/ or build.cjs),
         # so installing the packed tarballs proves the published packages

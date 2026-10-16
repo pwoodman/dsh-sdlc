@@ -12,9 +12,11 @@
  * (dsh-commands README) and do not exist in one-shot runs.
  *
  *   node scripts/doctor.mjs [--json <path>] [--fix] [--profile <name>] [--quiet]
+ *     [--allow-no-credentials] [--allow-no-repo]
  *
  * Exit 0 = no errors (warnings allowed). Exit 1 = at least one error.
  * `--fix` performs only idempotent, non-destructive repairs and re-runs.
+ * The `--allow-*` flags demote environment checks for smoke contexts.
  */
 
 import { existsSync, readFileSync, mkdirSync, appendFileSync, writeFileSync } from 'node:fs';
@@ -32,6 +34,12 @@ const argv = process.argv.slice(2);
 const JSON_OUT = argv.includes('--json') ? argv[argv.indexOf('--json') + 1] : null;
 const FIX = argv.includes('--fix');
 const QUIET = argv.includes('--quiet');
+// Smoke contexts (CI install-smoke, tarball rehearsals) run doctor in places
+// that are healthy but look bare: a clean runner has no provider keys, and an
+// unpack dir is not a git repo. Demote exactly those two environment checks
+// to warnings so a healthy install is green; real users still get errors.
+const ALLOW_NO_CREDENTIALS = argv.includes('--allow-no-credentials');
+const ALLOW_NO_REPO = argv.includes('--allow-no-repo');
 // P36 (beta.2): the peer range the packages declare; the runtime version is
 // checked against it instead of against one pinned version string.
 const DSH_PEER_RANGE = JSON.parse(
@@ -145,7 +153,7 @@ function checkHome() {
   } else if (envKeys.length) {
     record(sec, 'warn', 'no credential store', `relying on env: ${envKeys.join(', ')}`);
   } else {
-    record(sec, 'error', 'no provider credentials', 'neither .credentials.yaml nor a *_API_KEY env var', 'Set an API key, or run the Models settings page');
+    record(sec, ALLOW_NO_CREDENTIALS ? 'warn' : 'error', 'no provider credentials', 'neither .credentials.yaml nor a *_API_KEY env var', 'Set an API key, or run the Models settings page');
   }
   if (envKeys.length) record(sec, 'ok', `env keys: ${envKeys.join(', ')}`);
 }
@@ -230,7 +238,7 @@ function checkProject() {
   const sec = 'Project';
   const inside = run('git', ['rev-parse', '--is-inside-work-tree'], { cwd: PROJECT });
   if (!inside.ok || inside.stdout.trim() !== 'true') {
-    record(sec, 'error', 'not a git repository', PROJECT, 'Run inside a git repo; worktrees and the integration branch require it');
+    record(sec, ALLOW_NO_REPO ? 'warn' : 'error', 'not a git repository', PROJECT, 'Run inside a git repo; worktrees and the integration branch require it');
     return;
   }
   record(sec, 'ok', 'git repository');
