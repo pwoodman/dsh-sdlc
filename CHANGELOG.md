@@ -2,6 +2,30 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.14] — rebuilds preserve the fold; M0-11 reports instead of crashing
+
+### Fixed
+
+- **The installer built twice and the second build deleted the fold.**
+  `install-local.mjs` ran the full pipeline (build → fold → gen) and then
+  a *second* bare `build.mjs` + `build-ui.mjs` after it. `build.mjs` wipes
+  `lib/` wholesale, so the second pass deleted the just-folded `lib/rows/`
+  tree while the patch still named the folded aliases — M0-11 failed with
+  `services` / `tools-plugin` / `presets-plugin` / `ui` unresolvable on any
+  machine that built from scratch (including every fresh `install-local`
+  run). Collapsed to a single ordered pipeline: build once, fold once,
+  generate last.
+- **`build.mjs` now preserves `lib/rows/` across bare rebuilds.** The
+  meta-bundle's folded member tree is backed up before the `lib/` wipe and
+  restored after the `src/` mirror (package name manifest-derived, so
+  renames cannot desynchronise the rule). Any bare rebuild — CI, a second
+  install run, `npm run build` — keeps the fold intact.
+- **M0-11 crashed instead of reporting.** `validateProfileStatic` returns
+  `{ ok, problems, composition }` with no `profile` field, so the failure
+  path died with `Cannot read properties of undefined (reading 'name')`
+  and hid the unresolvable rows. It now labels via
+  `composition.profile ?? profile.name`.
+
 ## [0.4.0-beta.13] — CI green for the first time since the fold
 
 ### Fixed
