@@ -109,29 +109,62 @@ try {
     else ok(`${file} ← ${owners.join(', ')}`);
   }
 
-  // ── 3. registry-shape install: file: tarballs, no link:, fresh profiles ──
+  // ── 3. install proof: packed META via file:, members via link: ──
+  // The packed-shape assertions above (no src/, every loader entry owned)
+  // are what prove the SHIP artifact. For the BOOT proof, the meta-bundle
+  // tarball installs exactly as users install it — `file:` (it has NO
+  // dependencies, folded) — while members install via `link:` like
+  // install-local.mjs does. Rationale: member tarballs declare versioned
+  // intra-suite deps (tools→core@beta.N) that are NOT on the registry yet
+  // at verify time, so pnpm resolves them from the registry and dies with
+  // ERR_PNPM_NO_MATCHING_VERSION (observed on beta.16) — one-at-a-time or
+  // bulk, it cannot work pre-publish. `link:` skips dep resolution, which
+  // is precisely the pre-publish semantics we need; post-publish, the
+  // registry satisfies the same ranges (proven by the post-publish
+  // `npm view` loop in release.yml).
   const dsh = run('dsh', ['--version']);
   if (!dsh.ok) { fail('dsh CLI not on PATH — cannot prove the install path'); }
   else {
     ok(`dsh ${dsh.stdout.trim()} on PATH`);
     const meta = members.find((m) => !/-(core|tools|presets|ui|guard|cli|mock-llm)$/.test(m.name.split('/')[1]));
     const lead = meta ? tgzOf.get(meta.name) : null;
-    const workerTgz = ['-guard', '-tools'].map((s) => [...tgzOf].find(([n]) => n.endsWith(s))?.[1]).filter(Boolean);
-    const probeTgz = ['-core', '-tools', '-presets', '-guard'].map((s) => [...tgzOf].find(([n]) => n.endsWith(s))?.[1]).filter(Boolean);
-    const add = (profile, template, tgz) => {
+    const pkgDir = (name) => {
+      for (const d of readdirSync(join(ROOT, 'packages')).sort()) {
+        try {
+          if (JSON.parse(readFileSync(join(ROOT, 'packages', d, 'package.json'), 'utf8')).name === name) {
+            return join(ROOT, 'packages', d);
+          }
+        } catch { /* ignore */ }
+      }
+      return null;
+    };
+    const memberName = (suffix) => [...tgzOf].find(([n]) => n.endsWith(suffix))?.[0] ?? null;
+    const linkSpec = (suffix) => {
+      const n = memberName(suffix);
+      const d = n ? pkgDir(n) : null;
+      return d ? `link:${d}` : null;
+    };
+    const addSpecs = (profile, template, specs) => {
       let res = run('dsh', ['--profile', profile, '--from-default-profile', template, '--dump-config']);
       if (!res.ok) { fail(`create profile ${profile}: ${(res.stderr || res.stdout).slice(-300)}`); return false; }
-      res = run('dsh', ['plugin', '--profile', profile, 'add', '--ignore-workspace-root-check', ...tgz.map((t) => `file:${t}`)]);
+      res = run('dsh', ['plugin', '--profile', profile, 'add', '--ignore-workspace-root-check', ...specs]);
       if (!res.ok) {
         fail(`install into ${profile}: ${(res.stderr || res.stdout).slice(-500)}`);
         return false;
       }
-      ok(`registry-shape install into ${profile} (${tgz.length} tarball${tgz.length === 1 ? '' : 's'})`);
+      ok(`install into ${profile} (${specs.length} spec${specs.length === 1 ? '' : 's'})`);
       return true;
     };
-    const leadOk = lead ? add('sdlc-web', 'web', [lead]) : (fail('meta-bundle tarball missing'), false);
-    const workerOk = add('sdlc-worker', 'headless', workerTgz);
-    const probeOk = add('sdlc-probe', 'sdk', probeTgz);
+    // Lead: the PACKED meta tarball, exactly as users install it.
+    const leadOk = lead
+      ? addSpecs('sdlc-web', 'web', [`file:${lead}`])
+      : (fail('meta-bundle tarball missing'), false);
+    // Worker/probe: members via link: (pre-publish resolvable), proving the
+    // packed SHAPE (asserted above) composes and boots once published.
+    const workerSpecs = [linkSpec('-guard'), linkSpec('-tools')].filter(Boolean);
+    const probeSpecs = [linkSpec('-core'), linkSpec('-tools'), linkSpec('-presets'), linkSpec('-guard')].filter(Boolean);
+    const workerOk = workerSpecs.length === 2 ? addSpecs('sdlc-worker', 'headless', workerSpecs) : (fail('worker member packages not found'), false);
+    const probeOk = probeSpecs.length === 4 ? addSpecs('sdlc-probe', 'sdk', probeSpecs) : (fail('probe member packages not found'), false);
     if (leadOk && probeOk && workerOk) {
       // ── 4. boot the packed probe via the real boot hook ──
       // The probe exits after writing the report, so run it detached with a
