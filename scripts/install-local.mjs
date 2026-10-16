@@ -311,9 +311,14 @@ if (!SKIP_BUILD) {
   // bare build AFTER the fold deletes the folded tree (M0-11 then fails with
   // "@patwoodman/dsh-sdlc-flow/services does not resolve to a file"). Build
   // once, fold once, generate the patch last; never rebuild after folding.
+  // The link step comes FIRST: member lib/ files import each other through
+  // bare specifiers (@patwoodman/…), which resolve through the workspace
+  // node_modules links. A no-clone tarball has no node_modules at all, so
+  // without this the tarball install fails M0-03/M0-04/M0-12 with "failed to
+  // import" while the source-checkout install passes.
   const gen = (name) => sh('node', [join(ROOT, 'scripts', name)]).stdout.trim().slice(-160);
   step('build: artifacts + fold + generated patches', () =>
-    gen('gen-presets.mjs') + gen('build.mjs') + gen('build-ui.mjs') + gen('fold-meta.mjs') + gen('gen-bundle-patch.mjs'),
+    gen('link-workspace.mjs') + gen('gen-presets.mjs') + gen('build.mjs') + gen('build-ui.mjs') + gen('fold-meta.mjs') + gen('gen-bundle-patch.mjs'),
   );
 }
 
