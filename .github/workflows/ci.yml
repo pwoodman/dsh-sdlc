@@ -195,8 +195,13 @@ jobs:
           done
           ls /tmp/smoke-pack/*.tgz
           # Every packed tarball must contain its loader entry points and no src/.
+          # NOTE: list each tarball to a file first — `tar tzf | grep -q`
+          # lets grep exit on first match, SIGPIPE-killing tar, which fails
+          # the step under `set -o pipefail` (observed on the first smoke
+          # run: "tar: stdout: write error").
           for tgz in /tmp/smoke-pack/*.tgz; do
-            if tar tzf "$tgz" | grep -q '^package/src/'; then
+            tar tzf "$tgz" > /tmp/smoke-pack/contents.txt
+            if grep -q '^package/src/' /tmp/smoke-pack/contents.txt; then
               echo "::error::packed $tgz contains src/ (unpublished at install time)"
               exit 1
             fi
@@ -204,7 +209,8 @@ jobs:
           for f in lib/index.js lib/plugin.js lib/roles.js lib/cli.mjs lib/client.js; do
             found=0
             for tgz in /tmp/smoke-pack/*.tgz; do
-              if tar tzf "$tgz" | grep -q "package/$f\$"; then found=1; break; fi
+              tar tzf "$tgz" > /tmp/smoke-pack/contents.txt
+              if grep -q "package/$f\$" /tmp/smoke-pack/contents.txt; then found=1; break; fi
             done
             if [ "$found" = "0" ]; then
               echo "::error::no packed tarball provides $f"
