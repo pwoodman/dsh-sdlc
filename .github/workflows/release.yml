@@ -6,8 +6,22 @@ name: Release
 # `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` works exactly like
 # dsh-context / dsh-proactive.
 #
+# SAFETY MODEL (why a broken tree can never reach npm):
+#   1. This workflow only runs for tags, and every tag push also triggers CI.
+#      The publish step is gated on the CI workflow's full success for THIS
+#      commit (commit-status check below): unit → gate-platform → gate-m0 →
+#      gates (M1–M8) → e2e → install-smoke (tarball install + packed-shape).
+#      A tag pushed on a red tree waits instead of publishing.
+#   2. This job re-runs the same gates itself (offline tests + P→M8+Q) so a
+#      re-run months later cannot publish a tree that no longer passes.
+#   3. Before publishing, verify-publish.mjs installs the PACKED tarballs
+#      (the exact files npm would ship) into scratch profiles and boots the
+#      probe — the beta.10 prepack-ENOENT class fails here, not on users.
+#   4. npm provenance ties each tarball to this repo + workflow; the registry
+#      shows the build that produced it.
+#
 #   node scripts/set-scope.mjs @your-npm-username   # once, if you do not own the scope
-#   git tag v0.4.0-beta.14 && git push origin v0.4.0-beta.14
+#   git tag v0.4.0-beta.15 && git push origin v0.4.0-beta.15
 #
 # The tag must match package.json's version (checked below), so the release name,
 # the tarball name and the npm versions can never drift apart.
@@ -19,6 +33,7 @@ on:
 
 permissions:
   contents: write # create the GitHub Release and upload assets
+  id-token: write # npm provenance (sigstore signing of each publish)
 
 jobs:
   release:
@@ -66,6 +81,44 @@ jobs:
 
       - name: gates P and M0–M8 plus coverage
         run: node scripts/validate-gates.mjs
+
+      # Gate 1: CI must be fully green for THIS commit. A tag pushed on a red
+      # tree (or while CI is still running) waits here instead of publishing.
+      # Polls the CI workflow's conclusion for this exact SHA; fails closed on
+      # timeout or on any conclusion other than success.
+      - name: wait for CI green on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA}"
+          echo "waiting for CI success on $sha (up to 40 min)"
+          for i in $(seq 1 80); do
+            status="$(gh api "repos/${{ github.repository }}/commits/$sha/check-runs" \
+              --jq '[.check_runs[] | select(.name | startswith("CI") or . == "CI") | .conclusion] | unique | join(",")')"
+            # Fall back to workflow-run conclusions when check-runs are absent.
+            if [ -z "$status" ] || [ "$status" = "null" ]; then
+              status="$(gh run list --commit "$sha" --workflow CI --json conclusion \
+                --jq '[.[].conclusion] | unique | join(",")')"
+            fi
+            echo "attempt $i: CI conclusions for $sha: ${status:-<none yet>}"
+            case ",$status," in
+              *,failure,*|*,cancelled,*|*,timed_out,*|*,action_required,*|*,stale,*)
+                echo "::error::CI is not green for $sha ($status) — refusing to publish"
+                exit 1
+                ;;
+              *,success,*)
+                # success present and no failure state alongside it
+                if [ "$status" = "success" ]; then
+                  echo "CI green for $sha"
+                  exit 0
+                fi
+                ;;
+            esac
+            sleep 30
+          done
+          echo "::error::timed out waiting for CI on $sha"
+          exit 1
 
       - name: keep the evidence bundles
         if: always()
@@ -117,6 +170,13 @@ jobs:
 
             Known beta limits are in CHANGELOG.md.
 
+      # Gate 3 (pre-publish): install the PACKED tarballs — the exact files
+      # npm would ship — into scratch profiles and boot the probe. The
+      # beta.10 prepack-ENOENT class (lib/ missing from the pack) and the
+      # unfolded-fold class both fail here, on the runner, never on users.
+      - name: verify the packed tarballs install and boot
+        run: node scripts/verify-publish.mjs
+
       # Publishing is opt-in and skipped (never failed) when unconfigured: the
       # tarball above is a complete install path on its own. Enable it with the
       # repository variable PUBLISH_NPM=true plus the NPM_TOKEN secret.
@@ -150,7 +210,22 @@ jobs:
             # (ENOENT build.cjs) and, with `set -e` swallowed by a subshell
             # mistake, the loop used to continue and leave the worker packages
             # unpublished. `--ignore-scripts` packs the built lib/ as-is.
-            ( cd "packages/$dir" && npm publish --access public --tag "$dist_tag" --ignore-scripts )
+            # `--provenance` ties the tarball to this repo + workflow (needs
+            # id-token:write, granted above); it is a no-op for registries
+            # that do not support it and fails closed here if signing fails.
+            ( cd "packages/$dir" && npm publish --access public --tag "$dist_tag" --ignore-scripts --provenance )
+          done
+          # Post-publish proof: every member resolves at the published version.
+          for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
+            name="$(node -p "require('./packages/$dir/package.json').name")"
+            private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
+            if [ "$private" = "true" ]; then continue; fi
+            seen="$(npm view "$name@$version" version)"
+            if [ "$seen" != "$version" ]; then
+              echo "::error::$name@$version not visible after publish (saw $seen)"
+              exit 1
+            fi
+            echo "verified $name@$seen on the registry"
           done
 
       - name: explain an npm refusal

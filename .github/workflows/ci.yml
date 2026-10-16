@@ -141,9 +141,79 @@ jobs:
           name: e2e-evidence
           path: .validation/
 
+  # The two install paths a user can actually take, from a clean slate.
+  # This is the job that would have caught every beta.9–beta.13 failure
+  # class before it reached npm:
+  #   - the tarball path (./install.sh from a staged no-clone artifact);
+  #   - the registry path (dsh plugin add of the PACKED tarballs, i.e. the
+  #     exact files npm would ship — lib/ only, no src/, no build scripts).
+  # A tag that cannot be installed from scratch never reaches the Release
+  # workflow's publish step (release.yml gates on this job's success).
+  install-smoke:
+    needs: e2e
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      DSH_VERSION: 0.2.0-rc.2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - uses: pnpm/action-setup@v4
+      - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs
+      - name: build the no-clone tarball
+        run: node scripts/build-release.mjs
+      - name: smoke 1/2 — tarball install from scratch
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/.dsh-test-smoke" /tmp/smoke-tarball
+          mkdir -p /tmp/smoke-tarball
+          tar xzf dist/dsh-sdlc-beta.tgz -C /tmp/smoke-tarball
+          cd /tmp/smoke-tarball/dsh-sdlc-*/
+          DSH_HOME="$HOME/.dsh-test-smoke" ./install.sh
+          DSH_HOME="$HOME/.dsh-test-smoke" node scripts/doctor.mjs
+      - name: smoke 2/2 — registry-shape install (packed lib/ only)
+        # npm pack stages exactly `files` (lib/, never src/ or build.cjs),
+        # so installing the packed tarballs proves the published packages
+        # resolve their row modules with no build step — the beta.10
+        # prepack-ENOENT class and the unfolded-fold class both fail here.
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/smoke-pack && mkdir -p /tmp/smoke-pack
+          for dir in packages/*/; do
+            ( cd "$dir" && npm pack --ignore-scripts --pack-destination /tmp/smoke-pack >/dev/null )
+          done
+          ls /tmp/smoke-pack/*.tgz
+          # Every packed tarball must contain its loader entry points and no src/.
+          for tgz in /tmp/smoke-pack/*.tgz; do
+            if tar tzf "$tgz" | grep -q '^package/src/'; then
+              echo "::error::packed $tgz contains src/ (unpublished at install time)"
+              exit 1
+            fi
+          done
+          for f in lib/index.js lib/plugin.js lib/roles.js lib/cli.mjs lib/client.js; do
+            found=0
+            for tgz in /tmp/smoke-pack/*.tgz; do
+              if tar tzf "$tgz" | grep -q "package/$f\$"; then found=1; break; fi
+            done
+            if [ "$found" = "0" ]; then
+              echo "::error::no packed tarball provides $f"
+              exit 1
+            fi
+          done
+          echo "packed-shape OK: $(ls /tmp/smoke-pack/*.tgz | wc -l) tarballs, lib/ only"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-evidence
+          path: dist/*.tgz
+
   # L8 — live. Manual only, costs money, never runs automatically.
   e2e-live:
-    needs: e2e
+    needs: install-smoke
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:

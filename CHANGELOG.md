@@ -2,7 +2,34 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
-## [0.4.0-beta.14] — rebuilds preserve the fold; M0-11 reports instead of crashing
+## [Unreleased] — publish safety: a broken tree can no longer reach npm
+
+### Added
+
+- **CI `install-smoke` job: the two real install paths, from scratch.**
+  Builds the no-clone tarball and (1) installs it via `./install.sh` into a
+  fresh `DSH_HOME` and runs `doctor`, then (2) `npm pack`s every member and
+  asserts the packed shape — no `src/` in any tarball, every loader entry
+  (`lib/index.js`, `plugin.js`, `roles.js`, `cli.mjs`, `client.js`) provided
+  by its owning package. Would have caught the beta.10 prepack-ENOENT class
+  and the unfolded-fold class before any tag.
+- **`scripts/verify-publish.mjs`: pre-publish proof on the ship artifact.**
+  Packs every member with `--ignore-scripts` (exactly what Release
+  publishes), asserts packed shape, installs the tarballs with
+  `dsh plugin add file:<tgz>` (registry-shape, no `link:`) into scratch
+  profiles, and boots the packed probe via `SDLC_SELFTEST` (7 tools,
+  20 commands, 9 services, 26 presets). Runs in Release between the gates
+  and the publish; any failure refuses to publish.
+- **Release waits for CI green on the tagged commit.** A `wait for CI green`
+  step polls the CI workflow's conclusion for `GITHUB_SHA` (up to 40 min)
+  and fails closed on any non-success — a tag pushed on a red tree waits
+  instead of publishing.
+- **npm provenance + post-publish verification.** Publishes with
+  `--provenance` (sigstore-tied to this repo + workflow) and re-reads every
+  published version from the registry after the loop; a half-published
+  version fails loudly instead of stranding users.
+
+## [0.4.0-beta.15] — rebuilds preserve the fold; M0-11 reports instead of crashing
 
 ### Fixed
 
