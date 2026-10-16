@@ -21,7 +21,7 @@ name: Release
 #      shows the build that produced it.
 #
 #   node scripts/set-scope.mjs @your-npm-username   # once, if you do not own the scope
-#   git tag v0.4.0-beta.15 && git push origin v0.4.0-beta.15
+#   git tag v0.4.0-beta.16 && git push origin v0.4.0-beta.16
 #
 # The tag must match package.json's version (checked below), so the release name,
 # the tarball name and the npm versions can never drift apart.

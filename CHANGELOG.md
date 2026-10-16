@@ -2,7 +2,7 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
-## [Unreleased] — publish safety: a broken tree can no longer reach npm
+## [0.4.0-beta.16] — publish safety: a broken tree can no longer reach npm
 
 ### Added
 
@@ -28,6 +28,23 @@ All notable changes to the DSH SDLC Flow plugin suite.
   `--provenance` (sigstore-tied to this repo + workflow) and re-reads every
   published version from the registry after the loop; a half-published
   version fails loudly instead of stranding users.
+
+### Fixed
+
+- **Tarball installs failed with `failed to import` (no workspace links).**
+  Member `lib/` files import each other through bare specifiers, which
+  resolve via the workspace `node_modules` links — but a no-clone tarball
+  ships no `node_modules`, and nothing created the links. The build
+  pipeline now starts with `link-workspace.mjs`. Caught by the new
+  `install-smoke` job before any user hit it.
+- **Smoke `doctor` failed on sandbox absences, not product regressions.**
+  A clean runner has no provider credentials and the unpack dir is not a
+  git repo — `doctor` now takes `--allow-no-credentials` / `--allow-no-repo`
+  (demote exactly those two environment checks to warnings), and the smoke
+  asserts the M0 gate directly.
+- **Smoke pack-shape check died on SIGPIPE.** `tar tzf | grep -q` lets grep
+  exit on first match, killing tar under `pipefail`. Each tarball is now
+  listed to a file before grepping.
 
 ## [0.4.0-beta.15] — rebuilds preserve the fold; M0-11 reports instead of crashing
 
