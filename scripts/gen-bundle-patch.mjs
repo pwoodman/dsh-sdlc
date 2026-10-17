@@ -68,10 +68,11 @@ const HEADER = `# sdlc-orchestrator — lead-profile meta-bundle (the ONE spec t
 #
 # Order matters only where a row waits on a service: services first, then the
 # tools and preset rows that use them, then the UI. The
-# \`agent-preset-registry\` row stays FIRST inside the presets block (the dialect
-# has no insert-if-missing), so on the web template the composed lead holds two
-# same-id registry rows at one service — the loader accepts both and every
-# preset activates (verified live); M0-02 pins those counts.
+# \`agent-preset-registry\` row stays FIRST inside the presets member block
+# (headless/sdk, the dialect has no insert-if-missing). This generated lead
+# patch replaces that insert with an id-targeted override of the web template's
+# shipped row: a duplicate id+name is loader-accepted but blocks plugin-manager
+# uninstall. M0-02 pins one registry row whose default is sdlc-lead.
 `;
 
 const SELF_ROW = `# ── the meta-bundle's own row ────────────────────────────────────────────────
@@ -98,9 +99,49 @@ function bodyOf(member) {
   return lines.slice(first, last + 1).join('\n') + '\n';
 }
 
+/**
+ * The web template already ships an `agent-preset-registry` row. Inserting a
+ * second same-id/same-name row is loader-accepted, but the plugin manager's
+ * uninstall audit compares live loader rows by id+name: after the bundle is
+ * disabled, the shipped row still matches the removed bundle's contribution and
+ * the manager reports `bundle-in-use` — "agent-preset-registry is blocking
+ * uninstall". The member package keeps its insert for headless/sdk profiles,
+ * which ship no registry row of their own; the lead meta-bundle overrides the
+ * shipped row instead of duplicating it.
+ */
+const REGISTRY_ID = 'agent-preset-registry';
+const REGISTRY_OVERRIDE = `# The web template ships agent-preset-registry. Override its default instead
+# of inserting a duplicate row: a duplicate id+name is loader-accepted but
+# blocks plugin-manager uninstall as "bundle-in-use". The presets member keeps
+# the insert for headless/sdk templates, which have no registry row.
+- id: agent-preset-registry
+  name: '@deepseek-ai/dsh-agent-preset-registry'
+  config:
+    default: sdlc-lead
+
+`;
+
+/** Drop the `agent-preset-registry` row (and its nested config) from an insert block. */
+function withoutRegistryInsert(block) {
+  const out = [];
+  let skipping = false;
+  for (const line of block.split('\n')) {
+    const row = /^ {4}- id:\s*(.+)$/.exec(line);
+    if (row) {
+      const id = row[1].trim().replace(/^['"]|['"]$/g, '');
+      skipping = id === REGISTRY_ID;
+    }
+    if (!skipping) out.push(line);
+  }
+  return out.join('\n');
+}
+
 const blocks = MEMBERS.map((member) => {
   const rule = `# ── from ${member.pkg} — ${member.what}\n`;
-  return `${rule}${bodyOf(member)}`;
+  const body = member.dir === 'sdlc-presets'
+    ? `${REGISTRY_OVERRIDE}${withoutRegistryInsert(bodyOf(member))}`
+    : bodyOf(member);
+  return `${rule}${body}`;
 });
 
 // The self-contained meta-bundle (beta.9): when the fold is applied, every

@@ -251,28 +251,29 @@ const checks = [
     id: 'M0-02-no-dup-ids',
     title: 'no duplicate loader row ids (insert-form regression)',
     fn() {
-      // One deliberate, loader-accepted exception: `agent-preset-registry` is
-      // declared by our presets patch AND shipped by the web template. The
-      // patch dialect has no insert-if-missing (a bare top-level entry warns
-      // "not found" and is skipped), so the registry can only reach
-      // headless-template profiles via insert: — which yields two same-id
-      // rows at the same service on web. The loader accepts both (every
-      // preset activates; verified live) — so the check pins the exact
-      // expectation instead of a blanket ban.
-      const allowedDup = new Map([['agent-preset-registry', 2]]);
+      // `agent-preset-registry` is shipped by the web template; the lead
+      // meta-bundle must OVERRIDE it (default = sdlc-lead), never insert a
+      // duplicate. A duplicate id+name is loader-accepted but the plugin
+      // manager's uninstall audit matches live rows by id+name and reports
+      // "bundle-in-use" forever. headless/sdk profiles ship no registry, so the
+      // member presets patch still inserts it there.
       if (leadBundles) {
         const rows = parseRows(dumpConfig(LEAD_PROFILE).stdout);
         const counts = new Map();
         for (const r of rows) counts.set(r.id, (counts.get(r.id) ?? 0) + 1);
-        const dups = [...counts].filter(([id, n]) => n > 1 && (allowedDup.get(id) ?? 1) < n);
+        const dups = [...counts].filter(([, n]) => n > 1);
         if (dups.length) throw new Error(`duplicate row ids: ${dups.map(([id, n]) => `${id}x${n}`).join(', ')}`);
         const reg = counts.get('agent-preset-registry') ?? 0;
-        if (reg !== 2) throw new Error(`expected exactly 2 agent-preset-registry rows on the web-template lead (shipped + presets patch), found ${reg}`);
-        return { detail: `live: ${counts.size} unique ids; agent-preset-registry x2 at the same service (loader-accepted)` };
+        if (reg !== 1) throw new Error(`expected exactly 1 agent-preset-registry row on the web-template lead (shipped, overridden), found ${reg}`);
+        const row = rows.find((r) => r.id === 'agent-preset-registry');
+        if (!/default:\s*sdlc-lead/.test(row.body.join('\n'))) {
+          throw new Error('lead must override agent-preset-registry default to sdlc-lead');
+        }
+        return { detail: `live: ${counts.size} unique ids; agent-preset-registry x1 (shipped row overridden to sdlc-lead)` };
       }
       const report = staticFor(LEAD_PROFILE);
       if (!report) return { skip: `no profiles/${LEAD_PROFILE}/profile.json to validate` };
-      const realDups = report.composition.duplicates.filter((d) => (allowedDup.get(d.id) ?? 1) < d.n);
+      const realDups = report.composition.duplicates;
       if (realDups.length) {
         throw new Error(`duplicate row ids: ${realDups.map((d) => `${d.id}x${d.n}`).join(', ')}`);
       }

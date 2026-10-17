@@ -36,17 +36,16 @@ const HEADER = `# sdlc-presets — the ${ROLE_COUNT}-role registry (spec v3 C.3)
 #
 # The agent-preset-registry row is FIRST inside insert: so the registry exists
 # before the presets register against it on templates that lack one
-# (headless). On the web template the shipped row already exists, so the lead
-# profile composes two same-id rows pointing at the same service — the loader
-# accepts both and the presets activate (verified live). The M0 static check
-# pins the patch shape; the M0-02 live check pins the composed profile.
+# (headless/sdk). The web template already ships the row; the generated lead
+# meta-bundle replaces this insert with an id-targeted override — a duplicate
+# id+name is loader-accepted but blocks plugin-manager uninstall. The M0-02
+# live check pins one registry row with default sdlc-lead.
 `;
 
 // The registry row is FIRST inside insert: so it exists before the presets
-// register against it on templates that lack one (headless). On the web
-// template the shipped row already exists, so the lead profile carries two
-// same-id rows pointing at the same service — the loader accepts both and
-// the presets activate (verified live against 0.2.0-rc.2).
+// register against it on templates that lack one (headless/sdk). The web
+// template ships the row, so gen-bundle-patch converts this member insert into
+// an id-targeted override for the lead — a duplicate id+name blocks uninstall.
 //
 // A trailing `sdlc-presets` plugin row executes this bundle's apply() at boot
 // so the SDLC_SELFTEST hook reports the roster: data-only patches never run

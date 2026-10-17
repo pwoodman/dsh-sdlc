@@ -208,6 +208,24 @@ test('contract: the lead recipe composes the whole lead from a single bundle', (
     'the composed lead carries all 26 role presets');
 });
 
+test('contract: the lead meta-bundle overrides the shipped registry, never duplicates it', () => {
+  // The web template ships agent-preset-registry. Inserting a second row with
+  // the same id+name is loader-accepted, but the plugin manager's uninstall
+  // audit matches live rows by id+name and reports "bundle-in-use" forever —
+  // the shipped row still matches the removed bundle's contribution. The lead
+  // must override the shipped row instead; only the member presets patch
+  // (headless/sdk, which ship no registry) inserts it.
+  const entry = packageForDirName('sdlc-orchestrator');
+  const [patch] = declaredPatchPaths(entry);
+  const { doc, rows } = loadPatch(patch);
+  assert.equal(rows.filter((row) => row.id === 'agent-preset-registry').length, 0,
+    'the lead meta-bundle must not insert agent-preset-registry');
+  const overrides = doc.filter((op) => op && !('insert' in op) && op.id === 'agent-preset-registry');
+  assert.equal(overrides.length, 1, 'the lead must override the shipped registry once');
+  assert.equal(overrides[0].name, '@deepseek-ai/dsh-agent-preset-registry');
+  assert.deepEqual(overrides[0].config, { default: 'sdlc-lead' });
+});
+
 test('contract: the meta-bundle patch is in sync with its members (generator --check)', () => {
   // packages/sdlc-orchestrator/cordis.patch.yml is generated from the members'
   // patches; a hand edit or a member change that is not regenerated would ship a
@@ -257,13 +275,12 @@ test('contract: sdlc-presets declares exactly the 26 presetIdFor(roleId) rows', 
 
   const presetRows = rows.filter((r) => /^preset-sdlc-/.test(r.id));
   assert.equal(presetRows.length, 26, 'sdlc-presets declares exactly 26 preset rows');
-  // …plus the agent-preset-registry row the headless template lacks, which the
-  // presets wait on (without it every treatment run warns 26× "did not
-  // activate … waiting for service: agentPresets"). It is FIRST inside
-  // insert: (a bare top-level entry warns "not found" and is skipped — the
-  // dialect has no insert-if-missing). On web the composed profile therefore
-  // holds two same-id rows at the same service; the loader accepts both
-  // (verified live) and the M0-02 live check pins the per-profile counts.
+  // …plus the agent-preset-registry row headless/sdk lack, which the presets
+  // wait on (without it every treatment run warns 26× "did not activate …
+  // waiting for service: agentPresets"). It is FIRST inside insert: because
+  // the dialect has no insert-if-missing. The lead meta-bundle is different:
+  // web ships the row, so gen-bundle-patch converts this insert into an
+  // override (a duplicate id+name blocks plugin-manager uninstall).
   const registry = rows.filter((r) => r.id === 'agent-preset-registry');
   assert.equal(registry.length, 1, 'sdlc-presets declares the agent-preset-registry row once');
   assert.equal(registry[0].name, '@deepseek-ai/dsh-agent-preset-registry');
@@ -310,11 +327,12 @@ test('contract: no patch uses remove: or inserts an id-targeted existing-row ove
     // An `insert:` list may only contain NEW rows of ours. A row id belonging
     // to some pre-existing loader row (e.g. agent-default-model) inserted here
     // would be a duplicate; the id-targeted override form belongs at top level.
-    // (`agent-preset-registry` is the one deliberate exception: the row must
-    // reach headless-template profiles that ship no such id, and the dialect
-    // has no insert-if-missing — a bare top-level entry warns "not found" and
-    // is skipped. On web the composed profile holds two same-id rows at the
-    // same service; the loader accepts both, verified live.)
+    // (`agent-preset-registry` is the one deliberate exception IN THE MEMBER
+    // PATCH: the row must reach headless/sdk profiles that ship no such id, and
+    // the dialect has no insert-if-missing. The lead meta-bundle must NOT
+    // insert it — web ships the row, and a duplicate id+name blocks the plugin
+    // manager's uninstall audit. gen-bundle-patch converts that member insert
+    // into a top-level override for the lead; see the registry test above.)
     for (const row of rows) {
       assert.ok(OWN_ROW_ID.test(row.id) || row.id === 'agent-preset-registry',
         `${pkg.name}: row "${row.id}" inside insert: is not our own sdlc-*/preset-sdlc-* row (E4)`);

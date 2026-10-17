@@ -166,7 +166,7 @@ test('publish: the meta-bundle is self-contained — no member dependencies', ()
     assert.ok(existsSync(join(dir, 'lib', 'rows', short, 'lib')), `meta-bundle folds ${short} under lib/rows/${short}/lib`);
   }
   // …resolvable through the flat aliases the folded patch rows use.
-  for (const alias of ['./core', './services', './selftest', './tools', './tools-plugin', './presets', './presets-plugin', './ui']) {
+  for (const alias of ['./core', './services', './selftest', './tools', './tools-plugin', './tools-report', './tools-dispatch', './tools-plan', './presets', './presets-plugin', './ui']) {
     assert.ok(pkg.exports?.[alias], `meta-bundle exports ${alias} for the folded rows`);
   }
   // …and the generated patch references NO member package as a row name.

@@ -18,13 +18,20 @@ function pkgVersion() {
   }
 }
 
-/** Register every tool definition on a DSH context. */
+/**
+ * Register tool definitions on a DSH context.
+ *
+ * `config.tools` narrows the set to those names (the preset slices); omitting
+ * it registers the complete surface (the host `sdlc-tools` row).
+ */
 export function registerTools(ctx, config = {}) {
   const registered = [];
+  const selected = Array.isArray(config.tools) ? new Set(config.tools) : null;
   const worktreePath = config.worktreePath ?? process.cwd();
   const handlers = createHandlers({ worktreePath, runMeta: config.runMeta ?? {} });
 
   for (const [name, def] of Object.entries(TOOL_DEFS)) {
+    if (selected !== null && !selected.has(name)) continue;
     const handler = handlers[name];
     if (!handler) continue;
     registered.push(name);
@@ -65,6 +72,24 @@ export function registerCommands(ctx, config = {}) {
     }
   }
   return registered;
+}
+
+/**
+ * Build a loader entry for one preset-plane tool slice.
+ *
+ * The preset rows use the package's `./report`, `./dispatch` and `./plan`
+ * exports, each of which is one of these. A slice registers only its tools
+ * and NEVER the command surface: the host `sdlc-tools` row owns commands, and
+ * mounting them once per preset would collide on the second mount.
+ * @param {string[]} toolNames - the exact tool names this entry registers.
+ * @returns {(ctx: object, config?: object) => undefined}
+ */
+export function toolSubsetPlugin(toolNames) {
+  const tools = [...toolNames];
+  return function applyToolSubset(ctx, config = {}) {
+    setSelftestMeta({ version: pkgVersion() });
+    contributeSelftest({ tools: registerTools(ctx, { ...config, tools }) });
+  };
 }
 
 /**

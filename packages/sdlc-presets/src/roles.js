@@ -15,19 +15,37 @@
  * "no unnecessary agents" is structural, not heuristic.
  */
 
-/** Tools every worker preset composes. Worker presets get NO delegation tools. */
+/**
+ * Tools every worker preset composes. Worker presets get NO delegation tools.
+ *
+ * DSH requires the tool configs in these rows explicitly — neither plugin has
+ * a default — and an omitted value fails the WHOLE preset at mount:
+ *   - `tool-todo`: `allowParallelInProgress` is a required deployment policy.
+ *     A worker owns exactly one task contract at a time, so it keeps the
+ *     single-active discipline.
+ *   - `tool-subagent` (Lead only, below): `provider` is required.
+ */
 export const WORKER_TOOL_ROWS = [
   { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash' },
   { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
-  { id: 'tool-todo', name: '@deepseek-ai/dsh-tool-todo' },
-  { id: 'sdlc-report', name: '@patwoodman/dsh-sdlc-flow-tools' },
+  { id: 'tool-todo', name: '@deepseek-ai/dsh-tool-todo', config: { allowParallelInProgress: false } },
+  { id: 'sdlc-report', name: '@patwoodman/dsh-sdlc-flow-tools/report' },
 ];
 
-/** Tools only the Lead composes: delegation, plan deltas, decision ledger. */
+/** Tools only the Lead composes: delegation, plan deltas, decision ledger.
+ *
+ * `provider: 'spawn'` is the in-process backend the web template registers;
+ * `backgroundMode: 'continuable'` keeps delegated child conversations available
+ * for follow-up turns. Both match DSH's own `standard`/web preset.
+ */
 export const LEAD_TOOL_ROWS = [
-  { id: 'tool-subagent', name: '@deepseek-ai/dsh-tool-subagent' },
-  { id: 'sdlc-dispatch', name: '@patwoodman/dsh-sdlc-flow-tools' },
-  { id: 'sdlc-plan', name: '@patwoodman/dsh-sdlc-flow-tools' },
+  {
+    id: 'tool-subagent',
+    name: '@deepseek-ai/dsh-tool-subagent',
+    config: { provider: 'spawn', toolName: 'subagent', backgroundMode: 'continuable' },
+  },
+  { id: 'sdlc-dispatch', name: '@patwoodman/dsh-sdlc-flow-tools/dispatch' },
+  { id: 'sdlc-plan', name: '@patwoodman/dsh-sdlc-flow-tools/plan' },
 ];
 
 export const POLICY_SUFFIX = [
@@ -140,13 +158,12 @@ export function presetConfigIdFor(roleId) {
  * waiting for service: agentPresets` while the presets silently never
  * mounted.
  *
- * The row is FIRST inside the presets patch's insert: list so it exists
- * before the presets register against it. Two constraints on its config:
- * (1) `default` must name a preset that EXISTS in the composed profile —
- * `standard` exists on web (shipped row) but on sdk/headless nothing ships
- * presets, so the default is our own `sdlc-lead`; (2) on `web` the composed
- * profile then holds two same-id rows pointing at the same service — the
- * loader accepts both and every preset activates (verified live).
+ * The row is FIRST inside the member patch's insert: list so it exists before
+ * the presets register against it on headless/sdk profiles, which ship no
+ * registry row. On web the shipped row exists, so the generated lead
+ * meta-bundle replaces this insert with an id-targeted override of the
+ * shipped row's `default` — a duplicate id+name is loader-accepted but blocks
+ * the plugin manager's uninstall audit.
  */
 export function presetRegistryRow() {
   return {
@@ -169,6 +186,19 @@ export function personaPrefix(role) {
   ].join('\n');
 }
 
+/**
+ * The Lead fans work out to workers/subagents, so its own todo list may legitimately
+ * track several active items at once. Workers stay single-active.
+ */
+function leadToolRows() {
+  const rows = WORKER_TOOL_ROWS.map((row) =>
+    row.id === 'tool-todo'
+      ? { ...row, config: { ...row.config, allowParallelInProgress: true } }
+      : row,
+  );
+  return [...rows, ...LEAD_TOOL_ROWS];
+}
+
 /** Build the `- insert:` row for one role preset. */
 export function presetRow(role) {
   const plugins = [
@@ -180,7 +210,7 @@ export function presetRow(role) {
         suffix: 'Your working directory is {{cwd}}. Model: {{model}}.',
       },
     },
-    ...(role.lead ? [...WORKER_TOOL_ROWS, ...LEAD_TOOL_ROWS] : WORKER_TOOL_ROWS),
+    ...(role.lead ? leadToolRows() : WORKER_TOOL_ROWS),
   ];
   return {
     id: presetIdFor(role.id),

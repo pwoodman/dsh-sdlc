@@ -25,6 +25,20 @@ import { parseYaml } from '../../packages/sdlc-core/src/yaml-lite.js';
 
 export const ROOT = join(import.meta.dirname, '..', '..');
 
+/**
+ * The one deliberate bundle-patch id-targeted override.
+ *
+ * The web template ships `agent-preset-registry`. The lead bundle must set its
+ * default to `sdlc-lead`; inserting a second row with the same id+name is
+ * loader-accepted but makes the plugin manager's uninstall audit report
+ * "bundle-in-use" forever (the shipped row matches the removed bundle's row).
+ * An id-targeted override changes the shipped row without contributing a row.
+ * Keep the exception narrow: the id AND the expected config must match.
+ */
+export function isSanctionedBundleOverride(override) {
+  return override?.id === 'agent-preset-registry' && override?.config?.default === 'sdlc-lead';
+}
+
 // E6 is checked on the BASENAME, so a re-scoped tree is still caught. See
 // `isOwnBundleName` for why the basename (not the current prefix) is the right key.
 // Derived from the workspace manifests, not a literal: the suite renamed from
@@ -119,14 +133,14 @@ export function patchesOf(pkg, pkgDir) {
  * (`- id:` + `config:` WITHOUT a `name:` — PLAT-12 proves the id-targeted
  * form replaces a same-id row instead of appending a duplicate).
  *
- * One deliberate exception: our sdlc-presets patch declares the
+ * One deliberate exception: the MEMBER sdlc-presets patch declares the
  * `agent-preset-registry` row (a FULL row: id + name + config) INSIDE its
  * insert: list. The platform dialect has no "insert if missing" — a bare
  * top-level row warns "entry not found" and is skipped — so the registry can
- * only reach headless-template profiles via insert:. On the web template that
- * yields two same-id rows pointing at the same service; the loader accepts
- * both and every preset activates (verified live). The static checker records
- * the form so the live M0-02 check can pin the per-profile composed counts.
+ * only reach headless/sdk profiles via insert:. The LEAD meta-bundle instead
+ * carries an id-targeted override of the row the web template already ships;
+ * a duplicate id+name is loader-accepted but blocks plugin-manager uninstall.
+ * The static checker records both forms and allow-lists the lead override.
  */
 export function loadPatchRows(patchPath) {
   const text = readFileSync(patchPath, 'utf8');
@@ -238,9 +252,14 @@ export function composeProfile(profile, { packages = loadPackages(), seen = new 
       const { rows: patchRows, overrides } = loadPatchRows(patchPath);
       for (const row of patchRows) rows.push({ ...row, __bundle: bundleName, __patch: patchPath });
       // Pure config overrides (id + config, no name) in a BUNDLE patch are
-      // unexpected — the tier overlay is the sanctioned override path.
+      // unexpected — the tier overlay is the sanctioned override path. The one
+      // exception is a shipped row a bundle must co-configure rather than
+      // duplicate: the web template ships `agent-preset-registry`, and a
+      // second same-id/same-name insert blocks plugin-manager uninstall.
       for (const o of overrides) {
-        if (o.__form === 'id-override') problems.push(`${bundleName}: unexpected id-targeted override ${o.id} in a bundle patch`);
+        if (o.__form !== 'id-override') continue;
+        if (isSanctionedBundleOverride(o)) continue;
+        problems.push(`${bundleName}: unexpected id-targeted override ${o.id} in a bundle patch`);
       }
     }
   }

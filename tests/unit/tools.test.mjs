@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
-import { core, tempDir, cleanup } from '../lib/helpers.mjs';
+import { core, tempDir, cleanup, ROOT } from '../lib/helpers.mjs';
 
 const tools = await core.tools();
 const wr = await core.workerResult();
@@ -118,4 +118,34 @@ test('the plugin registration lists match the declared surface (used by M0-03/04
   const commandNames = toolsPlugin.registerCommands(fakeCtx, {});
   assert.ok(commandNames.includes('run'));
   assert.ok(commandNames.includes('doctor'));
+});
+
+test('preset tool slices are real loader entries with tools-only registration', async () => {
+  // Regression: the preset rows used to name the package ROOT, which exports no
+  // `apply`; DSH then reports each row as "never started" and the preset mount
+  // fails. Each slice must be a loader entry, register exactly its tools, and
+  // leave the /sdlc command surface to the host row.
+  const entries = [
+    ['report', tools.REPORT_TOOLS],
+    ['dispatch', tools.DISPATCH_TOOLS],
+    ['plan', tools.PLAN_TOOLS],
+  ];
+  const all = entries.flatMap(([, names]) => names).sort();
+  assert.deepEqual(all, [...tools.ALL_TOOLS].sort(), 'slices must cover the full surface exactly once');
+  assert.equal(new Set(all).size, all.length, 'slices must not overlap');
+
+  for (const [entry, expected] of entries) {
+    const mod = await import(`file://${join(ROOT, 'packages/sdlc-tools/src', `${entry}.js`)}`);
+    assert.equal(typeof mod.apply, 'function', `${entry} must export apply`);
+    const registered = [];
+    const commands = [];
+    const ctx = {
+      tools: { register: (t) => registered.push(t.name) },
+      commands: { register: (c) => commands.push(c.name) },
+      logger: { warn() {} },
+    };
+    assert.equal(mod.apply(ctx, {}), undefined);
+    assert.deepEqual(registered.sort(), [...expected].sort(), `${entry} registered the wrong tools`);
+    assert.deepEqual(commands, [], `${entry} must not register commands`);
+  }
 });

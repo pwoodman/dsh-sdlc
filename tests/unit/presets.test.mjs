@@ -65,6 +65,73 @@ test('worker presets carry no delegation tools; the Lead preset does', () => {
   assert.ok(lead.config.plugins.some((p) => p.id === 'tool-subagent'));
 });
 
+test('every preset carries the tool configs DSH requires at mount (live guard)', () => {
+  // Regression: DSH 0.2.0-rc.2's tool-todo and tool-subagent have NO defaults
+  // for these keys. An omitted value fails the whole agent preset at session
+  // start ("allowParallelInProgress missing required value" /
+  // "provider missing required value"), and every later row in the preset then
+  // reports "never started".
+  const presets = presetRows().filter((r) => /^preset-sdlc-/.test(r.id));
+  assert.equal(presets.length, 26);
+  for (const preset of presets) {
+    const todo = preset.config.plugins.find((p) => p.id === 'tool-todo');
+    assert.ok(todo, `${preset.id}: tool-todo row missing`);
+    assert.equal(todo.name, '@deepseek-ai/dsh-tool-todo');
+    assert.equal(typeof todo.config?.allowParallelInProgress, 'boolean',
+      `${preset.id}: tool-todo requires allowParallelInProgress`);
+    const isLead = preset.id === presetIdFor('lead');
+    assert.equal(todo.config.allowParallelInProgress, isLead,
+      isLead ? 'the Lead fans work out and may track parallel todos' : 'a worker is single-active');
+    const subagent = preset.config.plugins.find((p) => p.id === 'tool-subagent');
+    if (isLead) {
+      assert.ok(subagent, 'the Lead preset must carry tool-subagent');
+      assert.equal(subagent.name, '@deepseek-ai/dsh-tool-subagent');
+      assert.equal(subagent.config?.provider, 'spawn');
+      assert.equal(subagent.config?.toolName, 'subagent');
+      assert.equal(subagent.config?.backgroundMode, 'continuable');
+    } else {
+      assert.equal(subagent, undefined, 'a worker must not delegate');
+    }
+    // The package ROOT is data only (no `apply`); naming it makes the loader
+    // report "never started". The preset rows must name the real tool slices.
+    const report = preset.config.plugins.find((p) => p.id === 'sdlc-report');
+    assert.equal(report?.name, '@patwoodman/dsh-sdlc-flow-tools/report',
+      `${preset.id}: sdlc-report must use the report loader entry`);
+    if (isLead) {
+      assert.equal(
+        preset.config.plugins.find((p) => p.id === 'sdlc-dispatch')?.name,
+        '@patwoodman/dsh-sdlc-flow-tools/dispatch',
+      );
+      assert.equal(
+        preset.config.plugins.find((p) => p.id === 'sdlc-plan')?.name,
+        '@patwoodman/dsh-sdlc-flow-tools/plan',
+      );
+    }
+  }
+});
+
+test('the generated patch carries the required tool configs, not just roles.js', () => {
+  const patch = readFileSync(join(ROOT, 'packages', 'sdlc-presets', 'cordis.patch.yml'), 'utf8');
+  assert.equal(
+    [...patch.matchAll(/name:\s*["']?@deepseek-ai\/dsh-tool-todo["']?\s*\n\s*config:\s*\n\s*allowParallelInProgress:/g)].length,
+    26,
+    'each of the 26 presets must configure tool-todo inline in the patch',
+  );
+  assert.match(
+    patch,
+    /name:\s*["']?@deepseek-ai\/dsh-tool-subagent["']?\s*\n\s*config:\s*\n\s*provider:\s*spawn\b/,
+    'the Lead patch row must configure tool-subagent provider',
+  );
+  // The root package has no `apply`; the loader rejects it with "never started".
+  const countName = (name) => patch.split(name).length - 1;
+  assert.equal(countName('@patwoodman/dsh-sdlc-flow-tools/report'), 26,
+    'every preset must name the report tool slice');
+  assert.equal(countName('@patwoodman/dsh-sdlc-flow-tools/dispatch'), 1,
+    'only the Lead names the dispatch tool slice');
+  assert.equal(countName('@patwoodman/dsh-sdlc-flow-tools/plan'), 1,
+    'only the Lead names the plan tool slice');
+});
+
 test('presetRows leads with the agent-preset-registry row the headless template lacks', () => {
   const rows = presetRows();
   assert.equal(rows.length, 27, '26 presets + 1 registry');
@@ -83,13 +150,13 @@ test('the checked-in cordis.patch.yml matches roles.js exactly (generated artifa
   assert.match(patch, /id:\s*agent-preset-registry/, 'the registry row the presets wait on must be declared');
 });
 
-test('the registry row is top-level (id-targeted), never inside insert: (M0-02 live dup)', () => {
+test('the member presets patch inserts the registry row first (headless/sdk have no shipped row)', () => {
   const patch = readFileSync(join(ROOT, 'packages', 'sdlc-presets', 'cordis.patch.yml'), 'utf8');
-  // The registry row is FIRST inside insert: (headless has no shipped row to
-  // replace — a bare top-level entry warns "not found" and is skipped). On
-  // web the composed profile therefore holds two same-id rows at the same
-  // service; the loader accepts both (verified live). What the static side
-  // pins: exactly one declaration, in first position.
+  // Headless/sdk templates ship no registry and the dialect has no
+  // insert-if-missing, so the MEMBER patch must insert it. The lead meta-bundle
+  // is different: web ships the row, so gen-bundle-patch converts this insert
+  // into a top-level override — a duplicate id+name is loader-accepted but
+  // blocks the plugin manager's uninstall audit.
   const insertBlock = patch.slice(patch.indexOf('- insert:'));
   const firstRow = insertBlock.match(/-\s*id:\s*(.+)/)?.[1]?.trim();
   assert.equal(firstRow, 'agent-preset-registry', 'registry must be the first inserted row');

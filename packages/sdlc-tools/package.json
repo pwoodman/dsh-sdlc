@@ -1,12 +1,15 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-tools",
-  "version": "0.4.0-beta.19",
+  "version": "0.4.0-beta.20",
   "type": "module",
   "description": "Model-facing propose-only tools (worker + lead) and the /sdlc command surface.",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./plugin": "./lib/plugin.js",
+    "./report": "./lib/report.js",
+    "./dispatch": "./lib/dispatch.js",
+    "./plan": "./lib/plan.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
@@ -49,6 +52,6 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-core": "0.4.0-beta.19"
+    "@patwoodman/dsh-sdlc-flow-core": "0.4.0-beta.20"
   }
 }

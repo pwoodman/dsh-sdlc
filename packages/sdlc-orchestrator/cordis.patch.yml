@@ -22,10 +22,11 @@
 #
 # Order matters only where a row waits on a service: services first, then the
 # tools and preset rows that use them, then the UI. The
-# `agent-preset-registry` row stays FIRST inside the presets block (the dialect
-# has no insert-if-missing), so on the web template the composed lead holds two
-# same-id registry rows at one service — the loader accepts both and every
-# preset activates (verified live); M0-02 pins those counts.
+# `agent-preset-registry` row stays FIRST inside the presets member block
+# (headless/sdk, the dialect has no insert-if-missing). This generated lead
+# patch replaces that insert with an id-targeted override of the web template's
+# shipped row: a duplicate id+name is loader-accepted but blocks plugin-manager
+# uninstall. M0-02 pins one registry row whose default is sdlc-lead.
 
 # ── the meta-bundle's own row ────────────────────────────────────────────────
 # A row that executes this package's apply() at boot, so the meta-bundle is a
@@ -82,11 +83,16 @@
         worktreePath: !!js process.cwd()
 
 # ── from @patwoodman/dsh-sdlc-flow-presets — the 26 role presets (C.3)
+# The web template ships agent-preset-registry. Override its default instead
+# of inserting a duplicate row: a duplicate id+name is loader-accepted but
+# blocks plugin-manager uninstall as "bundle-in-use". The presets member keeps
+# the insert for headless/sdk templates, which have no registry row.
+- id: agent-preset-registry
+  name: '@deepseek-ai/dsh-agent-preset-registry'
+  config:
+    default: sdlc-lead
+
 - insert:
-    - id: agent-preset-registry
-      name: "@deepseek-ai/dsh-agent-preset-registry"
-      config:
-        default: sdlc-lead
     - id: preset-sdlc-lead
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -106,14 +112,20 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: true
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
           - id: tool-subagent
             name: "@deepseek-ai/dsh-tool-subagent"
+            config:
+              provider: spawn
+              toolName: subagent
+              backgroundMode: continuable
           - id: sdlc-dispatch
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-dispatch"
           - id: sdlc-plan
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-plan"
     - id: preset-sdlc-business-analyst
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -133,8 +145,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-requirements-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -154,8 +168,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-product-owner
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -175,8 +191,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-solution-architect
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -196,8 +214,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-security-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -217,8 +237,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-data-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -238,8 +260,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-database-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -259,8 +283,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-ux-designer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -280,8 +306,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-ui-designer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -301,8 +329,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-accessibility-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -322,8 +352,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-frontend-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -343,8 +375,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-backend-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -364,8 +398,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-api-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -385,8 +421,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-integration-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -406,8 +444,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-devops-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -427,8 +467,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-platform-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -448,8 +490,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-qa-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -469,8 +513,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-test-automation-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -490,8 +536,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-e2e-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -511,8 +559,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-visual-qa-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -532,8 +582,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-performance-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -553,8 +605,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-technical-writer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -574,8 +628,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-release-manager
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -595,8 +651,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-code-reviewer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -616,8 +674,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: preset-sdlc-sre-engineer
       name: "@deepseek-ai/dsh-agent-preset"
       config:
@@ -637,8 +697,10 @@
             name: "@deepseek-ai/dsh-tool-fs"
           - id: tool-todo
             name: "@deepseek-ai/dsh-tool-todo"
+            config:
+              allowParallelInProgress: false
           - id: sdlc-report
-            name: "@patwoodman/dsh-sdlc-flow/tools"
+            name: "@patwoodman/dsh-sdlc-flow/tools-report"
     - id: sdlc-presets
       name: "@patwoodman/dsh-sdlc-flow/presets-plugin"
       config: {}

@@ -2,6 +2,34 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.20] — presets mount on DSH 0.2.0-rc.2; uninstall no longer blocks
+
+### Fixed
+
+- **New sessions failed with `agent-preset invalid` and never started the SDLC
+  tools.** DSH 0.2.0-rc.2 made two tool config values required: the preset
+  mounted `tool-todo` without `allowParallelInProgress` and `tool-subagent`
+  without `provider`. Separately, the three SDLC preset rows named the tools
+  package ROOT, which exports data but no `apply`, so the same mount also
+  reported `sdlc-report`, `sdlc-dispatch` and `sdlc-plan` as `never started`.
+  Every preset now sets `allowParallelInProgress` explicitly (workers `false`,
+  Lead `true` because it fans work out to children), the Lead's delegation row
+  sets `provider: spawn`, `toolName: subagent` and `backgroundMode: continuable`,
+  and the three SDLC rows name real loader subpaths (`./report`, `./dispatch`,
+  `./plan`) that register only their role's tools and never the command
+  surface. `gen-presets` carries all of it into the generated patch. New tests
+  pin the required configs and the slice entry points on all 26 presets and on
+  the generated artifact.
+- **Uninstall was blocked by `agent-preset-registry`.** The lead meta-bundle
+  inserted a second `agent-preset-registry` row on the web template. The loader
+  accepted the duplicate, but the plugin manager's uninstall audit matches live
+  loader rows by id+name: after the bundle was disabled, the shipped row still
+  matched the bundle's contribution and the manager returned `bundle-in-use`.
+  The lead patch now overrides the shipped row's default to `sdlc-lead`; only
+  the member presets patch — used by headless/sdk profiles that ship no
+  registry — still inserts it. A contract test pins the override and forbids
+  the duplicate in the lead patch.
+
 ## [0.4.0-beta.19] — folded runtime siblings ship; Desktop activation fixed
 
 ### Fixed

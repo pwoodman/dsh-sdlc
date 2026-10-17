@@ -16,6 +16,17 @@ export const WORKER_TOOLS = ['sdlc_report_result', 'sdlc_claim_check', 'sdlc_req
 export const LEAD_TOOLS = ['sdlc_dispatch_task', 'sdlc_approve_transition', 'sdlc_record_decision', 'sdlc_plan_delta'];
 export const ALL_TOOLS = [...WORKER_TOOLS, ...LEAD_TOOLS];
 
+/**
+ * The three preset-plane slices (spec C.3). Each is a real loader entry with
+ * its own subpath export — the preset rows name them directly, so a worker's
+ * catalog is the report slice and the Lead's is report + dispatch + plan.
+ * They register TOOLS ONLY: the /sdlc command surface belongs to the host
+ * `sdlc-tools` row, not to every mounted preset.
+ */
+export const REPORT_TOOLS = [...WORKER_TOOLS];
+export const DISPATCH_TOOLS = LEAD_TOOLS.filter((name) => name !== 'sdlc_plan_delta');
+export const PLAN_TOOLS = ['sdlc_plan_delta'];
+
 export const COMMANDS = [
   'run', 'status', 'tasks', 'workers', 'models', 'logs', 'verify', 'resume', 'stop',
   'explain', 'retry', 'elevate', 'approve', 'reject', 'doctor', 'config', 'init', 'lock', 'selftest',
@@ -227,4 +238,4 @@ export function validateToolArgs(name, args = {}) {
   return errors.length ? { ok: false, error: errors.join('; ') } : { ok: true };
 }
 
-export default { TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, COMMANDS, createHandlers, writeOutbox };
+export default { TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, REPORT_TOOLS, DISPATCH_TOOLS, PLAN_TOOLS, COMMANDS, createHandlers, writeOutbox };
