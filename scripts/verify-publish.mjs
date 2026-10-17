@@ -109,6 +109,23 @@ try {
     else ok(`${file} ← ${owners.join(', ')}`);
   }
 
+  // Folded members read some files RELATIVELY, so they must travel inside the
+  // meta tarball next to the folded lib/. beta.13 shipped without them: the
+  // source tree passed, but activation died with ENOENT on
+  // lib/rows/presets/cordis.patch.yml. Pin the shipped artifact, not the tree.
+  const metaTgz = tgzOf.get('@patwoodman/dsh-sdlc-flow');
+  if (metaTgz === undefined) fail('meta-bundle @patwoodman/dsh-sdlc-flow was not packed');
+  else {
+    const entries = tarList(metaTgz);
+    for (const rel of [
+      'package/lib/rows/presets/cordis.patch.yml',
+      'package/lib/rows/presets/locale/en.json',
+    ]) {
+      if (entries.includes(rel)) ok(`meta tarball ships ${rel}`);
+      else fail(`meta tarball missing ${rel} (folded runtime sibling — install-time ENOENT)`);
+    }
+  }
+
   // ── 3. install proof: packed META via file:, members via link: ──
   // The packed-shape assertions above (no src/, every loader entry owned)
   // are what prove the SHIP artifact. For the BOOT proof, the meta-bundle

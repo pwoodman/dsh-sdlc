@@ -18,6 +18,10 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from '../lib/helpers.mjs';
 import { DSH_PEER_RANGE, dshPeerSatisfied } from '../../scripts/lib/semver-lite.mjs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { expectedSiblings } = require('../../scripts/lib/fold-meta.cjs');
 
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -178,4 +182,26 @@ test('publish: worker profile never composes the meta-bundle (E6)', () => {
   assert.ok(!worker.bundles.includes('@patwoodman/dsh-sdlc-flow'), 'worker must not install the meta-bundle (it pulls core)');
   const web = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-web', 'profile.json'), 'utf8'));
   assert.deepEqual(web.bundles, ['@patwoodman/dsh-sdlc-flow'], 'lead installs exactly one spec');
+});
+
+test('publish: folded rows ship the runtime siblings their code reads relatively', () => {
+  // beta.13 shipped a folded presets plugin whose declaredPresetIds() reads
+  // `new URL('../cordis.patch.yml', import.meta.url)` → lib/rows/presets/
+  // cordis.patch.yml. fold-meta copied only lib/ and wrote a package.json
+  // stub, so a source checkout passed and every packed install failed with
+  // ENOENT when the loader activated the bundle. Pin the whole sibling class.
+  const dir = pkgDir('@patwoodman/dsh-sdlc-flow');
+  const expected = expectedSiblings();
+  assert.ok(expected.length >= 2, 'the fold must expect at least cordis.patch.yml');
+  for (const { short, extra } of expected) {
+    const dest = join(dir, 'lib', 'rows', short, extra);
+    assert.ok(existsSync(dest), `folded ${short} ships ${extra} (runtime sibling; beta.13 ENOENT)`);
+  }
+});
+
+test('publish: folded presets plugin resolves its 26 preset ids (no ENOENT)', async () => {
+  const dir = pkgDir('@patwoodman/dsh-sdlc-flow');
+  const plugin = await import(`file://${join(dir, 'lib', 'rows', 'presets', 'lib', 'plugin.js')}`);
+  const ids = plugin.declaredPresetIds();
+  assert.equal(ids.length, 26, 'declaredPresetIds() must read the folded cordis.patch.yml');
 });

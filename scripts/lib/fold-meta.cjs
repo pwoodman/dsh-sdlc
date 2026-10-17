@@ -146,6 +146,53 @@ function rewritePatch(text) {
   });
 }
 
+/**
+ * Runtime siblings a folded member reads RELATIVELY (not through `exports`).
+ * `lib/` alone is not enough: the presets plugin's `declaredPresetIds()` reads
+ * `new URL('../cordis.patch.yml', import.meta.url)`, which lands on
+ * `lib/rows/presets/cordis.patch.yml` after the fold. The unfolded member has
+ * that file at its package root, so a source checkout passes and every packed
+ * install throws ENOENT — exactly the beta.13 Desktop failure. `locale/`,
+ * `schema/` and `icon.svg` are copied for the same class of relative reads.
+ */
+const RUNTIME_SIBLING_FILES = ['cordis.patch.yml', 'icon.svg'];
+const RUNTIME_SIBLING_DIRS = ['locale', 'schema'];
+
+/** Copy (or clear, for an idempotent re-fold) a member's runtime siblings. */
+function copyRuntimeSiblings(dir, dest) {
+  for (const extra of RUNTIME_SIBLING_FILES) {
+    const from = join(ROOT, 'packages', dir, extra);
+    rmSync(join(dest, extra), { force: true });
+    if (existsSync(from)) cpSync(from, join(dest, extra));
+  }
+  for (const extra of RUNTIME_SIBLING_DIRS) {
+    const from = join(ROOT, 'packages', dir, extra);
+    rmSync(join(dest, extra), { recursive: true, force: true });
+    if (existsSync(from)) cpSync(from, join(dest, extra), { recursive: true });
+  }
+}
+
+/** Every sibling the fold must carry, derived from what the member actually ships. */
+function expectedSiblings() {
+  const out = [];
+  for (const { dir, short } of FOLD) {
+    for (const extra of [...RUNTIME_SIBLING_FILES, ...RUNTIME_SIBLING_DIRS]) {
+      if (existsSync(join(ROOT, 'packages', dir, extra))) out.push({ dir, short, extra });
+    }
+  }
+  return out;
+}
+
+/** Fail the build (not the user's install) if a runtime sibling did not travel. */
+function assertFoldedSiblings() {
+  const missing = expectedSiblings()
+    .filter(({ short, extra }) => !existsSync(join(META_DIR, 'lib', 'rows', short, extra)))
+    .map(({ short, extra }) => `lib/rows/${short}/${extra}`);
+  if (missing.length > 0) {
+    throw new Error(`fold-meta: folded member runtime siblings missing: ${missing.join(', ')}`);
+  }
+}
+
 /** Copy one member's lib/ into lib/rows/<short>/lib/ with the CODE rewrite. */
 function foldMemberLib({ dir, short }) {
   const src = join(ROOT, 'packages', dir, 'lib');
@@ -158,6 +205,7 @@ function foldMemberLib({ dir, short }) {
   // "module"` keeps the loader and node from mis-parsing the ESM tree as CJS.
   const pkg = JSON.parse(readFileSync(join(ROOT, 'packages', dir, 'package.json'), 'utf8'));
   writeFileSync(join(dest, 'package.json'), `${JSON.stringify({ name: pkg.name, version: pkg.version, type: 'module' }, null, 2)}\n`);
+  copyRuntimeSiblings(dir, dest);
   const files = [];
   (function walk(d) {
     for (const e of readdirSync(d).sort()) {
@@ -217,6 +265,7 @@ function fold() {
   pkg.dsh = { ...(pkg.dsh ?? {}), client: uiPkg?.dsh?.client };
   pkg.files = [...new Set([...(pkg.files ?? []), 'lib/rows'])];
   writeFileSync(manifestPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  assertFoldedSiblings();
   return FOLD.map((f) => f.short);
 }
 
@@ -226,4 +275,4 @@ function isFolded() {
   return !pkg.dependencies && Boolean(pkg.exports?.['./services']);
 }
 
-module.exports = { FOLD, ROOT, META_DIR, fold, isFolded, rewritePatch, rewriteCode, aliasExports, memberNames, memberName, foldedFile };
+module.exports = { FOLD, ROOT, META_DIR, fold, isFolded, rewritePatch, rewriteCode, aliasExports, memberNames, memberName, foldedFile, expectedSiblings, assertFoldedSiblings };
