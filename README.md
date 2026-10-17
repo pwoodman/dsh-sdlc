@@ -126,6 +126,13 @@ dsh --profile sdlc-web
 
 Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugins page.
 
+> **Fresh beta not installing?** pnpm 11 applies a 24-hour
+> `minimumReleaseAge` to range and `latest` installs, so a beta published in the
+> last day can resolve to the *previous* beta. To use a fresh beta immediately,
+> pin it exactly (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.19`) or add
+> `minimumReleaseAgeExclude: ['@patwoodman/dsh-sdlc-flow@0.4.0-beta.19']` to the
+> profile's `pnpm-workspace.yaml`. The same applies to the worker members.
+
 The worker profile is deliberately *unpacked*, because mounting the host services
 there would start a second scheduler and a second writer against `sdlc.db`
 (errata E6):
