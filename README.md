@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Beta (0.4.0-beta.19).** Install with one command from a source checkout
+> **Beta (0.4.0-beta.20).** Install with one command from a source checkout
 > (`npm run install:local`), or the registry form
 > (`dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow`) once published — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -129,8 +129,8 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 > **Fresh beta not installing?** pnpm 11 applies a 24-hour
 > `minimumReleaseAge` to range and `latest` installs, so a beta published in the
 > last day can resolve to the *previous* beta. To use a fresh beta immediately,
-> pin it exactly (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.19`) or add
-> `minimumReleaseAgeExclude: ['@patwoodman/dsh-sdlc-flow@0.4.0-beta.19']` to the
+> pin it exactly (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.20`) or add
+> `minimumReleaseAgeExclude: ['@patwoodman/dsh-sdlc-flow@0.4.0-beta.20']` to the
 > profile's `pnpm-workspace.yaml`. The same applies to the worker members.
 
 The worker profile is deliberately *unpacked*, because mounting the host services
@@ -163,7 +163,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.19 && git push origin v0.4.0-beta.19
+git tag v0.4.0-beta.20 && git push origin v0.4.0-beta.20
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
