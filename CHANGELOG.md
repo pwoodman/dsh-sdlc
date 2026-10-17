@@ -2,6 +2,37 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.19] — folded runtime siblings ship; Desktop activation fixed
+
+### Fixed
+
+- **Enabling the npm-installed bundle failed with ENOENT on Desktop.** The
+  folded `presets` plugin's `declaredPresetIds()` reads
+  `new URL('../cordis.patch.yml', import.meta.url)`, i.e.
+  `lib/rows/presets/cordis.patch.yml` after the fold. `fold-meta` copied only
+  `lib/` and wrote a stub `package.json`, so a source checkout passed while
+  every packed install (beta.13 through beta.17) threw
+  `ENOENT: …/dsh-sdlc-flow/lib/rows/presets/cordis.patch.yml` when the loader
+  activated the bundle. Folded members now carry the runtime siblings their
+  code resolves relatively (`cordis.patch.yml`, `locale/`, `schema/`,
+  `icon.svg`).
+- **The fold can no longer ship without them silently.** `fold-meta.mjs`
+  asserts every expected sibling travelled, `publish-shape.test.mjs` pins the
+  folded tree and imports the folded presets plugin (26 ids, no ENOENT), and
+  `verify-publish.mjs` asserts the packed meta tarball contains
+  `lib/rows/presets/cordis.patch.yml` and `lib/rows/presets/locale/en.json`.
+
+### Changed
+
+- **A prerelease `latest` now advances with the beta.** `latest` was still
+  beta.13, so a plain `dsh plugin add @patwoodman/dsh-sdlc-flow` (the Desktop
+  Add-plugin field, which omits a tag) resolved to an older, broken beta. When
+  the current `latest` is itself a prerelease, the Release moves it to the new
+  build; a stable `latest` is never moved backwards. `beta` still tracks the
+  newest prerelease.
+- `0.4.0-beta.18` was tagged but cancelled before publishing; this build
+  supersedes it with the actual fix.
+
 ## [0.4.0-beta.17] — publish safety: a broken tree can no longer reach npm
 
 ### Added

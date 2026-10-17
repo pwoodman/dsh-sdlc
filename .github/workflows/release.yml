@@ -239,6 +239,43 @@ jobs:
             echo "verified $name@$seen on the registry"
           done
 
+          # A beta-only package can have a prerelease on `latest` (it did:
+          # beta.13), and a plain `dsh plugin add @patwoodman/dsh-sdlc-flow` —
+          # exactly what the Desktop Add-plugin field sends — resolves
+          # `latest`. If `latest` is itself a prerelease, advance it to this
+          # build so the no-version install path can never resolve to an older,
+          # known-broken beta. A stable `latest` is never moved down to a beta.
+          if [ "$dist_tag" = beta ]; then
+            for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
+              name="$(node -p "require('./packages/$dir/package.json').name")"
+              private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
+              if [ "$private" = "true" ]; then continue; fi
+              current="$(npm view "$name" dist-tags.latest 2>/dev/null || true)"
+              case "$current" in
+                '')
+                  echo "::warning::could not read latest for $name — leaving dist-tags unchanged"
+                  continue
+                  ;;
+                *-*) ;; # prerelease latest: replace it with this newer beta
+                *)
+                  echo "latest for $name stays $current (stable, never downgraded to a beta)"
+                  continue
+                  ;;
+              esac
+              moved=""
+              for attempt in 1 2 3 4 5; do
+                if npm dist-tag add "$name@$version" latest >/dev/null 2>&1; then moved=1; break; fi
+                echo "retrying latest for $name (attempt $attempt, currently $current)"
+                sleep 30
+              done
+              if [ "$moved" != 1 ]; then
+                echo "::error::could not advance $name latest from $current to $version"
+                exit 1
+              fi
+              echo "latest: $name $current → $version"
+            done
+          fi
+
       - name: explain an npm refusal
         if: failure() && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
         run: |
