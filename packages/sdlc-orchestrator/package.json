@@ -1,11 +1,15 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow",
-  "version": "0.4.0-beta.20",
+  "version": "0.4.0-beta.22",
   "type": "module",
   "description": "DSH SDLC Flow lead-profile bundle: task engine, tools, role presets, and web UI in one install.",
   "main": "lib/index.js",
+  "bin": {
+    "dsh-sdlc-install": "lib/install.mjs"
+  },
   "exports": {
     ".": "./lib/index.js",
+    "./install": "./lib/install.mjs",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
@@ -39,6 +43,11 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
   },
   "license": "MIT",
   "repository": {

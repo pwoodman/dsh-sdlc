@@ -30,6 +30,7 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process'; // execFileSync: tar listing only
+import { createLeadSession } from './lib/preset-boot.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const KEEP = process.argv.includes('--keep');
@@ -201,6 +202,25 @@ try {
         const bad = checks.filter(([cond]) => !cond).map(([, label]) => label);
         if (bad.length) fail(`packed probe report incomplete: ${bad.join(', ')}`);
         else ok(`packed probe boots: ${checks.map(([, l]) => l).join(', ')}`);
+      }
+    }
+    // ── 5. the only path a user takes: create a lead session ──
+    // Static preset checks and the probe cannot see this: agent-preset rows
+    // are validated when a session is created with that preset. beta.19
+    // shipped a registry that rejected `sdlc-lead` while every gate passed.
+    if (leadOk) {
+      const webWork = join(WORK, 'web-work');
+      mkdirSync(webWork, { recursive: true });
+      try {
+        const session = await createLeadSession({
+          dshHome: HOME,
+          profile: 'sdlc-web',
+          cwd: webWork,
+          env: { ...process.env, DSH_HOME: HOME },
+        });
+        ok(`packed lead creates a ${session.agentPreset} session`);
+      } catch (error) {
+        fail(`packed lead cannot create the sdlc-lead session: ${error.message}`);
       }
     }
   }

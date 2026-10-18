@@ -2,6 +2,55 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.22] — `npx` installer stops pulling the whole DSH runtime
+
+### Fixed
+
+- `npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install` made npm
+  auto-install the package's `@deepseek-ai/dsh` peer — the entire ~500 MB
+  runtime — before the installer could run (observed as `ENOSPC` on a tmpfs).
+  The meta-bundle now marks that peer **optional for package managers** via
+  `peerDependenciesMeta`. DSH still enforces the same peer range when it loads
+  the plugin (`evaluatePluginCompatibility` reads `peerDependencies`, not the
+  meta field); only npm/npx's automatic peer installation is disabled.
+
+## [0.4.0-beta.21] — presets proven live; registry install takes the latest build
+
+### Added
+
+- **`dsh-sdlc-install`: one command that always installs the published
+  `latest`.** Ships as a bin in `@patwoodman/dsh-sdlc-flow`:
+  `npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`. It resolves the
+  version from the npm registry itself, pins it exactly, creates the profile
+  when missing, installs with `dsh plugin add`, re-selects the bundle (a failed
+  uninstall can leave it installed-but-disabled), and verifies the installed
+  `package.json`. `--only all` also provisions the worker and probe profiles;
+  `--tag beta` and `--version` are available. This removes the Desktop
+  Add-plugin field's dependence on pnpm's release-age resolution when a fresh
+  beta is involved.
+- **A live preset regression gate.** `verify-publish.mjs` now boots the packed
+  lead on an ephemeral port, authenticates with its launch token, and creates a
+  real `sdlc-lead` session through `session/create` — the exact path a new
+  session takes. beta.19 passed every static preset test, `--dump-config`, the
+  M0 probe and `SDLC_SELFTEST`, then failed here with `tool-todo ... invalid
+  config` / `never started`. A pre-publish failure now names the registry's
+  diagnostic instead of stranding users.
+
+### Fixed
+
+- **A malformed pnpm release-age exemption silently installed the previous
+  beta.** `minimumReleaseAgeExclude: ['pkg@a || pkg@b']` is not a valid pnpm
+  pattern; pnpm ignores it, so beta.20 stayed invisible to `latest` and the
+  plugin manager kept installing beta.19. The installer rewrites combined
+  entries into one item per pattern (carrying the package name onto a bare
+  version), preserves unrelated settings, deduplicates and sorts, and is
+  idempotent.
+- **README install instructions now match the shipped path.** One command
+  (`npx … dsh-sdlc-install`), exact-pin plus per-item exemption for a manual
+  install, and an explicit "quit the app completely before reopening" warning —
+  a running lead keeps the old module tree in memory even after the package on
+  disk changes.
+
 ## [0.4.0-beta.20] — presets mount on DSH 0.2.0-rc.2; uninstall no longer blocks
 
 ### Fixed

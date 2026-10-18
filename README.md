@@ -1,8 +1,8 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Beta (0.4.0-beta.20).** Install with one command from a source checkout
+> **Beta (0.4.0-beta.22).** Install with one command from a source checkout
 > (`npm run install:local`), or the registry form
-> (`dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow`) once published — see
+> (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
 > limitations. No confirmatory A/B evidence yet — no "beats plain DSH" claim is
 > supported.
@@ -42,6 +42,32 @@ node packages/sdlc-cli/bin/sdlc.mjs selftest --mock
 ```
 
 ## Install
+
+### One command — always the latest published version
+
+```sh
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install
+```
+
+This resolves `latest` from the npm registry itself, pins the **exact** version
+in the `sdlc-web` profile, records the matching pnpm release-age exemption,
+creates the profile when missing, installs, re-selects the bundle (a failed
+uninstall can leave the package installed but disabled), and verifies the
+installed `package.json`.
+
+```sh
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.22
+```
+
+It is idempotent. Prerequisites: `dsh` and `pnpm` on `PATH`, Node ≥ 22.5.
+
+> **Restart after installing.** A running lead keeps the old module tree in
+> memory even after the package on disk changes (deep-imported preset rows are
+> not hot-replaced). Quit DeepSeek Harness completely and reopen it; otherwise a
+> new session can still report the previous version's `agent-preset/invalid`.
+> The installer prints this reminder.
 
 ### Beta testers — no clone, no build
 
@@ -128,10 +154,21 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 
 > **Fresh beta not installing?** pnpm 11 applies a 24-hour
 > `minimumReleaseAge` to range and `latest` installs, so a beta published in the
-> last day can resolve to the *previous* beta. To use a fresh beta immediately,
-> pin it exactly (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.20`) or add
-> `minimumReleaseAgeExclude: ['@patwoodman/dsh-sdlc-flow@0.4.0-beta.20']` to the
-> profile's `pnpm-workspace.yaml`. The same applies to the worker members.
+> last day can resolve to the *previous* beta — this is how a known-broken
+> beta.19 kept installing after beta.20 was already `latest`. Prefer the
+> installer above; it pins the exact version and writes the exemption for you.
+> For a manual install, pin it exactly
+> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.22`) and add **one list item per
+> pattern** to the profile's `pnpm-workspace.yaml`:
+>
+> ```yaml
+> minimumReleaseAgeExclude:
+>   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.22'
+> ```
+>
+> A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
+> ignored, silently reintroducing the old resolution). The same applies to the
+> worker members.
 
 The worker profile is deliberately *unpacked*, because mounting the host services
 there would start a second scheduler and a second writer against `sdlc.db`
@@ -163,7 +200,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.20 && git push origin v0.4.0-beta.20
+git tag v0.4.0-beta.22 && git push origin v0.4.0-beta.22
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
