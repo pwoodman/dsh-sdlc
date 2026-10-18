@@ -257,7 +257,7 @@ jobs:
               name="$(node -p "require('./packages/$dir/package.json').name")"
               private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
               if [ "$private" = "true" ]; then continue; fi
-              current="$(npm view "$name" dist-tags.latest 2>/dev/null || true)"
+              current="$(npm view "$name" dist-tags.latest --prefer-online 2>/dev/null || true)"
               case "$current" in
                 '')
                   echo "::warning::could not read latest for $name — leaving dist-tags unchanged"
@@ -284,7 +284,15 @@ jobs:
                 echo "::error::could not advance $name latest from $current to $version"
                 exit 1
               fi
-              observed="$(npm view "$name" dist-tags.latest)"
+              # Tag writes may precede refreshed CDN/local cache metadata.
+              # Retry reads only; never republish or repeatedly overwrite a tag.
+              observed=""
+              for attempt in 1 2 3 4 5 6; do
+                observed="$(npm view "$name" dist-tags.latest --prefer-online 2>/dev/null || true)"
+                if [ "$observed" = "$version" ]; then break; fi
+                echo "waiting for $name latest metadata (attempt $attempt, saw '${observed:-<nothing>}')"
+                if [ "$attempt" -lt 6 ]; then sleep 30; fi
+              done
               if [ "$observed" != "$version" ]; then
                 echo "::error::$name latest resolves to $observed, expected $version"
                 exit 1
