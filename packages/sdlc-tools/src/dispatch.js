@@ -7,5 +7,6 @@
 import { DISPATCH_TOOLS } from './index.js';
 import { toolSubsetPlugin } from './plugin.js';
 
+export { inject } from './plugin.js';
 export const name = 'sdlc-tools/dispatch';
 export const apply = toolSubsetPlugin(DISPATCH_TOOLS);

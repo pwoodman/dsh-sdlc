@@ -7,5 +7,6 @@
 import { PLAN_TOOLS } from './index.js';
 import { toolSubsetPlugin } from './plugin.js';
 
+export { inject } from './plugin.js';
 export const name = 'sdlc-tools/plan';
 export const apply = toolSubsetPlugin(PLAN_TOOLS);

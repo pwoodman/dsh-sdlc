@@ -2,6 +2,38 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.23] — candidate, not yet published — SDLC tool lifecycle and execution contracts
+
+### Fixed
+
+- Report, dispatch and plan loader entries now preserve `inject: ['tools']`.
+  Cordis waits for the provider instead of silently dropping registrations.
+- Model tools register `execute(args, exec)` and render content from the output
+  value (the second render argument), matching Harness's actual registry API.
+  Registration failures now reject activation rather than populate a misleading
+  self-test report. Optional commands are probed through `ctx.get()`.
+- Raw tool registrations now validate required fields, primitive types and enums
+  before invoking proposal handlers. Harness applies the strict argument wrapper
+  to `defineTool()`, not arbitrary raw `register()` definitions; the real pipeline
+  negative control caught missing decision arguments previously being accepted.
+- The folded lead's host row registers no global model tools; retained preset
+  slices own them, so workers cannot inherit lead-only dispatch/planning tools.
+
+### Verification
+
+- Source and folded entries have real Cordis lifecycle regression coverage.
+- `node scripts/verify-tool-runtime.mjs <unpacked-runtime-dir>` mounts
+  all 26 full shipped preset compositions using real Harness registries, checks
+  7/3 scoped SDLC tools, and exercises the actual tool execution pipeline plus
+  worker-visibility and invalid-input negative controls. OS/delegation boundaries
+  are explicitly stubbed; no server, subprocess or model is started. An optional
+  second argument selects an unpacked plugin tarball to verify the ship artifact.
+- The reported `never started` diagnostic specifically means import/pre-fiber
+  failure. The public beta.22 tarball imports successfully in isolation; the
+  original failed installation's initial loader log is still needed to identify
+  that exact failure. These repairs address independently reproduced API bugs,
+  not a claimed reproduction of the missing-fiber failure.
+
 ## [0.4.0-beta.22] — `npx` installer stops pulling the whole DSH runtime
 
 ### Fixed

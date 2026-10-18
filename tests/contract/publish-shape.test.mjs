@@ -177,6 +177,11 @@ test('publish: the meta-bundle is self-contained — no member dependencies', ()
   }
 });
 
+test('publish: lead host tool row leaves capabilities to scoped preset slices', () => {
+  const patch = readFileSync(join(ROOT, 'packages/sdlc-orchestrator/cordis.patch.yml'), 'utf8');
+  assert.match(patch, /id: sdlc-tools\s+name: ['"]@patwoodman\/dsh-sdlc-flow\/tools-plugin['"]\s+config:\s+tools: \[\]/);
+});
+
 test('publish: worker profile never composes the meta-bundle (E6)', () => {
   const worker = JSON.parse(readFileSync(join(ROOT, 'profiles', 'sdlc-worker', 'profile.json'), 'utf8'));
   assert.ok(!worker.bundles.includes('@patwoodman/dsh-sdlc-flow'), 'worker must not install the meta-bundle (it pulls core)');

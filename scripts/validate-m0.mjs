@@ -144,7 +144,7 @@ function runInProcessProbe() {
       const core = await import(${JSON.stringify('file://' + join(ROOT, 'packages/sdlc-core/src/services.js'))});
       const guard = await import(${JSON.stringify('file://' + join(ROOT, 'packages/sdlc-guard/src/plugin.js'))});
       const selftest = await import(${JSON.stringify('file://' + join(ROOT, 'packages/sdlc-core/src/selftest.js'))});
-      const ctx = { provide() {}, logger: { debug() {}, warn() {}, error() {} } };
+      const ctx = { provide() {}, tools: { register() {} }, commands: { register() {} }, logger: { debug() {}, warn() {}, error() {} } };
       // One apply() per declared loader row, exactly as the host composes them.
       // apply() returns nothing by contract (the Cordis runner reads a plugin
       // return value as an effect), so the runtime handle for the final close

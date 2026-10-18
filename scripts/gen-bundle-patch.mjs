@@ -138,9 +138,14 @@ function withoutRegistryInsert(block) {
 
 const blocks = MEMBERS.map((member) => {
   const rule = `# ── from ${member.pkg} — ${member.what}\n`;
-  const body = member.dir === 'sdlc-presets'
+  let body = member.dir === 'sdlc-presets'
     ? `${REGISTRY_OVERRIDE}${withoutRegistryInsert(bodyOf(member))}`
     : bodyOf(member);
+  // The lead's retained preset slices own model-facing tools. Do not publish
+  // lead-only capabilities globally where worker presets would inherit them.
+  if (member.dir === 'sdlc-tools') {
+    body = body.replace('        worktreePath:', '        tools: []\n        worktreePath:');
+  }
   return `${rule}${body}`;
 });
 

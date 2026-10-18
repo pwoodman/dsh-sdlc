@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Beta (0.4.0-beta.22).** Install with one command from a source checkout
+> **Release candidate: 0.4.0-beta.23 (not yet published).** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -20,6 +20,30 @@ git worktrees, verifies against risk-appropriate gates, and integrates.
 | [SDLC_IMPLEMENTATION_NOTES.md](SDLC_IMPLEMENTATION_NOTES.md) | deviations D0–D7, fixes, what is not implemented |
 | [EVAL_PROTOCOL.md](EVAL_PROTOCOL.md) | pre-registered A/B design proving the plugin beats plain DSH |
 | [IMPROVEMENT_AUDIT.md](IMPROVEMENT_AUDIT.md) | honest audit: what was fixed, measured, or deliberately left |
+
+## Tool startup troubleshooting
+
+The source checkout contains unreleased tool-lifecycle repairs; reinstalling
+`@latest` does not fetch these changes until a new release is published. Desktop
+users can install the rebuilt `packages/sdlc-orchestrator` directory through
+**Plugins → Add plugin** using its absolute path, then quit Harness completely
+and reopen it. Do not edit the Desktop profile by hand.
+
+For an offline runtime check (no model and no second web server):
+
+```sh
+node scripts/verify-tool-runtime.mjs /path/to/unpacked/dsh-runtime
+```
+
+It mounts all 26 full shipped preset compositions and checks tool visibility,
+real pipeline execution/rendering, invalid arguments, and worker denial of lead
+capabilities. OS/delegation boundaries are stubbed: this does not test running
+workers or the Desktop session-creation UI. An optional second argument points
+to an unpacked plugin tarball.
+A `never started` diagnostic means the loader did not create a plugin fiber;
+look for the **earlier loader import error** in the application log. A missing
+service instead reports `waiting for tools`. If the former persists after a
+clean restart/install, include that earlier error and the installed version.
 
 ## Quick start
 
@@ -58,7 +82,7 @@ installed `package.json`.
 ```sh
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
-npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.22
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.23
 ```
 
 It is idempotent. Prerequisites: `dsh` and `pnpm` on `PATH`, Node ≥ 22.5.
@@ -158,12 +182,12 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 > beta.19 kept installing after beta.20 was already `latest`. Prefer the
 > installer above; it pins the exact version and writes the exemption for you.
 > For a manual install, pin it exactly
-> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.22`) and add **one list item per
+> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.23`) and add **one list item per
 > pattern** to the profile's `pnpm-workspace.yaml`:
 >
 > ```yaml
 > minimumReleaseAgeExclude:
->   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.22'
+>   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.23'
 > ```
 >
 > A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
@@ -200,7 +224,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.22 && git push origin v0.4.0-beta.22
+git tag v0.4.0-beta.23 && git push origin v0.4.0-beta.23
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the

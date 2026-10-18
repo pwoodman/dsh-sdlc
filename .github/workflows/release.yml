@@ -33,6 +33,8 @@ on:
 
 permissions:
   contents: write # create the GitHub Release and upload assets
+  actions: read # inspect the CI workflow's conclusion for this commit
+  checks: read # inspect this commit's check runs
   id-token: write # npm provenance (sigstore signing of each publish)
 
 jobs:
@@ -55,7 +57,12 @@ jobs:
       - uses: pnpm/action-setup@v4
 
       - name: install the DSH runtime (needed by gate:P and gate:M0)
-        run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+        run: |
+          set -euo pipefail
+          npm install -g @deepseek-ai/dsh@$DSH_VERSION
+          runtime="$(npm root -g)/@deepseek-ai/dsh"
+          test -f "$runtime/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
+          echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
 
       # lib/ resolves cross-package imports through node_modules; a fresh
       # checkout has none (this is what failed the beta.6–beta.8 releases).
@@ -75,6 +82,9 @@ jobs:
 
       - name: build the release tarball (also regenerates patches and lib/)
         run: node scripts/build-release.mjs
+
+      - name: verify all shipped presets and scoped tool execution on the real host
+        run: node scripts/verify-tool-runtime.mjs "${SDLC_VERIFY_RUNTIME:?}"
 
       - name: offline test suite
         run: npm test
@@ -133,6 +143,10 @@ jobs:
           name: dsh-sdlc-beta
           path: dist/*.tgz
 
+      # Verify before EITHER public promotion: GitHub Release or npm publish.
+      - name: verify the packed tarballs install and boot
+        run: node scripts/verify-publish.mjs
+
       - name: publish the GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -169,13 +183,6 @@ jobs:
             Install section of the repository README.
 
             Known beta limits are in CHANGELOG.md.
-
-      # Gate 3 (pre-publish): install the PACKED tarballs — the exact files
-      # npm would ship — into scratch profiles and boot the probe. The
-      # beta.10 prepack-ENOENT class (lib/ missing from the pack) and the
-      # unfolded-fold class both fail here, on the runner, never on users.
-      - name: verify the packed tarballs install and boot
-        run: node scripts/verify-publish.mjs
 
       # Publishing is opt-in and skipped (never failed) when unconfigured: the
       # tarball above is a complete install path on its own. Enable it with the
@@ -262,6 +269,11 @@ jobs:
                   continue
                   ;;
               esac
+              # A historical workflow rerun must never move latest backwards.
+              if ! node --input-type=module -e 'import { compare } from "./scripts/lib/semver-lite.mjs"; process.exit(compare(process.argv[1], process.argv[2]) > 0 ? 0 : 1)' "$version" "$current"; then
+                echo "latest for $name stays $current (candidate $version is not newer)"
+                continue
+              fi
               moved=""
               for attempt in 1 2 3 4 5; do
                 if npm dist-tag add "$name@$version" latest >/dev/null 2>&1; then moved=1; break; fi
@@ -272,7 +284,12 @@ jobs:
                 echo "::error::could not advance $name latest from $current to $version"
                 exit 1
               fi
-              echo "latest: $name $current → $version"
+              observed="$(npm view "$name" dist-tags.latest)"
+              if [ "$observed" != "$version" ]; then
+                echo "::error::$name latest resolves to $observed, expected $version"
+                exit 1
+              fi
+              echo "latest: $name $current → $observed"
             done
           fi
 

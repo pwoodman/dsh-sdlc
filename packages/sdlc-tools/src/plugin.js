@@ -7,8 +7,11 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { COMMANDS, TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, ALL_TOOLS, DEBUG_COMMANDS, createHandlers } from './index.js';
+import { COMMANDS, TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, ALL_TOOLS, DEBUG_COMMANDS, createHandlers, validateToolArgs } from './index.js';
 import { contributeSelftest, setSelftestMeta } from './selftest.js';
+
+// Keep this metadata on every loader entry, including the preset slices.
+export const inject = ['tools'];
 
 function pkgVersion() {
   try {
@@ -34,17 +37,23 @@ export function registerTools(ctx, config = {}) {
     if (selected !== null && !selected.has(name)) continue;
     const handler = handlers[name];
     if (!handler) continue;
+    // Harness consumes raw JSON Schema + execute, not a handler callback.
+    // Registration errors must reject activation rather than report ghost tools.
+    ctx.tools.register({
+      ...def,
+      execute: (args) => {
+        // Raw register() definitions do not get defineTool's argument wrapper.
+        const validation = validateToolArgs(name, args);
+        if (!validation.ok) throw new TypeError(`${name}: ${validation.error}`);
+        return handler(args);
+      },
+      output: {
+        // Proposals carry different JSON payloads; do not claim only { ok }.
+        schema: { type: 'object' },
+        render: (_args, value) => [{ type: 'text', text: def.output.render(value) }],
+      },
+    });
     registered.push(name);
-    try {
-      if (typeof ctx?.tools?.register === 'function') {
-        ctx.tools.register({
-          ...def,
-          handler: (args) => handler(args),
-        });
-      }
-    } catch (err) {
-      if (ctx?.logger?.warn) ctx.logger.warn('sdlc-tools: failed to register %s: %s', name, err?.message ?? err);
-    }
   }
   return registered;
 }
@@ -52,11 +61,14 @@ export function registerTools(ctx, config = {}) {
 /** Register the `/sdlc` command surface (interactive profiles only — E3). */
 export function registerCommands(ctx, config = {}) {
   const registered = [];
+  // Headless/preset compositions need no command adapter. Cordis optional
+  // services must be probed with get(), not undeclared ctx.commands access.
+  const commands = typeof ctx?.get === 'function' ? ctx.get('commands') : ctx?.commands;
   for (const name of COMMANDS) {
     registered.push(name);
     try {
-      if (typeof ctx?.commands?.register === 'function') {
-        ctx.commands.register({
+      if (typeof commands?.register === 'function') {
+        commands.register({
           definitionId: `sdlc.${name}`,
           name: `sdlc ${name}`,
           description: `SDLC orchestrator: ${name}`,

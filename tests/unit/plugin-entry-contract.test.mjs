@@ -79,7 +79,13 @@ const ENTRIES = [
   {
     name: '@patwoodman/dsh-sdlc-flow-tools/plugin',
     load: 'packages/sdlc-tools/src/plugin.js',
+    inject: ['tools'],
   },
+  ...['report', 'dispatch', 'plan'].map((slice) => ({
+    name: `@patwoodman/dsh-sdlc-flow-tools/${slice}`,
+    load: `packages/sdlc-tools/src/${slice}.js`,
+    inject: ['tools'],
+  })),
   {
     name: '@patwoodman/dsh-sdlc-flow-ui (host)',
     load: 'packages/sdlc-client-ui/src/index.js',
@@ -129,7 +135,7 @@ for (const entry of ENTRIES) {
     }
     const dir = tempDir('sdlc-entry-contract-');
     try {
-      const ctx = { provide() {}, logger: stubLogger() };
+      const ctx = { provide() {}, tools: { register() {} }, logger: stubLogger() };
       const result = await mod.apply(ctx, entry.config ? entry.config(dir) : {});
       assert.equal(
         result,

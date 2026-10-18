@@ -100,12 +100,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - name: install the real host for mandatory runtime verification
+        run: |
+          set -euo pipefail
+          npm install -g @deepseek-ai/dsh@$DSH_VERSION
+          runtime="$(npm root -g)/@deepseek-ai/dsh"
+          test -f "$runtime/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
+          echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
       # Same workspace-link requirement as gate-m0: M1..M8 resolve
       # cross-package lib/ imports through node_modules.
       - name: link the workspace packages into node_modules
         run: node scripts/link-workspace.mjs
       - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+      - name: verify all shipped presets and scoped tool execution on the real host
+        run: node scripts/verify-tool-runtime.mjs "${SDLC_VERIFY_RUNTIME:?}"
       - name: integration + fault + adversarial layers (L4–L6)
         run: |
           npm run test:integration
@@ -121,7 +129,7 @@ jobs:
 
   e2e:
     needs: gates
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -151,7 +159,7 @@ jobs:
   # workflow's publish step (release.yml gates on this job's success).
   install-smoke:
     needs: e2e
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     env:
       DSH_VERSION: 0.2.0-rc.2

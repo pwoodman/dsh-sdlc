@@ -120,6 +120,16 @@ test('the plugin registration lists match the declared surface (used by M0-03/04
   assert.ok(commandNames.includes('doctor'));
 });
 
+test('raw registered tools validate arguments before invoking handlers', async () => {
+  const { registerTools } = await import('../../packages/sdlc-tools/src/plugin.js');
+  const definitions = [];
+  registerTools({ tools: { register: (definition) => definitions.push(definition) } }, { tools: ['sdlc_record_decision'] });
+  const definition = definitions[0];
+  assert.throws(() => definition.execute({}), /missing required parameter question/);
+  assert.throws(() => definition.execute({ question: 123, decision: 'A' }), /question must be a string/);
+  assert.equal(definition.execute({ question: 'Q', decision: 'A' }).ok, true);
+});
+
 test('preset tool slices are real loader entries with tools-only registration', async () => {
   // Regression: the preset rows used to name the package ROOT, which exports no
   // `apply`; DSH then reports each row as "never started" and the preset mount

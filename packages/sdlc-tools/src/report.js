@@ -11,5 +11,6 @@
 import { REPORT_TOOLS } from './index.js';
 import { toolSubsetPlugin } from './plugin.js';
 
+export { inject } from './plugin.js';
 export const name = 'sdlc-tools/report';
 export const apply = toolSubsetPlugin(REPORT_TOOLS);

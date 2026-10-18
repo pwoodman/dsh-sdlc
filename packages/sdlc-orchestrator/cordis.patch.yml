@@ -80,6 +80,7 @@
     - id: sdlc-tools
       name: '@patwoodman/dsh-sdlc-flow/tools-plugin'
       config:
+        tools: []
         worktreePath: !!js process.cwd()
 
 # ── from @patwoodman/dsh-sdlc-flow-presets — the 26 role presets (C.3)
