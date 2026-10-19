@@ -25,6 +25,15 @@ and the developer-productivity study.
 > dropped (`READY8`), and the tab strip collapsed at 343 px. The beta.28 tree
 > passes 844 offline tests and gates P, M0 and Q; see
 > [CHANGELOG.md](CHANGELOG.md).
+>
+> **Later update — beta.29.** beta.29 is now live on npm (`beta` and `latest`)
+> and in the [GitHub release](https://github.com/pwoodman/dsh-sdlc/releases/tag/v0.4.0-beta.29).
+> It scopes the panel to the open session's workspace (the Desktop app no
+> longer reads the Harness profile directory), classifies a missing flow route
+> from a status probe (`HOST_OUTDATED` / `HOST_MISSING` / `HOST_UNREACHABLE`),
+> and replaces the reinstall-only hint with full-quit and per-install-channel
+> guidance plus panel/host builds and Copy diagnostics. 850 offline tests pass;
+> gates P, M0 and Q are green.
 
 ---
 
