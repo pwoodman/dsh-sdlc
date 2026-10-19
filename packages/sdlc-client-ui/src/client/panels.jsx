@@ -412,7 +412,7 @@ function FlowDag({ view, onSelectTask, t }) {
       {view.layers.map((layer) => (
         <section className="sdlc-layer" key={layer.index}>
           <div className="sdlc-layer-head">
-            <span>{t('flow.stage')} {layer.index + 1}</span>
+            <span>{`${t('flow.stage')} ${layer.index + 1}`}</span>
             <span className="sdlc-muted">{layer.nodes.length}</span>
           </div>
           <div className="sdlc-layer-nodes">

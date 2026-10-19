@@ -2,6 +2,16 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.27] — 2026-10-19 — flow panel layout nits
+
+### Changed
+
+- KPI cards are a balanced **2×2** grid at sidebar widths (the 3+1 wrap read as
+  an orphaned card).
+- Stage labels render as `Stage 1` / `Stage 2` with their space intact, and the
+  task grid targets three cards per row at ~650 px and two at ~460 px.
+- No behavioural change; tests and the live render remain green.
+
 ## [0.4.0-beta.26] — 2026-10-19 — visual hierarchy pass for the flow panel
 
 ### Changed
