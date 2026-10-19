@@ -101,17 +101,27 @@ export function planEscalation(block, { mode = 'interactive' } = {}) {
   };
 }
 
-/** Apply a decision to a blocked task/project. */
-export function applyResolution({ resolution, optionId = null, decidedBy = null } = {}) {
+/**
+ * Apply a decision to a blocked task/project.
+ *
+ * Approval alone is not a corrective plan: `ESCALATED→READY` requires
+ * `correctivePlanApproved === true`, which is granted only when an explicit
+ * `correctivePlan` accompanies the approval. Rejecting/cancelling blocks.
+ */
+export function applyResolution({ resolution, optionId = null, decidedBy = null, correctivePlan = null } = {}) {
   if (!['approved', 'rejected', 'cancelled', 'unavailable'].includes(resolution)) {
     throw new Error(`invalid resolution: ${resolution}`);
   }
-  const unblock = resolution === 'approved';
+  const approved = resolution === 'approved';
+  const unblock = approved && correctivePlan != null;
   return {
     resolution,
     optionId,
     decidedBy,
-    taskTo: unblock ? 'READY' : 'BLOCKED',
+    correctivePlanApproved: unblock,
+    blockerResolved: unblock,
+    waiting_on: unblock ? null : 'user-decision',
+    taskTo: unblock ? 'READY' : (approved ? 'ESCALATED' : 'BLOCKED'),
     projectTo: unblock ? null : 'BLOCKED',
   };
 }

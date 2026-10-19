@@ -15,12 +15,13 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { openDatabase, migrate, quickCheck } from './schema.js';
 import { TaskStateService } from './state-machine.js';
 import { ModelRouter } from './router.js';
-import { budgetsForRisk, normalizeTaskBudget, PROJECT_BUDGET_DEFAULTS, checkDispatch, checkProjectBudget } from './budget.js';
+import { budgetsForRisk, normalizeTaskBudget, PROJECT_BUDGET_DEFAULTS, checkDispatch, checkProjectBudget, evaluateRun } from './budget.js';
 import { riskClass } from './risk.js';
 import { InstanceLock, InstanceLockedError } from './instance-lock.js';
 import { deriveWorkerResult, scopeVerdict, resolveClaims } from './worker-result.js';
 import { exportMetrics } from './metrics.js';
 import { GuardPlugin } from '../../sdlc-guard/src/index.js';
+import { applyResolution } from './escalation.js';
 
 export class RuntimeLockedError extends Error {
   constructor(holder) {
@@ -213,13 +214,16 @@ export class Runtime {
 
   // ── worker runs ──────────────────────────────────────────────────────────
 
-  startWorkerRun({ taskId, attempt, sessionId = null, pid = null, model = null, worktreePath = null, contextManifest = null, id = null }) {
+  startWorkerRun({ taskId, attempt, sessionId = null, pid = null, model = null, worktreePath = null, contextManifest = null, nonce = null, id = null }) {
     const runId = id ?? `${taskId}-a${attempt}-${randomUUID().slice(0, 8)}`;
     this.db.prepare(
       `INSERT INTO worker_runs(id, task_id, attempt, session_id, pid, model_provider, model_id,
         status, started_at, worktree_path, context_manifest_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
-    ).run(runId, taskId, attempt, sessionId, pid, model?.provider ?? null, model?.id ?? null, this.now(), worktreePath, contextManifest ? JSON.stringify(contextManifest) : null);
+    ).run(
+      runId, taskId, attempt, sessionId, pid, model?.provider ?? null, model?.id ?? null, this.now(), worktreePath,
+      contextManifest || nonce ? JSON.stringify({ ...(contextManifest ?? {}), ...(nonce ? { nonce } : {}) }) : null,
+    );
     return runId;
   }
 
@@ -251,9 +255,26 @@ export class Runtime {
    * resolve the result channel, and persist. Never trusts the worker (L.1.2).
    */
   ingestResult({ runId, filesChanged, contract = {}, outboxRaw = null, finalText = null, runMeta = {}, runtime = {} }) {
-    const claims = resolveClaims({ outboxRaw, finalText, runMeta });
+    // Derive the run identity (and the nonce, when the dispatcher stored one)
+    // from the worker_runs row; caller-supplied fields still win.
+    const storedRun = this.getWorkerRun(runId);
+    const effectiveMeta = {
+      runId: storedRun?.id,
+      taskId: storedRun?.task_id,
+      attempt: storedRun?.attempt,
+      nonce: storedRun?.context_manifest?.nonce,
+      ...runMeta,
+    };
+    const claims = resolveClaims({ outboxRaw, finalText, runMeta: effectiveMeta });
     const result = deriveWorkerResult({ filesChanged, contract, claims: claims.claims, runtime });
     const scope = scopeVerdict(result);
+    const taskRow = this.db.prepare('SELECT id, state, attempt, risk_class FROM tasks WHERE id = (SELECT task_id FROM worker_runs WHERE id = ?)').get(runId);
+    const spendBefore = taskRow ? this.spentForTask(taskRow.id) : { costUsd: 0, durationMs: 0, tokens: 0 };
+    const projectBefore = this.spentTotals();
+    const costKnown = typeof runtime.costUsd === 'number';
+    const tokensKnown = runtime.tokens != null && typeof runtime.tokens === 'object';
+    const tokensTotal = tokensKnown ? (runtime.tokens.in ?? 0) + (runtime.tokens.out ?? 0) : null;
+
     this.finishWorkerRun(runId, {
       status: result.status,
       exitCode: runtime.exitCode ?? null,
@@ -262,7 +283,33 @@ export class Runtime {
       costUsd: runtime.costUsd ?? 0,
       result: { ...result, claims_source: claims.source, scope },
     });
-    return { result, scope, claimsSource: claims.source };
+
+    // Post-run budget accounting. The old path recorded any cost and still let
+    // the result proceed to VERIFYING/ACCEPTED; a per-attempt overrun or project
+    // breach is now evidence (FAILED) before acceptance can happen. Missing
+    // cost/tokens is UNKNOWN, never zero.
+    let budget = { action: 'unknown', available: false, reason: 'COST_UNKNOWN' };
+    if (taskRow && costKnown && tokensKnown) {
+      budget = {
+        available: true,
+        ...evaluateRun({
+          attempt: taskRow.attempt ?? 0,
+          run: { costUsd: runtime.costUsd ?? 0, tokens: tokensTotal, durationMs: runtime.durationMs ?? 0 },
+          taskBudget: budgetsForRisk(taskRow.risk_class, this.config.budgets?.perTask),
+          taskSpend: { costUsd: spendBefore.costUsd },
+          projectBudget: this.config.budgets?.perProject ?? PROJECT_BUDGET_DEFAULTS,
+          projectSpend: projectBefore,
+        }),
+      };
+      const breach = budget.action === 'block' || budget.perAttemptOver === true;
+      if (breach && taskRow.state === 'IN_PROGRESS') {
+        this.state.transition(taskRow.id, 'FAILED', 'worker-mgr', {
+          hardFailure: true,
+          payload: { code: budget.reason ?? 'BUDGET_EXHAUSTED', budget_action: budget.action },
+        });
+      }
+    }
+    return { result, scope, claimsSource: claims.source, budget };
   }
 
   // ── routing, budgets, model runs ─────────────────────────────────────────
@@ -373,6 +420,64 @@ export class Runtime {
     return projectId
       ? this.db.prepare('SELECT * FROM requirements WHERE project_id = ? ORDER BY created_at').all(projectId)
       : this.db.prepare('SELECT * FROM requirements ORDER BY created_at').all();
+  }
+
+  // ── escalations (decision authority stays human/lead) ───────────────────
+
+  /** Persist an escalation decision packet before it is put to the user. */
+  recordEscalation({ id, taskId = null, attempt = null, level = null, packet = null } = {}) {
+    if (typeof id !== 'string' || id === '') throw new Error('recordEscalation: id is required');
+    this.db.prepare(
+      `INSERT INTO escalations(id, task_id, attempt, level, packet_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(id, taskId, attempt, level, JSON.stringify(packet ?? {}), this.now());
+    this.state.record({
+      taskId, actor: 'escalation-mgr', action: 'escalation-recorded',
+      payload: { escalation_id: id, level },
+    });
+    return this.getEscalation(id);
+  }
+
+  getEscalation(id) {
+    const row = this.db.prepare('SELECT * FROM escalations WHERE id = ?').get(id);
+    if (!row) return null;
+    return { ...row, packet: safeJson(row.packet_json, {}) };
+  }
+
+  getEscalations({ taskId = null } = {}) {
+    const rows = taskId
+      ? this.db.prepare('SELECT * FROM escalations WHERE task_id = ? ORDER BY created_at').all(taskId)
+      : this.db.prepare('SELECT * FROM escalations ORDER BY created_at').all();
+    return rows.map((row) => ({ ...row, packet: safeJson(row.packet_json, {}) }));
+  }
+
+  /**
+   * Apply a recorded decision. Approval without an explicit corrective plan
+   * leaves the task ESCALATED (the state guard requires the plan); rejection
+   * blocks it. Returns the resolution context actually applied.
+   */
+  resolveEscalation(id, { resolution, decidedBy = null, optionId = null, correctivePlan = null } = {}) {
+    const row = this.getEscalation(id);
+    if (!row) throw new Error(`resolveEscalation: unknown escalation ${id}`);
+    const ctx = applyResolution({ resolution, optionId, decidedBy, correctivePlan });
+    this.db.prepare(
+      'UPDATE escalations SET resolution = ?, resolved_by = ?, resolved_at = ? WHERE id = ?',
+    ).run(ctx.resolution, decidedBy, this.now(), id);
+    this.state.record({
+      taskId: row.task_id ?? null, actor: 'escalation-mgr', action: 'escalation-resolved',
+      payload: { escalation_id: id, resolution: ctx.resolution, decided_by: decidedBy, option_id: optionId },
+    });
+    const task = row.task_id ? this.getTask(row.task_id) : null;
+    let transition = null;
+    if (task && task.state === 'ESCALATED' && ctx.taskTo !== 'ESCALATED') {
+      transition = this.state.transition(row.task_id, ctx.taskTo, 'escalation-mgr', {
+        ...ctx,
+        correctivePlanApproved: ctx.correctivePlanApproved,
+        userDecisionRequired: ctx.resolution !== 'approved',
+        payload: { escalation_id: id, resolution: ctx.resolution },
+      });
+    }
+    return { ...ctx, transition };
   }
 
   // ── evidence ─────────────────────────────────────────────────────────────

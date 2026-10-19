@@ -7,6 +7,8 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import foldMeta from './lib/fold-meta.cjs';
+import { presetRows, PUBLIC_ROLE_IDS, presetIdFor } from '../packages/sdlc-presets/src/roles.js';
 
 const runtime = resolve(process.argv[2] ?? '.tools/dsh');
 const pkg = (name) => pathToFileURL(join(runtime, 'node_modules', '@deepseek-ai', name, 'lib/index.js')).href;
@@ -41,11 +43,29 @@ const metaDir = resolve(process.argv[3] ?? 'packages/sdlc-orchestrator');
 const require = createRequire(join(metaDir, 'package.json'));
 const { load: loadYaml } = await import(pathToFileURL(join(runtime, 'node_modules/js-yaml/dist/js-yaml.mjs')).href);
 const patch = loadYaml(readFileSync(join(metaDir, 'cordis.patch.yml'), 'utf8').replace(/!!js process\.cwd\(\)/g, 'null'));
-const presets = patch.flatMap((item) => item.insert ?? []).filter((row) => row.name === '@deepseek-ai/dsh-agent-preset');
-assert.equal(presets.length, 26, 'ship artifact contains every role preset');
+const publicPresets = patch.flatMap((item) => item.insert ?? []).filter((row) => row.name === '@deepseek-ai/dsh-agent-preset');
+const expectedPublic = PUBLIC_ROLE_IDS.map(presetIdFor);
+assert.deepEqual(
+  publicPresets.map((row) => row.id).sort(),
+  [...expectedPublic].sort(),
+  'the shipped lead exposes exactly the public role presets',
+);
+
+// The lead artifact is the user-facing surface. The full role compositions
+// stay in roles.js (and in the probe bundle), so keep exercising all of them
+// here; fold the row names exactly as the lead patch does when the meta package
+// is self-contained.
+const allRows = presetRows().filter((row) => row.id !== 'agent-preset-registry');
+const metaManifest = JSON.parse(readFileSync(join(metaDir, 'package.json'), 'utf8'));
+const foldedArtifact = !metaManifest.dependencies && Boolean(metaManifest.exports?.['./services']);
+const rewritten = foldedArtifact
+  ? foldMeta.rewritePatch(JSON.stringify(allRows))
+  : JSON.stringify(allRows);
+const presets = JSON.parse(rewritten);
+assert.equal(presets.length, 26, 'the role registry contains every composition');
 const rows = (id) => {
   const preset = presets.find((row) => row.config.id === id);
-  assert.ok(preset, `missing shipped ${id} preset`);
+  assert.ok(preset, `missing role composition ${id}`);
   return preset.config.plugins.map((row) => ({
     ...row,
     // Exercise shipped configs on real host entries, resolving from their actual
@@ -103,7 +123,7 @@ try {
       callId: 'verify-invalid-arguments', signal: new AbortController().signal,
     });
     assert.equal(invalid.isError, true, 'schema validation must reject missing arguments');
-    console.log('PASS: all 26 full shipped presets mount; 7/3 scoped SDLC tools; actual execution pipeline; worker/invalid-input negative controls (OS/delegation boundaries stubbed)');
+    console.log(`PASS: ${presets.length} role compositions mount; lead exposes ${publicPresets.length} selectable preset(s); 7/3 scoped SDLC tools; actual execution pipeline; worker/invalid-input negative controls (OS/delegation boundaries stubbed)`);
   } finally {
     await lead.dispose();
     await worker.dispose();

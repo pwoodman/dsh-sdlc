@@ -17,6 +17,14 @@ export function sdlcDefinition(t) {
     kind: SDLC_KIND,
     priority: 'builtin',
     title: () => t('tab.title'),
+    // The guide is the only user-reachable door for a pure page type: without
+    // an entry the type registers but no new session can ever open it.
+    guide: [{
+      id: 'flow',
+      order: 30,
+      title: () => t('guide.title'),
+      description: () => t('guide.description'),
+    }],
   };
 }
 

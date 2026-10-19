@@ -83,7 +83,7 @@ dsh --profile sdlc-lead --headless "/sdlc selftest"
 | P4 | Headless mode is a first-class supervisor seam: `dsh --profile headless "<task>"` with `--json` (newline-delimited events: `session`, `status`, `text`, `thinking`, `tool_call`, `tool_result`, `final`, `error`) and `--session-id` (adopt/persist a conversation). Exit 0 = completed, 1 = aborted/errored; failure signal = exit code + `turn_end` reason | `dsh-headless/README.md` ("Machine-readable output", "Choosing the session identity") |
 | P5 | A headless Session is bound to its working directory at creation ("new Sessions record that directory"); adoption re-checks the cwd and refuses mismatches | `dsh-headless/README.md` |
 | P6 | The sandbox workspace root defaults to the process cwd (`sandbox-policy.workspaceRoot: process.cwd()`), permission presets = `read-only` / `workspace-write` / `danger-full-access` × approval `ask`/`never` | `dsh-base/cordis.patch.yml` (`sandbox-policy`, `permission` rows) |
-| P7 | Agent presets are declarative rows (`@deepseek-ai/dsh-agent-preset`, `config.id/order/plugins[]`); a preset's `plugins` list IS the agent composition: persona (prompt prefix/suffix, `{{cwd}}`/`{{model}}` templates), tools (tool allowlist by omission), plan/compaction/delegation groups | `dsh-web-app/presets/standard.patch.yml`, `minimal.patch.yml` |
+| P7 | Agent presets are declarative rows (`@deepseek-ai/dsh-agent-preset`, `config.id/order/plugins[]`); a preset's `plugins` list IS the agent composition: persona (prompt prefix/suffix, `{{model}}` template), tools (tool allowlist by omission), plan/compaction/delegation groups | `dsh-web-app/presets/standard.patch.yml`, `minimal.patch.yml` |
 | P8 | Different agents/sessions in one process run under different preset compositions simultaneously; the host keeps registries keyed by owning agent ("one host instance serves every session exactly as before presets") | `dsh-web-app/cordis.patch.yml` ("the agent plane moves behind agent presets") |
 | P9 | Subagent delegation supports `agentOptions` overrides per child: provider, model, reasoning effort, maxTokens; one-shot children settle with "a single result, plus an optional structured output and a safe diagnostic"; continuable children keep durable sessions with interrupt | `dsh-subagent/README.md`, `dsh-tool-subagent/README.md` |
 | P10 | Model-per-child requires an `agentOptions`-capable backend (in-process spawn/fork and DSH SDK; ACP/Codex/Claude Code reject it); exact-route authorization can be policy-controlled (`modelSelectionSettings`) | `dsh-tool-subagent/README.md` |
@@ -547,7 +547,7 @@ Workers never need approvals: they run under a pre-granted `workspace-write` per
             config:
               prefix: |   # role mission + policy (verification policy, escalation rules)
                 You are the Security Engineer on an SDLC task team…
-              suffix: Your working directory is {{cwd}}. Model: {{model}}.
+              suffix: Model: {{model}}.
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'          # tool allowlist = mounted rows
           - id: tool-fs
@@ -558,7 +558,7 @@ Workers never need approvals: they run under a pre-granted `workspace-write` per
             name: '@local/sdlc-tools/report'             # propose-only result tool
 ```
 
-- **Prompt** = persona prefix (role mission + verification policy + escalation rules, per spec §7 "owns" lists) + `{{cwd}}`/`{{model}}` suffix; extra policy via `ctx.systemPrompt.section()` rows where long-lived.
+- **Prompt** = persona prefix (role mission + verification policy + escalation rules, per spec §7 "owns" lists) + `{{model}}` suffix (DSH registers `provider`/`model`, not `cwd`); extra policy via `ctx.systemPrompt.section()` rows where long-lived.
 - **Tools** = mounted rows only (allowlist by omission) + `ctx.tools.restrict({deny})` where needed. Worker presets get NO delegation tools (`maxDepth` stays 0/1); the Lead preset adds `sdlc_*` proposal tools.
 - **Permissions/model are NOT preset fields** (P15/P21): permission = the worker profile's `permission` preset row (`workspace-write`); model = tier overlay (C.6).
 - **Binding (two defined mechanisms, fixed precedence):** primary — the per-run overlay also overrides the `agent-preset-registry.default` row to the task's role preset id. Contingency (in use only if M0 falsifies the overlay mechanism) — the task prompt embeds the role preamble verbatim from the same preset source, with the worker profile composing all role presets under `default` unchanged. In-process children: stock subagent children inherit the Lead's preset (P18), so per-role children use either named `dsh-tool-subagent` rows (fixed `persona`/`toolFilter`/`agentOptions` per role tool) or custom `ctx.agents.create` + `agentPresets.mount` (P17).

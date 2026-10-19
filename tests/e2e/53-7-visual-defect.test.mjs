@@ -90,7 +90,10 @@ test('§53 Test 7: false DONE claim and visual gate failure are rejected, then f
     // A passing gate set with a rejecting review is its own rejection code.
     const reviewReject = verifier.decideAcceptance({
       riskClass: 'R3',
-      gateResults: { visual: { status: 'pass' } },
+      gateResults: {
+        syntax: { status: 'pass' }, lint: { status: 'pass' }, unit: { status: 'pass' },
+        integration: { status: 'pass' }, visual: { status: 'pass' },
+      },
       filesChanged: work2.filesChanged,
       review: modelDecision(mock, 'mock/review-reject'),
       claims: { status: 'completed' },

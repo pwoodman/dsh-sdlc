@@ -80,6 +80,11 @@ jobs:
           fi
           node scripts/bump-version.mjs --check
 
+      # A version already on npm or already tagged makes the publish loop skip
+      # every package and still report success. Fail before building anything.
+      - name: the release version is unpublished and documented
+        run: node scripts/verify-release.mjs --json
+
       - name: build the release tarball (also regenerates patches and lib/)
         run: node scripts/build-release.mjs
 
@@ -188,7 +193,7 @@ jobs:
       # tarball above is a complete install path on its own. Enable it with the
       # repository variable PUBLISH_NPM=true plus the NPM_TOKEN secret.
       - name: publish to npm
-        if: vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
+        if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
         run: |
           set -euo pipefail
           export NODE_AUTH_TOKEN="$NPM_TOKEN"
@@ -202,7 +207,7 @@ jobs:
           esac
           echo "publishing $version under the $dist_tag dist-tag"
           # Dependency order: the meta-bundle is published last.
-          for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
+          for dir in sdlc-guard sdlc-core sdlc-cli sdlc-tools sdlc-presets sdlc-client-ui sdlc-orchestrator; do
             name="$(node -p "require('./packages/$dir/package.json').name")"
             private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
             if [ "$private" = "true" ]; then
@@ -228,7 +233,7 @@ jobs:
           # members published, then the verification read hit a cold replica
           # and failed the step). Poll each member with backoff instead of
           # reading once — a version that never appears still fails closed.
-          for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
+          for dir in sdlc-guard sdlc-core sdlc-cli sdlc-tools sdlc-presets sdlc-client-ui sdlc-orchestrator; do
             name="$(node -p "require('./packages/$dir/package.json').name")"
             private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
             if [ "$private" = "true" ]; then continue; fi
@@ -253,7 +258,7 @@ jobs:
           # build so the no-version install path can never resolve to an older,
           # known-broken beta. A stable `latest` is never moved down to a beta.
           if [ "$dist_tag" = beta ]; then
-            for dir in sdlc-core sdlc-guard sdlc-tools sdlc-presets sdlc-client-ui sdlc-cli sdlc-orchestrator; do
+            for dir in sdlc-guard sdlc-core sdlc-cli sdlc-tools sdlc-presets sdlc-client-ui sdlc-orchestrator; do
               name="$(node -p "require('./packages/$dir/package.json').name")"
               private="$(node -p "Boolean(require('./packages/$dir/package.json').private)")"
               if [ "$private" = "true" ]; then continue; fi
@@ -300,6 +305,23 @@ jobs:
               echo "latest: $name $current → $observed"
             done
           fi
+
+      # Prove the path a user actually takes. Pre-publish verification installs
+      # member tarballs with link: (they are not on the registry yet); only this
+      # step resolves the exact intra-suite versions from npm.
+      - name: post-publish registry install smoke
+        if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          export DSH_HOME="$(mktemp -d)"
+          echo "fresh DSH_HOME: $DSH_HOME"
+          npx -y "@patwoodman/dsh-sdlc-flow@$version" dsh-sdlc-install --only all --version "$version" --json
+          npx -y "@patwoodman/dsh-sdlc-flow@$version" dsh-sdlc-install --check --only all --version "$version" --json
+          SDLC_SELFTEST="$DSH_HOME/selftest.json" dsh --profile sdlc-probe
+          test -s "$DSH_HOME/selftest.json"
+          npx -y "@patwoodman/dsh-sdlc-flow@$version" dsh-sdlc-install --uninstall --only all --json
+          echo "registry install, check, probe boot and uninstall all passed"
 
       - name: explain an npm refusal
         if: failure() && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''

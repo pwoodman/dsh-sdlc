@@ -76,10 +76,11 @@ test('merge-conflict-replan: postMergeOutcome reverts with `-m 1` on gate failur
     assert.equal(readFileSync(join(repo, 'f.txt'), 'utf8'), 'task\n');
 
     // Post-merge gates fail ⇒ revert the merge commit with `-m 1`.
-    const outcome = postMergeOutcome({ gatesPass: false, mergeCommit: 'HEAD', failedTasks: ['T-1'] });
+    const mergeSha = git(['rev-parse', 'HEAD'], repo);
+    const outcome = postMergeOutcome({ gatesPass: false, mergeCommit: mergeSha, failedTasks: ['T-1'] });
     assert.equal(outcome.action, 'revert');
     assert.equal(outcome.reason, 'POST_MERGE_GATE_FAILURE');
-    assert.deepEqual(outcome.argv, ['git', 'revert', '-m', '1', 'HEAD']);
+    assert.deepEqual(outcome.argv, ['git', 'revert', '-m', '1', mergeSha]);
     assert.deepEqual(outcome.failedTasks, ['T-1']);
 
     git(outcome.argv.slice(1), repo);

@@ -5,8 +5,11 @@
  * module exists so the package has a resolvable host entry (the `sdlc-ui`
  * self-report pattern: data-only patches never run code, so the boot hook
  * needs one row that executes). It contributes nothing to the selftest
- * beyond its own presence.
+ * beyond its own presence, and schedules the non-blocking package update
+ * check documented in ./update.js.
  */
+
+import { scheduleUpdateCheck } from './update.js';
 
 export const PACKAGE = '@patwoodman/dsh-sdlc-flow';
 export const BUNDLES = [
@@ -26,8 +29,13 @@ export const BUNDLES = [
  * an effect (`TypeError: Invalid effect` for a non-constructible apply;
  * silently dropped for this regular-function apply). The composition is
  * declared by the exported BUNDLES constant and the generated patch file.
+ *
+ * The update check is scheduled, not awaited: a slow or offline registry must
+ * never delay activation. `SDLC_AUTO_UPDATE=off` disables it.
  * @returns {undefined}
  */
-export function apply(ctx, config = {}) {}
+export function apply(ctx, config = {}) {
+  scheduleUpdateCheck(ctx, config);
+}
 
 export default { PACKAGE, BUNDLES, apply };

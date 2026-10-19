@@ -12,7 +12,8 @@
  *     bundles a profile composes?
  *   - does every row's plugin `name` resolve to a real module in this repo?
  *   - does the worker profile stay free of `sdlc-core` (errata E6)?
- *   - are there exactly 26 `preset-sdlc-*` rows matching roles.js?
+ *   - does the interactive lead expose only the public role presets, while the
+ *     member bundle declares all 26 role compositions?
  *
  * This is a *static* proof: it shows the composition is well-formed. It does
  * not replace the runtime `--dump-config` check, which remains the preferred

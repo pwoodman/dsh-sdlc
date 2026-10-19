@@ -64,9 +64,20 @@ export function integrationSteps(task, { mergeBase = null } = {}) {
  */
 export function postMergeOutcome({ gatesPass, mergeCommit, failedTasks = [] } = {}) {
   if (gatesPass) return { action: 'done', tag: true };
+  // Never guess the merge commit: `git revert -m 1 HEAD` on a missing SHA can
+  // revert an unrelated merge. A failed post-merge gate without a commit is an
+  // explicit refusal, not a HEAD fallback.
+  if (typeof mergeCommit !== 'string' || mergeCommit.trim() === '' || mergeCommit.trim() === 'HEAD') {
+    return {
+      action: 'refuse',
+      failedTasks,
+      reason: 'MISSING_MERGE_COMMIT',
+      detail: 'post-merge gate failure requires the merge commit to revert',
+    };
+  }
   return {
     action: 'revert',
-    argv: ['git', 'revert', '-m', '1', mergeCommit ?? 'HEAD'],
+    argv: ['git', 'revert', '-m', '1', mergeCommit],
     failedTasks,
     reason: 'POST_MERGE_GATE_FAILURE',
   };

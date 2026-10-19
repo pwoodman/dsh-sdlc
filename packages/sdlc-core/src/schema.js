@@ -11,6 +11,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
+import { copyFileSync, existsSync } from 'node:fs';
 
 export const SCHEMA_VERSION = 1;
 
@@ -214,7 +215,28 @@ export const TABLES = [
  * @param {import('node:sqlite').DatabaseSync} db
  * @returns {number} applied schema version
  */
+export function schemaVersion(db) {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'").get();
+  if (!table) return null;
+  const row = db.prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
+  return row?.version ?? null;
+}
+
+/** Refuse a database written by a newer plugin before any DDL mutates it. */
+export function assertSchemaCompatible(db) {
+  const version = schemaVersion(db);
+  if (version !== null && version > SCHEMA_VERSION) {
+    throw new Error(
+      `sdlc.db schema version ${version} is newer than this plugin (${SCHEMA_VERSION}); `
+      + 'refusing to open or migrate it. Upgrade the plugin or restore a backup.',
+    );
+  }
+  return version;
+}
+
 export function migrate(db) {
+  // Check BEFORE pragmas/DDL: a future schema must not be partially mutated.
+  assertSchemaCompatible(db);
   for (const pragma of PRAGMAS) {
     try { db.exec(pragma); } catch { /* :memory: and read-only mounts may refuse WAL */ }
   }
@@ -222,6 +244,13 @@ export function migrate(db) {
   applyColumnMigrations(db);
   const row = db.prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
   if (!row) {
+    db.prepare('INSERT INTO schema_version(version, applied_at) VALUES (?, ?)').run(
+      SCHEMA_VERSION,
+      new Date().toISOString(),
+    );
+    return SCHEMA_VERSION;
+  }
+  if (row.version < SCHEMA_VERSION) {
     db.prepare('INSERT INTO schema_version(version, applied_at) VALUES (?, ?)').run(
       SCHEMA_VERSION,
       new Date().toISOString(),
@@ -261,9 +290,20 @@ export function quickCheck(db) {
  */
 export function openDatabase(dbPath, { requireQuickCheck = true, DatabaseSync: Ctor = DatabaseSync } = {}) {
   const db = new Ctor(dbPath);
-  migrate(db);
-  if (requireQuickCheck) quickCheck(db);
-  return db;
+  try {
+    // Integrity + compatibility BEFORE any write. A torn DB must refuse to open
+    // (B.2.3), and a newer schema must never be migrated by an older plugin.
+    const version = assertSchemaCompatible(db);
+    if (requireQuickCheck) quickCheck(db);
+    if (version !== null && version < SCHEMA_VERSION && dbPath !== ':memory:' && existsSync(dbPath)) {
+      try { copyFileSync(dbPath, `${dbPath}.bak-v${version}`); } catch { /* backup is best-effort; migration is still checked */ }
+    }
+    migrate(db);
+    return db;
+  } catch (error) {
+    try { db.close(); } catch { /* already closed */ }
+    throw error;
+  }
 }
 
 export function tableNames(db) {
@@ -277,4 +317,4 @@ export function triggerNames(db) {
     .map((r) => r.name);
 }
 
-export default { migrate, quickCheck, openDatabase, SCHEMA_VERSION, DDL, TABLES };
+export default { migrate, quickCheck, openDatabase, schemaVersion, assertSchemaCompatible, SCHEMA_VERSION, DDL, TABLES };

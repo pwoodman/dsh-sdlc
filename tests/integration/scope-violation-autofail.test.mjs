@@ -66,7 +66,10 @@ test('scope-violation-autofail: `.sdlc/task-outbox.json` is never a violation (E
   const decision = (await core.verifier()).decideAcceptance({
     riskClass: 'R2',
     scope: scopeVerdict(result),
-    gateResults: { unit: { status: 'pass' } },
+    gateResults: {
+      syntax: { status: 'pass' }, lint: { status: 'pass' },
+      unit: { status: 'pass' }, integration: { status: 'pass' },
+    },
     review: { verdict: 'accept' },
     filesChanged: result.files_changed,
   });

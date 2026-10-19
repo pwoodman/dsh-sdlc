@@ -56,6 +56,8 @@ test('route paths are stable and browser-relative forms strip the slash', () => 
   assert.equal(routes.SDLC_COMPARE_PATH, '/api/sdlc.compare');
   assert.equal(routes.SDLC_CONFIG_PATH, '/api/sdlc.config');
   assert.equal(routes.SDLC_METRICS_PATH, '/api/sdlc.metrics');
+  assert.equal(routes.SDLC_FLOW_PATH, '/api/sdlc.flow');
+  assert.equal(routes.SDLC_FLOW_ROUTE, 'api/sdlc.flow');
   assert.equal(routes.SDLC_STATUS_ROUTE, 'api/sdlc.status');
   assert.ok(routes.sdlcReviewAddress('T-1').startsWith('dsh-resource://sdlc-review/'));
   assert.deepEqual(routes.parseSdlcReviewAddress(routes.sdlcReviewAddress('T-1')), { taskId: 'T-1' });
@@ -114,6 +116,7 @@ test('uninitialised projects are 404, never fabricated', () => {
     assert.equal(handlers.handleBoard(dir).status, 404);
     assert.equal(handlers.handleCompare(dir, { task: 'T', a: 'A', b: 'B' }).status, 404);
     assert.equal(handlers.handleTask(dir, { id: 'T' }).status, 404);
+    assert.equal(routes.isFlowPayload({}), false);
   } finally { cleanup(dir); }
 });
 

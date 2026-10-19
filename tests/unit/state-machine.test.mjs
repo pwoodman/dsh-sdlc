@@ -88,6 +88,20 @@ test('terminal states accept nothing', () => {
   }
 });
 
+test('ACCEPTED→MERGING enforces a single writer from the database, not a caller flag', () => {
+  const svc = fresh('ACCEPTED');
+  svc._setState('T2', 'ACCEPTED');
+  const first = svc.transition('T1', 'MERGING', 'integration-mgr', {});
+  assert.equal(first.ok, true, JSON.stringify(first));
+  const blocked = svc.transition('T2', 'MERGING', 'integration-mgr', {});
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason, /mergeSlotFree/);
+  assert.equal(svc.getState('T2'), 'ACCEPTED');
+  // The slot frees when the first merge settles.
+  assert.equal(svc.transition('T1', 'DONE', 'integration-mgr', { merged: true }).ok, true);
+  assert.equal(svc.transition('T2', 'MERGING', 'integration-mgr', {}).ok, true);
+});
+
 test('MERGING cannot be cancelled — a stop waits for the merge to settle', () => {
   const svc = fresh('MERGING');
   const res = svc.transition('T1', 'CANCELLED', 'human', satisfyingCtx('MERGING', 'CANCELLED', 'human'));
@@ -116,6 +130,15 @@ test('legal example rows from B.2.1', () => {
     assert.equal(res.ok, true, `${from}→${to} (${actor}) rejected: ${res.reason}`);
     assert.equal(svc.getState('T1'), to);
   }
+});
+
+test('VERIFYING→ACCEPTED needs explicit gatesPass:true, not a missing field', () => {
+  const svc = fresh('VERIFYING');
+  const empty = svc.transition('T1', 'ACCEPTED', 'verifier', {});
+  assert.equal(empty.ok, false);
+  assert.match(empty.reason, /gatesPass/);
+  assert.equal(svc.getState('T1'), 'VERIFYING');
+  assert.equal(svc.transition('T1', 'ACCEPTED', 'verifier', { gatesPass: true }).ok, true);
 });
 
 test('guards are enforced, not decorative', () => {

@@ -25,10 +25,15 @@ The patch also inserts the `agent-preset-registry` row first, so the presets
 reach templates that ship no registry (e.g. the `headless` and `sdk`
 templates).
 
+This member bundle declares all 26 role compositions. The lead meta-bundle
+(`@patwoodman/dsh-sdlc-flow`) filters the generated patch down to the public
+roles (currently the Lead Orchestrator), so a DSH user does not see every
+internal role in the Settings page or the new-session preset picker.
+
 ## Requirements
 
 - `@deepseek-ai/dsh` `>=0.2.0-rc.2 <0.3.0-0`
-- Node.js ≥ 22.5
+- Node.js ≥ 22.13
 
 ## License
 

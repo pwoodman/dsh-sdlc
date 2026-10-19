@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { core } from '../lib/helpers.mjs';
 
 const v = await core.verifier();
+const risk = await core.risk();
 
 const ACCEPT_REVIEW = { verdict: 'accept', reviewer: 'code-reviewer' };
 
@@ -51,6 +52,41 @@ test('a false DONE claim is rejected with runtime evidence (Test 7)', () => {
 test('behavioural test rule: production change without a test is rejected', () => {
   const decision = v.decideAcceptance(base({ filesChanged: ['src/a.ts'] }));
   assert.equal(decision.code, 'NO_TEST_EVIDENCE');
+});
+
+test('an explicit required-gate set rejects missing or skipped gates (R4 fail-open)', () => {
+  const required = risk.requiredGates('R4').filter((g) => g.required).map((g) => g.gate);
+  const allPass = Object.fromEntries(required.map((g) => [g, { status: 'pass' }]));
+  assert.equal(required.length, 6, required.join(','));
+  assert.equal(v.decideAcceptance(base({ riskClass: 'R4', gateResults: allPass, requiredGates: required })).accept, true);
+
+  // Only one gate: previously ACCEPTED because *some* evidence existed.
+  const one = v.decideAcceptance(base({
+    riskClass: 'R4', gateResults: { syntax: { status: 'pass' } }, requiredGates: required,
+  }));
+  assert.equal(one.accept, false);
+  assert.equal(one.code, 'SKIPPED_GATE_NOT_PASSED');
+  assert.match(one.reasons.join(' '), /lint: missing/);
+
+  // A skipped required gate is not a pass.
+  const skipped = v.decideAcceptance(base({
+    riskClass: 'R4', gateResults: { ...allPass, unit: { status: 'skipped:policy' } }, requiredGates: required,
+  }));
+  assert.equal(skipped.accept, false);
+  assert.equal(skipped.code, 'SKIPPED_GATE_NOT_PASSED');
+  assert.match(skipped.reasons.join(' '), /unit: skipped:policy/);
+});
+
+test('a gate set explicitly reduced for appearance-only work can omit integration/e2e', () => {
+  const required = risk.requiredGates('R3', { uiChange: true, appearanceOnly: true })
+    .filter((g) => g.required).map((g) => g.gate);
+  assert.ok(required.includes('visual'));
+  assert.ok(!required.includes('integration'));
+  const gates = Object.fromEntries(required.map((g) => [g, { status: 'pass' }]));
+  const decision = v.decideAcceptance(base({
+    riskClass: 'R3', gateResults: gates, requiredGates: required, filesChanged: ['src/app.css', 'tests/visual/base.png'],
+  }));
+  assert.equal(decision.accept, true, JSON.stringify(decision));
 });
 
 test('a skipped visual/e2e gate for R3+ UI BLOCKS rather than auto-accepts (L.5)', () => {

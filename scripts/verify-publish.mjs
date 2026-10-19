@@ -18,7 +18,10 @@
  *   3. install the packed tarballs into scratch profiles with
  *      `dsh plugin add file:<tgz>` — the registry-shape path, no `link:` —
  *      and boot the probe profile via SDLC_SELFTEST, asserting tools,
- *      commands, services and the 26 presets register.
+ *      commands, services and the 26 presets register;
+ *   4. create a real `sdlc-lead` session from the packed lead;
+ *   5. run the shipped installer's `--check` (expect up to date) and
+ *      `--uninstall` (expect the package and selection gone).
  *
  * A failure here fails the Release BEFORE anything reaches npm, so a broken
  * pack can never strand users on a half-published version again.
@@ -33,6 +36,7 @@ import { execFileSync, spawnSync } from 'node:child_process'; // execFileSync: t
 import { createLeadSession } from './lib/preset-boot.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
+const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 const KEEP = process.argv.includes('--keep');
 const HOME = mkdtempSync(join(tmpdir(), 'sdlc-verify-publish-home-'));
 const WORK = mkdtempSync(join(tmpdir(), 'sdlc-verify-publish-'));
@@ -48,7 +52,13 @@ function run(cmd, args, opts = {}) {
     encoding: 'utf8', timeout: opts.timeoutMs ?? 300_000, cwd: opts.cwd ?? ROOT,
     env: { ...process.env, DSH_HOME: HOME, ...(opts.env ?? {}) },
   });
-  return { code: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '', ok: res.status === 0 };
+  const spawnError = res.error ? `spawn ${cmd}: ${res.error.message}` : '';
+  return {
+    code: res.status,
+    stdout: res.stdout ?? '',
+    stderr: res.stderr ?? spawnError,
+    ok: res.status === 0 && !res.error,
+  };
 }
 
 function tarList(tgz) {
@@ -89,12 +99,16 @@ try {
     ok(`packed ${m.name}@${m.version} → ${pick}`);
   }
 
+  if (tgzOf.size === 0) {
+    fail('no shippable package could be packed — refusing to report success');
+  }
+
   // ── 2. packed-shape assertions ──
   for (const [name, tgz] of tgzOf) {
     const entries = tarList(tgz);
     if (entries.some((e) => e.startsWith('package/src/'))) fail(`${name}: packed tarball contains src/ (absent at install time)`);
   }
-  if (![...tgzOf.values()].some((tgz) => tarList(tgz).some((e) => e === 'package/src/index.js' || e.startsWith('package/src/')))) {
+  if (tgzOf.size > 0 && ![...tgzOf.values()].some((tgz) => tarList(tgz).some((e) => e === 'package/src/index.js' || e.startsWith('package/src/')))) {
     ok('no packed tarball contains src/ (lib/ only, as installed)');
   }
   const need = [
@@ -216,12 +230,43 @@ try {
           dshHome: HOME,
           profile: 'sdlc-web',
           cwd: webWork,
-          env: { ...process.env, DSH_HOME: HOME },
+          env: { ...process.env, DSH_HOME: HOME, SDLC_AUTO_UPDATE: 'off' },
         });
         ok(`packed lead creates a ${session.agentPreset} session`);
       } catch (error) {
         fail(`packed lead cannot create the sdlc-lead session: ${error.message}`);
       }
+
+      // ── 6. check and uninstall the packed lead ──
+      // Exercise the SHIPPED installer (`lib/install.mjs` inside the meta
+      // tarball), not the source tree: this is what `npx` runs for users.
+      const metaExtract = join(WORK, 'meta-extract');
+      mkdirSync(metaExtract, { recursive: true });
+      const untar = run('tar', ['xzf', lead, '-C', metaExtract]);
+      if (!untar.ok) fail(`could not extract the packed meta tarball: ${untar.stderr.slice(0, 300)}`);
+      const installer = join(metaExtract, 'package', 'lib', 'install.mjs');
+      if (!existsSync(installer)) fail('packed meta tarball does not contain lib/install.mjs');
+      const check = run(process.execPath, [
+        installer, '--check', '--only', 'lead', '--dsh-home', HOME, '--version', VERSION, '--json',
+      ]);
+      if (!check.ok) fail(`packed lead --check failed: ${(check.stderr || check.stdout).slice(-500)}`);
+      else {
+        try {
+          const report = JSON.parse(check.stdout);
+          if (report.profiles?.[0]?.updateAvailable !== false) {
+            fail(`packed lead --check reports cleanup/update needed: ${JSON.stringify(report.profiles?.[0] ?? null)}`);
+          } else ok('packed lead reports up to date');
+        } catch (error) {
+          fail(`packed lead --check returned invalid JSON: ${error.message}`);
+        }
+      }
+      const removed = run(process.execPath, [
+        installer, '--uninstall', '--only', 'lead', '--dsh-home', HOME, '--json',
+      ]);
+      if (!removed.ok) fail(`packed lead --uninstall failed: ${(removed.stderr || removed.stdout).slice(-500)}`);
+      else if (existsSync(join(HOME, 'profiles', 'sdlc-web', 'node_modules', '@patwoodman', 'dsh-sdlc-flow', 'package.json'))) {
+        fail('packed lead --uninstall left the package installed');
+      } else ok('packed lead uninstalls cleanly');
     }
   }
 } finally {

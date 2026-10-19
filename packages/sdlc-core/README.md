@@ -22,7 +22,7 @@ dsh plugin --profile <profile> add @patwoodman/dsh-sdlc-flow-core
 ## Requirements
 
 - `@deepseek-ai/dsh` `>=0.2.0-rc.2 <0.3.0-0`
-- Node.js ≥ 22.5 (`node:sqlite`)
+- Node.js ≥ 22.13 (`node:sqlite`)
 
 ## License
 

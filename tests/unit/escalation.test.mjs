@@ -53,8 +53,13 @@ test('escalation level rises with repeated failure', () => {
   assert.equal(esc.advanceLevel('ELEVATED', false), 'ELEVATED');
 });
 
-test('applyResolution unblocks only on approval', () => {
-  assert.equal(esc.applyResolution({ resolution: 'approved' }).taskTo, 'READY');
+test('applyResolution unblocks only on approval WITH an explicit corrective plan', () => {
+  const bare = esc.applyResolution({ resolution: 'approved' });
+  assert.equal(bare.taskTo, 'ESCALATED', 'approval alone is not a corrective plan');
+  assert.equal(bare.correctivePlanApproved, false);
+  const planned = esc.applyResolution({ resolution: 'approved', correctivePlan: { steps: ['fix'] } });
+  assert.equal(planned.taskTo, 'READY');
+  assert.equal(planned.correctivePlanApproved, true);
   assert.equal(esc.applyResolution({ resolution: 'rejected' }).taskTo, 'BLOCKED');
   assert.throws(() => esc.applyResolution({ resolution: 'nonsense' }), /invalid resolution/);
 });

@@ -5,6 +5,7 @@ sidebar, plus the host routes that feed it.
 
 | Panel | What it shows |
 |---|---|
+| Flow | live task DAG, subagent runs, routing, gates, locks, escalations and events |
 | Status | live project, task and spend summary from `sdlc.db` |
 | Board | tasks grouped by state-machine state |
 | Config | a validated editor for `.sdlc/config.yml` (writes are rejected when validation fails) |
@@ -12,7 +13,13 @@ sidebar, plus the host routes that feed it.
 
 Host routes: `/api/sdlc.status`, `/api/sdlc.board`, `/api/sdlc.task`,
 `/api/sdlc.compare`, `/api/sdlc.config` (GET + validated POST),
-`/api/sdlc.metrics`.
+`/api/sdlc.metrics`, `/api/sdlc.flow` (bounded visualizer snapshot).
+
+The tab is registered as a right-sidebar page with a guide entry, so a new
+session can open it from the guide's **SDLC Flow** capsule. With
+`autoOpen: true` (the shipped default) it also opens once for the first session
+that has an SDLC project; the Flow panel polls every 5 s and keeps the last
+snapshot as *stale* when a poll fails.
 
 `lib/client.js` is a prebuilt closure-factory bundle that registers into the
 right-sidebar slot system; it needs no build step on the consumer's machine.
@@ -31,7 +38,7 @@ It must never be mounted in the headless worker profile (E6).
 ## Requirements
 
 - `@deepseek-ai/dsh` `>=0.2.0-rc.2 <0.3.0-0`
-- Node.js ≥ 22.5
+- Node.js ≥ 22.13
 - a profile whose client platform is `web`
 
 ## License

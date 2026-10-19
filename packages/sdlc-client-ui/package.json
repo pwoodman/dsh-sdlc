@@ -1,20 +1,12 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-ui",
-  "version": "0.4.0-beta.23",
+  "version": "0.4.0-beta.24",
   "type": "module",
   "description": "SDLC orchestrator web UI: config editor, task board, and side-by-side review (sdlc-web profile only).",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./lib/types/index.d.ts",
-      "default": "./lib/index.js"
-    },
-    "./client": {
-      "types": "./lib/types/client/index.d.ts",
-      "default": "./lib/client.js"
-    },
-    "./src/*": "./src/*",
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
@@ -56,7 +48,7 @@
   },
   "icon": "icon.svg",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "publishConfig": {
     "access": "public"
@@ -66,7 +58,7 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-cli": "0.4.0-beta.23",
-    "@patwoodman/dsh-sdlc-flow-core": "0.4.0-beta.23"
+    "@patwoodman/dsh-sdlc-flow-cli": "0.4.0-beta.24",
+    "@patwoodman/dsh-sdlc-flow-core": "0.4.0-beta.24"
   }
 }

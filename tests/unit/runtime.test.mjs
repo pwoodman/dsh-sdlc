@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
 
 const { Runtime, RuntimeLockedError } = await core.runtime();
+const { buildOutbox } = await core.workerResult();
 
 function baseConfig(overrides = {}) {
   return {
@@ -612,4 +613,27 @@ test('guardFor honours safety.guardMode (regression: warn mode was silently igno
       assert.equal(guard.policy.forbidden_patterns[0], 'rm -rf /');
     } finally { runtime.close({ releaseLock: false }); }
   } finally { cleanup(dir); }
+});
+
+
+test('a stored run nonce makes outbox provenance non-optional', () => {
+  const rt = new Runtime({ projectRoot: tempDir('sdlc-provenance-'), config: { storage: { dbPath: '.sdlc/sdlc.db' }, safety: { instanceLock: false } } });
+  rt.open();
+  try {
+    rt.createProject({ id: 'P1', name: 'p' });
+    rt.addTask({ id: 'T1', project_id: 'P1', title: 't', risk_class: 'R1' });
+    rt.state._setState('T1', 'IN_PROGRESS');
+    const runId = rt.startWorkerRun({ taskId: 'T1', attempt: 0, nonce: 'nonce-real' });
+    const forged = buildOutbox({ runId: 'other', taskId: 'T1', attempt: 0, nonce: 'nonce-forged', claims: { status: 'completed' } });
+    const ingested = rt.ingestResult({ runId, filesChanged: [], outboxRaw: forged, contract: { allowed_paths: ['src/**'] }, runtime: { exitCode: 0, costUsd: 0, tokens: { in: 0, out: 0 } } });
+    assert.equal(ingested.claimsSource, 'outbox');
+    assert.equal(ingested.result.suspect, true);
+
+    const run2 = rt.startWorkerRun({ taskId: 'T1', attempt: 1, nonce: 'nonce-real-2' });
+    const good = buildOutbox({ runId: run2, taskId: 'T1', attempt: 1, nonce: 'nonce-real-2', claims: { status: 'completed' } });
+    const ok = rt.ingestResult({ runId: run2, filesChanged: [], outboxRaw: good, contract: { allowed_paths: ['src/**'] }, runtime: { exitCode: 0, costUsd: 0, tokens: { in: 0, out: 0 } } });
+    assert.equal(ok.result.suspect, false, 'the stored full tuple matches');
+  } finally {
+    rt.close();
+  }
 });

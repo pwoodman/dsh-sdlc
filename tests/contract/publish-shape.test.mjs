@@ -210,3 +210,16 @@ test('publish: folded presets plugin resolves its 26 preset ids (no ENOENT)', as
   const ids = plugin.declaredPresetIds();
   assert.equal(ids.length, 26, 'declaredPresetIds() must read the folded cordis.patch.yml');
 });
+
+test('publish: the installer ships check/uninstall and the auto-updater ships', () => {
+  const dir = pkgDir('@patwoodman/dsh-sdlc-flow');
+  const install = readFileSync(join(dir, 'lib', 'install.mjs'), 'utf8');
+  assert.match(install, /--uninstall/, 'installer help/branch ships --uninstall');
+  assert.match(install, /--check/, 'installer help/branch ships --check');
+  assert.match(install, /pruneSuiteDependencies/, 'installer prunes legacy member packages');
+  const updatePath = join(dir, 'lib', 'update.js');
+  assert.ok(existsSync(updatePath), 'meta-bundle ships lib/update.js');
+  const update = readFileSync(updatePath, 'utf8');
+  assert.match(update, /SDLC_AUTO_UPDATE/, 'auto-update documents its opt-out');
+  assert.match(update, /installBundle/, 'auto-update installs through the plugin manager');
+});

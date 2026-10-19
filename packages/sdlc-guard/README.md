@@ -29,7 +29,7 @@ id-targeted override replaces the row's whole `config`.
 ## Requirements
 
 - `@deepseek-ai/dsh` `>=0.2.0-rc.2 <0.3.0-0`
-- Node.js ≥ 22.5
+- Node.js ≥ 22.13
 
 ## License
 

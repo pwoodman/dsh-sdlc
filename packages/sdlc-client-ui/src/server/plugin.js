@@ -23,12 +23,13 @@
 
 import {
   SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_COMPARE_PATH,
-  SDLC_CONFIG_PATH, SDLC_METRICS_PATH,
+  SDLC_CONFIG_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH,
 } from '../routes.js';
 import {
   handleStatus, handleBoard, handleTask, handleCompare,
   handleConfigGet, handleConfigPost, handleMetrics,
 } from './handlers.js';
+import { handleFlow } from './flow.js';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -118,6 +119,7 @@ export function registerRoutes(ctx, config = {}) {
     [SDLC_COMPARE_PATH, ['GET'], async (request) => statusResponse(handleCompare(root(), queryOf(request)))],
     [SDLC_CONFIG_PATH, ['GET'], async () => statusResponse(handleConfigGet(root()))],
     [SDLC_METRICS_PATH, ['GET'], async () => statusResponse(handleMetrics(root()))],
+    [SDLC_FLOW_PATH, ['GET'], async (request) => statusResponse(handleFlow(root(), queryOf(request)))],
   ];
   for (const [path, methods, fetch] of routes) {
     try {

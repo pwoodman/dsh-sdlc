@@ -5,10 +5,15 @@
  * and owned: WCAG conformance, assistive-tech review, a11y test policy).
  *
  * A role is a `@deepseek-ai/dsh-agent-preset` row. Prompt = persona prefix
- * (mission + verification policy + escalation rules) + `{{cwd}}`/`{{model}}`
- * suffix; tools = mounted rows only (allowlist by omission). Permissions and
- * model are NOT preset fields (P15/P21) — permission comes from the profile's
+ * (mission + verification policy + escalation rules) + the `{{model}}` suffix;
+ * tools = mounted rows only (allowlist by omission). Permissions and model are
+ * NOT preset fields (P15/P21) — permission comes from the profile's
  * `permission` row and the model from the tier overlay (C.6).
+ *
+ * Only {@link PUBLIC_ROLE_IDS} are declared as selectable presets in the lead
+ * bundle, so the DSH preset picker shows one SDLC entry instead of all 26 role
+ * compositions. The rest stay in this registry for planners, tests, and
+ * programmatic mounting; they are not user-facing choices.
  *
  * Team composition rule (B.4, acceptance Test 1): a role becomes active only
  * when the planner assigns ≥1 task to it. There are no standing role agents;
@@ -142,6 +147,28 @@ if (ROLES.length !== 26) {
 export const ROLE_IDS = ROLES.map((r) => r.id);
 export const ROLE_COUNT = ROLES.length;
 
+/**
+ * Roles DSH should show as selectable presets.
+ *
+ * The DSH roster is a user-facing menu: every registered
+ * `@deepseek-ai/dsh-agent-preset` row appears in Settings and the new-session
+ * preset picker. Worker roles are chosen by the planner through the task
+ * contract, not by the person starting a session, so publishing all 26 menus
+ * is noise. The lead is the only role a user needs to start; the remaining
+ * compositions stay available to tests and programmatic mounting.
+ */
+export const PUBLIC_ROLE_IDS = ['lead'];
+export const PUBLIC_ROLE_COUNT = PUBLIC_ROLE_IDS.length;
+
+for (const id of PUBLIC_ROLE_IDS) {
+  if (!ROLE_IDS.includes(id)) throw new Error(`public role ${id} is not in the role registry`);
+}
+
+/** Whether a role is published as a selectable DSH preset. */
+export function isPublicRole(role) {
+  return PUBLIC_ROLE_IDS.includes(role.id);
+}
+
 export function presetIdFor(roleId) {
   return `preset-sdlc-${roleId}`;
 }
@@ -207,7 +234,12 @@ export function presetRow(role) {
       name: '@deepseek-ai/dsh-persona',
       config: {
         prefix: personaPrefix(role),
-        suffix: 'Your working directory is {{cwd}}. Model: {{model}}.',
+        // DSH's prompt registry supplies `provider` and `model`; it does not
+        // register `cwd` (the working directory is a runtime-context entry).
+        // Referencing `{{cwd}}` fails the turn at render time:
+        //   unknown prompt variable "{{cwd}}" in section
+        //   "deployment:persona-suffix"; registered variables: provider, model
+        suffix: 'Model: {{model}}.',
       },
     },
     ...(role.lead ? leadToolRows() : WORKER_TOOL_ROWS),
@@ -229,6 +261,16 @@ export function presetRows() {
   return [presetRegistryRow(), ...ROLES.map(presetRow)];
 }
 
+/**
+ * The rows the lead bundle declares as selectable presets: the registry plus
+ * the public roles only. This is intentionally a subset of
+ * {@link presetRows}; the full roster remains the composition source of truth
+ * for the planner and the tool-runtime verifier.
+ */
+export function publicPresetRows() {
+  return [presetRegistryRow(), ...ROLES.filter(isPublicRole).map(presetRow)];
+}
+
 /** Domain → candidate roles (used by the planner's role assignment). */
 export function rolesForDomains(domains = []) {
   const set = new Set(domains);
@@ -236,4 +278,4 @@ export function rolesForDomains(domains = []) {
   return matches.length ? matches : ['backend-engineer'];
 }
 
-export default { ROLES, ROLE_IDS, ROLE_COUNT, presetRows, presetRow, presetRegistryRow, presetIdFor, rolesForDomains };
+export default { ROLES, ROLE_IDS, ROLE_COUNT, PUBLIC_ROLE_IDS, PUBLIC_ROLE_COUNT, presetRows, publicPresetRows, presetRow, presetRegistryRow, presetIdFor, rolesForDomains };

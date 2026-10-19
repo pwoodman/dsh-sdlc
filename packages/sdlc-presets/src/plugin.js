@@ -9,7 +9,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { ROLES, ROLE_IDS, ROLE_COUNT, presetRows, presetIdFor, presetConfigIdFor, rolesForDomains } from './roles.js';
+import { ROLES, ROLE_IDS, ROLE_COUNT, PUBLIC_ROLE_IDS, PUBLIC_ROLE_COUNT, presetRows, publicPresetRows, presetIdFor, presetConfigIdFor, rolesForDomains } from './roles.js';
 import { contributeSelftest, setSelftestMeta } from './selftest.js';
 
 function pkgVersion() {
@@ -40,5 +40,6 @@ export function apply(ctx, config = {}) {
 }
 
 export {
-  ROLES, ROLE_IDS, ROLE_COUNT, presetRows, presetIdFor, presetConfigIdFor, rolesForDomains,
+  ROLES, ROLE_IDS, ROLE_COUNT, PUBLIC_ROLE_IDS, PUBLIC_ROLE_COUNT,
+  presetRows, publicPresetRows, presetIdFor, presetConfigIdFor, rolesForDomains,
 };

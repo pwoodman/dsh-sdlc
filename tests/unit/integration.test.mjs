@@ -64,3 +64,16 @@ test('the release plan runs the full gate set and requires approval when product
   assert.deepEqual(plan.gates, ['syntax', 'types', 'lint', 'unit', 'integration', 'api', 'e2e', 'visual', 'security', 'perf', 'build']);
   assert.equal(it.releasePlan({ productionImpacting: false }).requiresApproval, false);
 });
+
+
+test('a post-merge gate failure without a merge commit refuses instead of reverting HEAD', async () => {
+  const it = await core.integration();
+  const outcome = it.postMergeOutcome({ gatesPass: false, failedTasks: ['T-1'] });
+  assert.equal(outcome.action, 'refuse');
+  assert.equal(outcome.reason, 'MISSING_MERGE_COMMIT');
+  assert.equal(outcome.argv, undefined);
+  const empty = it.postMergeOutcome({ gatesPass: false, mergeCommit: '   ' });
+  assert.equal(empty.action, 'refuse');
+  const head = it.postMergeOutcome({ gatesPass: false, mergeCommit: 'HEAD' });
+  assert.equal(head.action, 'refuse');
+});

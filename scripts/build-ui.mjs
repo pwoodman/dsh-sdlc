@@ -138,14 +138,18 @@ function compileJsx(source) {
     }
   }
 
-  function propsCode(props) {
-    if (!props.length) return 'null';
+  function propsCode(props, children = null) {
     const parts = [];
     let spread = null;
     for (const p of props) {
       if (p.spread) { spread = p.spread; continue; }
       parts.push(`${JSON.stringify(p.key)}: ${p.value}`);
     }
+    // React's automatic runtime puts children INSIDE props; its third argument
+    // is the key, not a child. Passing the child there produced a bogus key and
+    // a null-props crash (`reading 'key'`) on the first real render.
+    if (children !== null) parts.push(`children: ${children}`);
+    if (!parts.length) return '{}';
     const obj = `{${parts.join(', ')}}`;
     return spread ? `Object.assign({}, (${spread}), ${obj})` : obj;
   }
@@ -207,8 +211,8 @@ function compileJsx(source) {
       if (norm.trim()) children.push(JSON.stringify(norm));
     }
     if (!children.length) return `__jsx(${ref}, ${propsCode(tag.props)})`;
-    if (children.length === 1) return `__jsx(${ref}, ${propsCode(tag.props)}, ${children[0]})`;
-    return `__jsxs(${ref}, ${propsCode(tag.props)}, ${children.join(', ')})`;
+    if (children.length === 1) return `__jsx(${ref}, ${propsCode(tag.props, children[0])})`;
+    return `__jsxs(${ref}, ${propsCode(tag.props, `[${children.join(', ')}]`)})`;
   }
 
   /**
@@ -434,7 +438,7 @@ function compileJsx(source) {
   }
 }
 function readClientSources() {
-  const files = ['routes.js', 'client/api.js', 'client/store.js', 'client/locales.js', 'client/definition.js', 'client/panels.jsx', 'client/SdlcTab.jsx', 'client/index.js'];
+  const files = ['routes.js', 'client/api.js', 'client/store.js', 'client/locales.js', 'client/definition.js', 'client/flow.js', 'client/panels.jsx', 'client/SdlcTab.jsx', 'client/index.js'];
   const parts = [];
   for (const rel of files) {
     const path = join(SRC, rel);
@@ -511,6 +515,7 @@ function buildClientBundle() {
     var react_jsx_runtime = require("react/jsx-runtime");
     var useState = react.useState;
     var useSyncExternalStore = react.useSyncExternalStore;
+    var useEffect = react.useEffect;
     var __jsx = react_jsx_runtime.jsx;
     var __jsxs = react_jsx_runtime.jsxs;
     ${JSON.stringify(css.length)}; // css length marker (injected below)

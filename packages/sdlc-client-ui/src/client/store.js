@@ -32,6 +32,7 @@ export function createSdlcStores(api) {
   const board = createStore({ phase: 'loading' });
   const config = createStore({ phase: 'loading' });
   const review = createStore({ phase: 'idle' });
+  const flow = createStore({ phase: 'loading' });
 
   async function loadStatus() {
     status.update({ phase: 'loading' });
@@ -63,6 +64,25 @@ export function createSdlcStores(api) {
     return res;
   }
 
+  async function loadFlow({ task = null } = {}) {
+    const previous = flow.getSnapshot();
+    try {
+      const res = await api.fetchFlow({ task });
+      if (res.available) {
+        flow.update({ phase: 'ready', data: res.data });
+        return;
+      }
+      flow.update(previous.data
+        ? { phase: 'stale', data: previous.data, reason: res.reason }
+        : { phase: 'missing', reason: res.reason });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      flow.update(previous.data
+        ? { phase: 'stale', data: previous.data, reason }
+        : { phase: 'missing', reason });
+    }
+  }
+
   async function loadCompare(task, a, b) {
     review.update({ phase: 'loading', task, a, b });
     const res = await api.fetchCompare(task, a, b);
@@ -76,6 +96,7 @@ export function createSdlcStores(api) {
     board.update({ phase: 'loading' });
     config.update({ phase: 'loading' });
     review.update({ phase: 'idle' });
+    flow.update({ phase: 'loading' });
   }
 
   function dispose() {
@@ -83,9 +104,36 @@ export function createSdlcStores(api) {
     board.dispose();
     config.dispose();
     review.dispose();
+    flow.dispose();
   }
 
-  return { status, board, config, review, loadStatus, loadBoard, loadConfig, saveConfig, loadCompare, reset, dispose };
+  return {
+    status, board, config, review, flow,
+    loadStatus, loadBoard, loadConfig, saveConfig, loadCompare, loadFlow, reset, dispose,
+  };
 }
 
-export default { createStore, createSdlcStores };
+export default { createStore, createSdlcStores, createSdlcStoreHandle };
+
+
+/**
+ * Adapt the framework-free stores to DSH's slot store handle contract.
+ *
+ * The renderer calls `handle.create(scopeKey)` and expects
+ * { actions, getSnapshot, subscribe, clearPersisted }. The tab body still reads
+ * the raw stores through `inject`, but this handle is what the registry needs;
+ * passing the raw store object produced `handle.create is not a function` and
+ * the tab never mounted.
+ */
+export function createSdlcStoreHandle(stores) {
+  const names = ['status', 'board', 'config', 'review', 'flow'];
+  const snapshot = () => Object.fromEntries(names.map((name) => [name, stores[name].getSnapshot()]));
+  const subscribe = (listener) => {
+    const unsubscribe = names.map((name) => stores[name].subscribe(listener));
+    return () => { for (const off of unsubscribe) off(); };
+  };
+  return {
+    spec: { init: snapshot, actions: {} },
+    create: () => ({ actions: {}, getSnapshot: snapshot, subscribe, clearPersisted() {} }),
+  };
+}

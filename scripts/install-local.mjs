@@ -39,6 +39,7 @@ import { execFileSync } from 'node:child_process';
 import { run } from './lib/harness.mjs';
 import { dshPeerSatisfied } from './lib/semver-lite.mjs';
 import { ownBundlePrefix, isOwnBundleName } from './lib/composition.mjs';
+import { PUBLIC_ROLE_COUNT } from '../packages/sdlc-presets/src/roles.js';
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
@@ -490,8 +491,10 @@ step('verify: lead profile composes the full lead without unexpected duplicate r
     }
   }
   const presets = [...counts.keys()].filter((id) => /^preset-sdlc-/.test(id)).length;
-  if (presets !== 26) throw new Error(`expected 26 preset-sdlc-* rows in the composed lead, found ${presets}`);
-  return `${counts.size} unique ids incl. ${presets} presets (sdlc-ui + meta-bundle present)`;
+  if (presets !== PUBLIC_ROLE_COUNT) {
+    throw new Error(`expected ${PUBLIC_ROLE_COUNT} selectable preset-sdlc-* rows in the composed lead, found ${presets}`);
+  }
+  return `${counts.size} unique ids incl. ${presets} selectable preset(s) (sdlc-ui + meta-bundle present)`;
 });
 step('verify: M0 gate', () => {
   const res = run('node', [join(ROOT, 'scripts', 'validate-m0.mjs')], { timeoutMs: 900_000 });

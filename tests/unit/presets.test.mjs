@@ -9,7 +9,10 @@ import { join } from 'node:path';
 import { core, ROOT } from '../lib/helpers.mjs';
 
 const rolesMod = await core.presets();
-const { ROLES, ROLE_IDS, ROLE_COUNT, presetRows, presetIdFor, rolesForDomains } = rolesMod;
+const {
+  ROLES, ROLE_IDS, ROLE_COUNT, PUBLIC_ROLE_IDS, PUBLIC_ROLE_COUNT,
+  presetRows, publicPresetRows, presetIdFor, rolesForDomains,
+} = rolesMod;
 
 test('exactly 26 roles, unique ids, one per preset id', () => {
   assert.equal(ROLE_COUNT, 26);
@@ -18,6 +21,15 @@ test('exactly 26 roles, unique ids, one per preset id', () => {
   const presetIds = presetRows().filter((r) => /^preset-sdlc-/.test(r.id)).map((r) => r.id);
   assert.equal(new Set(presetIds).size, 26);
   assert.ok(presetIds.every((id) => /^preset-sdlc-/.test(id)));
+});
+
+test('the public roster publishes only the lead; the other role compositions stay internal', () => {
+  assert.deepEqual([...PUBLIC_ROLE_IDS], ['lead']);
+  assert.equal(PUBLIC_ROLE_COUNT, 1);
+  const publicIds = publicPresetRows().filter((r) => /^preset-sdlc-/.test(r.id)).map((r) => r.id);
+  assert.deepEqual(publicIds, [presetIdFor('lead')]);
+  assert.equal(presetRows().filter((r) => /^preset-sdlc-/.test(r.id)).length, 26,
+    'all role compositions remain available to the planner and runtime verification');
 });
 
 test('the spec §53 roster is present, including the Accessibility Engineer (Test 4)', () => {
@@ -48,7 +60,17 @@ test('a preset is a plugin COMPOSITION, not a flat prompt/tools struct (P15)', (
   const persona = row.config.plugins.find((p) => p.id === 'persona');
   assert.equal(persona.name, '@deepseek-ai/dsh-persona');
   assert.match(persona.config.prefix, /Verification policy/);
-  assert.equal(persona.config.suffix, 'Your working directory is {{cwd}}. Model: {{model}}.');
+  // DSH registers provider/model prompt variables, not cwd. A {{cwd}}
+  // reference fails the turn at render time, so the suffix is model-only.
+  assert.equal(persona.config.suffix, 'Model: {{model}}.');
+  // DSH's prompt registry registers `provider` and `model`, but not `cwd`.
+  // A template naming an unregistered variable fails the turn at render time.
+  const vars = [...persona.config.suffix.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+  assert.deepEqual(vars, ['model'], 'persona suffix uses only registered prompt variables');
+  for (const preset of presetRows().filter((r) => /^preset-sdlc-/.test(r.id))) {
+    const template = preset.config.plugins.find((p) => p.id === 'persona').config.suffix;
+    assert.doesNotMatch(template, /\{\{cwd\}\}/, `${preset.id}: {{cwd}} is not a DSH prompt variable`);
+  }
   // Permissions and model are NOT preset fields (P15/P21).
   assert.equal('permission' in row.config, false);
   assert.equal('model' in row.config, false);

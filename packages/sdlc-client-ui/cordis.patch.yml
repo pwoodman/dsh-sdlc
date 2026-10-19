@@ -8,4 +8,5 @@
 - insert:
     - id: sdlc-ui
       name: '@patwoodman/dsh-sdlc-flow-ui'
-      config: {}
+      config:
+        autoOpen: true

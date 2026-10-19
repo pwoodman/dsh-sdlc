@@ -5,7 +5,7 @@
  * This module is the pure decision table; the DSH service wires it to the DB.
  */
 
-import { violatesBehavioralTestRule } from './risk.js';
+import { violatesBehavioralTestRule, requiredGates as riskRequiredGates } from './risk.js';
 
 export const REJECTION_CODES = [
   'SCOPE_VIOLATION',
@@ -38,6 +38,7 @@ export function decideAcceptance({
   claims = null,
   runtimeStatus = 'completed',
   blockedBySkippedGate = false,
+  requiredGates = null,
 } = {}) {
   const reasons = [];
 
@@ -72,6 +73,29 @@ export function decideAcceptance({
   const failedGates = Object.entries(gateResults).filter(([, r]) => String(r.status).startsWith('fail'));
   if (failedGates.length) {
     return reject('FAILED', 'GATE_FAILED', failedGates.map(([g, r]) => `${g}: ${r.status}`));
+  }
+  // A required gate must be PRESENT and PASSING. The old check only required
+  // *some* evidence, so an R4 task with `syntax: pass` (or a required gate
+  // marked `skipped:*`) was accepted. Callers that know the risk-derived gate
+  // set pass it explicitly; skipped-but-not-required gates are excluded by the
+  // caller (requiredGates().filter(g => g.required)), preserving B.4/L.5.
+  // Default to the risk-derived floor. A caller that needs a deliberately
+  // reduced set (appearance-only, configured skips) passes it explicitly; R1
+  // is the only class that may be accepted without gate evidence.
+  const enforcedGates = Array.isArray(requiredGates)
+    ? requiredGates
+    : (riskClass === 'R1' ? [] : riskRequiredGates(riskClass).filter((g) => g.required).map((g) => g.gate));
+  if (enforcedGates.length > 0) {
+    const missing = enforcedGates.filter((gate) => {
+      const result = gateResults[gate];
+      return !result || !String(result.status).startsWith('pass');
+    });
+    if (missing.length) {
+      if (Object.keys(gateResults).length === 0) {
+        return reject('FAILED', 'GATE_FAILED', ['no gate evidence recorded']);
+      }
+      return reject('FAILED', 'SKIPPED_GATE_NOT_PASSED', missing.map((gate) => `${gate}: ${gateResults[gate]?.status ?? 'missing'}`));
+    }
   }
   const requiredButMissing = Object.keys(gateResults).length === 0;
   if (requiredButMissing && riskClass !== 'R1') {

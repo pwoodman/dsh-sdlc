@@ -123,3 +123,57 @@ test('cordis patch declares the UI row for the web profile only', () => {
   assert.ok(!worker.bundles.includes('@patwoodman/dsh-sdlc-flow-ui'), 'sdlc-worker must not compose UI (E6/headless)');
   assert.ok(!worker.bundles.includes('@patwoodman/dsh-sdlc-flow'), 'sdlc-worker must not compose the meta-bundle (it pulls core)');
 });
+
+test('the bundle registers a reachable SDLC tab with a guide entry', () => {
+  const { exports } = clientBundleExports();
+  const definitions = [];
+  const injected = [];
+  let bodyRegistration = null;
+  let registeredDefinition = null;
+  let captureBody = false;
+  const ctx = {
+    locale: { bind: () => (key) => key, register: () => () => {} },
+    sidebarRightTabs: { register: (definition) => { definitions.push(definition); return () => {}; } },
+    sidebarRight: { mounted: { getSnapshot: () => undefined, subscribe: () => () => {} }, openTab: () => {} },
+    slots: {
+      inject: (name, body) => {
+        injected.push(name);
+        captureBody = name === 'sidebar.right.pane.tab';
+        if (captureBody) bodyRegistration = body();
+        else body();
+        captureBody = false;
+        return () => {};
+      },
+      register: (definition) => { if (captureBody) registeredDefinition = definition; return () => {}; },
+    },
+    on: () => {},
+    effect: (fn) => { fn(); },
+  };
+  exports.apply(ctx, { autoOpen: false });
+  assert.equal(definitions.length, 1);
+  const definition = definitions[0];
+  assert.equal(definition.kind, 'sdlc');
+  assert.equal(definition.id, '@patwoodman/dsh-sdlc-flow-ui');
+  assert.ok(Array.isArray(definition.guide) && definition.guide.length === 1, 'the guide is the page type\'s door');
+  assert.equal(definition.guide[0].id, 'flow');
+  assert.equal(typeof definition.guide[0].order, 'number');
+  assert.equal(definition.guide[0].title(), 'guide.title');
+  assert.deepEqual(injected.sort(), ['sidebar.right.pane.tab', 'sidebar.right.pane.tab.title']);
+  assert.ok(exports.default.inject.includes('sidebarRightTabs'));
+  assert.match(read('lib/client.js'), /Task DAG/);
+  assert.ok(bodyRegistration, 'the tab body was registered');
+  assert.ok(registeredDefinition, 'the tab body definition was registered');
+  assert.equal(typeof registeredDefinition.store?.create, 'function', 'the slot gets a DSH store handle, not a raw store');
+  const instance = registeredDefinition.store.create();
+  assert.equal(typeof instance.getSnapshot, 'function');
+  assert.equal(typeof instance.subscribe, 'function');
+  assert.equal(typeof instance.clearPersisted, 'function');
+
+  // React automatic-runtime contract: children live in props; the third jsx
+  // argument is a key. Emitting `__jsx(tag, null, child)` crashed the first
+  // real render with "reading 'key'".
+  const bundle = read('lib/client.js');
+  assert.match(bundle, /__jsx\("span", \{children:/);
+  assert.doesNotMatch(bundle, /__jsx\([^,]+, null[,)]/);
+  assert.doesNotMatch(bundle, /__jsxs\([^,]+, null[,)]/);
+});

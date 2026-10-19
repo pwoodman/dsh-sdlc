@@ -12,17 +12,25 @@
  * onClick below (single-expression arrows are fine).
  */
 
-import { useState, useSyncExternalStore } from 'react';
-import { StatusPanel, BoardPanel, ConfigPanel, ReviewPanel } from './panels.jsx';
+import { useState, useSyncExternalStore, useEffect } from 'react';
+import { StatusPanel, BoardPanel, ConfigPanel, ReviewPanel, FlowPanel } from './panels.jsx';
 
-const PANELS = ['status', 'board', 'config', 'review'];
+const PANELS = ['flow', 'status', 'board', 'config', 'review'];
 
 export function SdlcTab({ stores, t }) {
-  const [panel, setPanel] = useState('status');
+  const [panel, setPanel] = useState('flow');
   const status = useSyncExternalStore(stores.status.subscribe, stores.status.getSnapshot);
   const board = useSyncExternalStore(stores.board.subscribe, stores.board.getSnapshot);
   const config = useSyncExternalStore(stores.config.subscribe, stores.config.getSnapshot);
   const review = useSyncExternalStore(stores.review.subscribe, stores.review.getSnapshot);
+  const flow = useSyncExternalStore(stores.flow.subscribe, stores.flow.getSnapshot);
+
+  useEffect(() => {
+    if (panel !== 'flow') return undefined;
+    stores.loadFlow();
+    const timer = setInterval(() => { stores.loadFlow(); }, 5000);
+    return () => clearInterval(timer);
+  }, [panel, stores]);
 
   const selectPanel = (p) => setPanel(p);
   const openTaskReview = (taskId) => {
@@ -34,6 +42,7 @@ export function SdlcTab({ stores, t }) {
   const reloadConfig = () => stores.loadConfig();
   const saveConfig = (path, value) => stores.saveConfig(path, value);
   const loadCompare = (task, a, b) => stores.loadCompare(task, a, b);
+  const loadFlow = () => stores.loadFlow();
 
   return (
     <div className="sdlc-root">
@@ -44,12 +53,13 @@ export function SdlcTab({ stores, t }) {
             role="tab"
             type="button"
             aria-selected={panel === p}
-            onClick={selectPanel}
+            onClick={() => selectPanel(p)}
           >
             {t(`panel.${p}`)}
           </button>
         ))}
       </div>
+      {panel === 'flow' && <FlowPanel snapshot={flow} onReload={loadFlow} onSelectTask={openTaskReview} t={t} />}
       {panel === 'status' && <StatusPanel snapshot={status} onReload={reloadStatus} />}
       {panel === 'board' && (
         <BoardPanel

@@ -2,10 +2,115 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
-## [0.4.0-beta.23] — candidate, not yet published — SDLC tool lifecycle and execution contracts
+## [0.4.0-beta.24] — release candidate — pre-npm hardening and the flow visualizer
+
+### Added
+
+- **Right-sidebar flow visualizer.** The `sdlc` tab now opens from the right
+  sidebar guide as **SDLC Flow**, defaults to a live `Flow` panel, and auto-opens
+  once per page load for the first session with an SDLC project
+  (`autoOpen: false` opts out). It shows the task DAG with dependency edges,
+  subagent/worker cards (role, model, status, pid, tokens, duration), routing
+  decisions (tier/rule/source), gate chips, resource locks, escalations, and a
+  bounded recent-event stream. It polls `/api/sdlc.flow` every 5 s and keeps the
+  last snapshot as `stale` on failure instead of blanking.
+- `GET /api/sdlc.flow` returns one bounded, read-only snapshot (200 tasks,
+  3 runs/task, 100 events, 50 escalations); missing cost/tokens/duration stay
+  `null` with a `source`/reason, never zero. `isFlowPayload` and `fetchFlow`
+  validate the shape.
+- `scripts/verify-release.mjs` refuses a version already tagged or published,
+  a missing/stale CHANGELOG section, a README that calls the release unpublished,
+  or a dirty tree. `release.yml` runs it before building, requires a version tag
+  to publish, publishes in dependency order, and adds a post-publish registry
+  install smoke (`--only all`, `--check`, probe, uninstall).
+- `scripts/proof-mechanisms.mjs` proves 7/7 hazards against an unguarded
+  baseline; `scripts/proof-artifacts.mjs` proves 41/41 packed-artifact checks.
 
 ### Fixed
 
+- **The beta tarball no longer carries local state.** `git status --ignored`
+  emits `!! path`, but the parser expected `! `, so `.pnpm-store` (11 MiB,
+  2,314 files, including a pnpm distribution) travelled in every release
+  artifact. The artifact is now ~0.9 MiB with zero store entries.
+- **A failed install no longer leaves an unbootable profile.** The installer
+  snapshots `package.json` + `pnpm-workspace.yaml`, restores them on any failure,
+  writes atomically, and holds a cross-process lock with stale/dead-pid reclaim.
+  `--version` accepts only an exact semver (no swallowed flags), `--dsh-home`
+  requires a value, an incompatible `dsh` is refused, and corrupt profile JSON is
+  diagnosed instead of rewritten.
+- **`minimumReleaseAgeExclude: []` no longer produces a duplicate YAML key**;
+  inline, flow-style, block and duplicate-key forms collapse to one key.
+- **Auto-update fails safe.** Failed installs get a short retry backoff instead
+  of a 24 h suppression; "installed" requires the version on disk; a major
+  release needs explicit consent; prerelease builds `check` by default while
+  stable builds still install; concurrent checks share one install.
+- **ACCEPTED is no longer fail-open.** `decideAcceptance` takes an explicit
+  `requiredGates` set and requires every required gate to be present and
+  passing (skipped is not a pass); the reference harness derives it from the
+  task's risk and configured gates, and `gatesPass` now requires `=== true`.
+- **MERGING enforces one writer from the database**, inside the same
+  transaction (`mergeSlotFree` can be vetoed by the caller, never granted).
+  `postMergeOutcome` refuses a missing/`HEAD` merge commit instead of reverting
+  an arbitrary merge.
+- **Budget overruns are evidence at ingest.** Per-attempt/project breaches
+  transition an IN_PROGRESS task to FAILED with `BUDGET_EXHAUSTED` payload;
+  missing cost/tokens are `unknown`, not zero.
+- **Schema safety:** a database written by a newer schema is refused before any
+  DDL, `quick_check` runs before writes, and migration is attempted only after
+  compatibility passes.
+- **Escalations are persisted and composable:** `recordEscalation`,
+  `getEscalations`, and `resolveEscalation`; approval unblocks only with an
+  explicit corrective plan, rejection blocks, and every resolution is audited.
+- **Published packages are complete.** The CLI declares its core dependency
+  (packed CLI verified to run standalone); the UI no longer advertises missing
+  `types`/`src` targets; `engines.node` is `>=22.13.0` (the first version where
+  `node:sqlite` is unflagged).
+- The installer reports the app-managed `desktop` profile instead of silently
+  ignoring it, and `dsh` spawn resolves `dsh.cmd` through `cmd.exe` on Windows.
+- **The client JSX compiler now matches React's automatic runtime**: children
+  live in props (the third `jsx` argument is a key) and empty props are `{}`,
+  not `null`. The title previously crashed with `reading 'key'` on the first
+  real render. The right-sidebar body also passes a DSH `StoreHandle`
+  (`create/getSnapshot/subscribe/clearPersisted`) instead of a raw store object.
+  Found by a live Playwright render on DSH 0.2.1-alpha.2 and pinned by
+  `tests/unit/ui-bundle.test.mjs`; the panel then rendered 9 tasks,
+  22/1 gate chips, subagents and routing in the right sidebar.
+
+### Verification
+
+- 835 offline tests pass (unit 594, contract 121, integration 64, fault 27,
+  adversarial 29) plus 9 E2E (1 live skip); the coverage gate is green. The
+  flow panel was also verified in a real browser against a temporary
+  `sdlc-web` profile (DSH 0.2.1-alpha.2).
+- `PROOF_REPORT.md` records the measured evidence, the release guard output,
+  the artifact/mechanism proofs, and the items still deliberately open.
+
+## [0.4.0-beta.23] — 2026-10-18 — SDLC tool lifecycle and execution contracts
+
+### Fixed
+
+- The lead preset's persona suffix no longer references `{{cwd}}`. DSH's prompt
+  registry provides only `provider` and `model`, so `{{cwd}}` failed every new
+  turn with `unknown prompt variable "{{cwd}}" in section
+  "deployment:persona-suffix"`. The suffix is now `Model: {{model}}.`; the
+  working directory remains available through the runtime-context entry.
+- The lead bundle now publishes only the Lead Orchestrator as a selectable
+  `@deepseek-ai/dsh-agent-preset`. DSH's Settings and new-session preset picker
+  were listing all 26 role compositions (DevOps Engineer, QA Engineer, Technical
+  Writer, …) as user choices. The full registry still drives planner role
+  assignment and remains in the probe/member bundle and the offline composition
+  verifier, but it is no longer part of the interactive preset menu.
+- `dsh-sdlc-install` now upgrades an existing install in place: it prunes member
+  packages and the pre-rename `orchestrator` family left by older releases,
+  drops stale suite bundles, and skips the package-manager run when the profile
+  is already at the target version. `--check` reports installed vs published
+  without changing anything; `--uninstall`/`--remove` removes the packages and
+  bundle selections; `--force` allows a reinstall or downgrade.
+- The lead checks npm for a newer published version on startup (at most once
+  per 24 hours) and installs it through DSH's plugin manager. Updates report
+  `restart-required`; `SDLC_AUTO_UPDATE=off` disables the check and
+  `SDLC_AUTO_UPDATE=check` only reports availability. Link/file/git installs
+  are never replaced.
 - Report, dispatch and plan loader entries now preserve `inject: ['tools']`.
   Cordis waits for the provider instead of silently dropping registrations.
 - Model tools register `execute(args, exec)` and render content from the output
@@ -22,12 +127,16 @@ All notable changes to the DSH SDLC Flow plugin suite.
 ### Verification
 
 - Source and folded entries have real Cordis lifecycle regression coverage.
-- `node scripts/verify-tool-runtime.mjs <unpacked-runtime-dir>` mounts
-  all 26 full shipped preset compositions using real Harness registries, checks
-  7/3 scoped SDLC tools, and exercises the actual tool execution pipeline plus
-  worker-visibility and invalid-input negative controls. OS/delegation boundaries
-  are explicitly stubbed; no server, subprocess or model is started. An optional
-  second argument selects an unpacked plugin tarball to verify the ship artifact.
+- Installer `--check`, upgrade cleanup and `--uninstall --dry-run` are covered
+  by a no-network integration test; semver ordering, registry-only auto-update,
+  interval caching and profile discovery are unit-tested.
+- `node scripts/verify-tool-runtime.mjs <unpacked-runtime-dir>` asserts the
+  shipped lead exposes exactly one selectable preset, then mounts all 26 role
+  compositions using real Harness registries, checks 7/3 scoped SDLC tools, and
+  exercises the actual tool execution pipeline plus worker-visibility and
+  invalid-input negative controls. OS/delegation boundaries are explicitly
+  stubbed; no server, subprocess or model is started. An optional second
+  argument selects an unpacked plugin tarball to verify the ship artifact.
 - The reported `never started` diagnostic specifically means import/pre-fiber
   failure. The public beta.22 tarball imports successfully in isolation; the
   original failed installation's initial loader log is still needed to identify

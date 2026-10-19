@@ -298,11 +298,24 @@ export function runAttempt(h, {
     taskId,
     logDir,
     skipGates,
+    changedFiles: result.files_changed,
   });
   h.runtime.recordTestResults(taskId, runId, gateResults.gates);
 
+  // The reference caller passes the risk-derived required set. Gates skipped
+  // by explicit policy (skipGates) or absent from this task's configured list
+  // are not required; everything else must be present AND passing.
+  const requiredSpec = Array.isArray(task.verification) && task.verification.length > 0
+    ? task.verification.map((gate) => ({ gate, required: true }))
+    : M.risk.requiredGates(task.risk_class, { gateCommands: h.gateCommands });
+  const requiredGates = requiredSpec
+    .filter((g) => g.required)
+    .map((g) => g.gate)
+    .filter((gate) => gates.includes(gate) && !skipGates.includes(gate));
+
   const decision = M.verifier.decideAcceptance({
     riskClass: task.risk_class,
+    requiredGates,
     gateResults: gateResults.gates,
     scope,
     review,

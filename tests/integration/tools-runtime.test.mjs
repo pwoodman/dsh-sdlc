@@ -16,6 +16,7 @@ test('all 26 shipped presets admit and execute with scoped tool negative control
   });
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /PASS: all 26 full shipped presets mount/);
+  assert.match(result.stdout, /PASS: 26 role compositions mount/);
+  assert.match(result.stdout, /lead exposes 1 selectable preset/);
   assert.match(result.stdout, /worker\/invalid-input negative controls/);
 });

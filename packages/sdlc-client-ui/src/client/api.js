@@ -8,8 +8,8 @@
 
 import {
   SDLC_STATUS_ROUTE, SDLC_BOARD_ROUTE, SDLC_TASK_ROUTE, SDLC_COMPARE_ROUTE,
-  SDLC_CONFIG_ROUTE, SDLC_METRICS_ROUTE,
-  isStatusPayload, isBoardPayload, isConfigPayload,
+  SDLC_CONFIG_ROUTE, SDLC_METRICS_ROUTE, SDLC_FLOW_ROUTE,
+  isStatusPayload, isBoardPayload, isConfigPayload, isFlowPayload,
 } from '../routes.js';
 
 async function getJson(path) {
@@ -94,6 +94,15 @@ export async function fetchMetrics() {
   }
 }
 
+export async function fetchFlow({ task = null, events = 100, after = 0 } = {}) {
+  const params = new URLSearchParams({ events: String(events), after: String(after) });
+  if (task) params.set('task', task);
+  const res = await getJson(`${SDLC_FLOW_ROUTE}?${params}`);
+  if (!res.available) return res;
+  if (!isFlowPayload(res.data)) return { available: false, reason: 'host returned a malformed flow payload' };
+  return res;
+}
+
 /**
  * The single api face the client consumes. NAMED on purpose: the closure-factory
  * bundle concatenates the client sources into one scope, where a default import
@@ -101,6 +110,6 @@ export async function fetchMetrics() {
  * apply — shipped broken until the entry contract test called apply). The
  * default export stays for source-level ergonomics; the bundler strips it.
  */
-export const api = { fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics };
+export const api = { fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics, fetchFlow };
 
 export default api;

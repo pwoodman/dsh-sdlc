@@ -143,8 +143,11 @@ test('§53 Test 1: the §24 behavioural rule does NOT reject an appearance-only 
   // Logic changes are still guarded.
   assert.equal(risk.violatesBehavioralTestRule(['src/app.ts']), true);
 
+  const required = risk.requiredGates('R3', { uiChange: true, appearanceOnly: true })
+    .filter((g) => g.required).map((g) => g.gate);
   const decision = verifier.decideAcceptance({
     riskClass: 'R3',
+    requiredGates: required,
     gateResults: { syntax: { status: 'pass' }, lint: { status: 'pass' }, unit: { status: 'pass' }, visual: { status: 'pass' } },
     filesChanged: ['src/app.css'],
     review: { verdict: 'accept' },

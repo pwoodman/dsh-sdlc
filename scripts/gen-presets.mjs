@@ -40,6 +40,11 @@ const HEADER = `# sdlc-presets — the ${ROLE_COUNT}-role registry (spec v3 C.3)
 # meta-bundle replaces this insert with an id-targeted override — a duplicate
 # id+name is loader-accepted but blocks plugin-manager uninstall. The M0-02
 # live check pins one registry row with default sdlc-lead.
+#
+# This member patch keeps all 26 role compositions for the headless probe and
+# programmatic mounting. The lead meta-bundle filters it to PUBLIC_ROLE_IDS
+# (currently the lead) so the interactive DSH preset picker is not a 26-row
+# role menu; see scripts/gen-bundle-patch.mjs.
 `;
 
 // The registry row is FIRST inside insert: so it exists before the presets

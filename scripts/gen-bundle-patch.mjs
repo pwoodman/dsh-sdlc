@@ -16,11 +16,12 @@
  * as bundles directly), while the meta-bundle's patch is generated from them so
  * the two can never drift.
  *
- * The union is a textual concatenation of each member's patch body. Concatenating
- * top-level YAML sequences yields one sequence of `insert:` entries — exactly the
- * dialect the loader reads — and it preserves each member's formatting verbatim,
- * including `!!js` expressions and long block scalars that a parse/re-dump round
- * trip could mangle.
+ * The union is a textual concatenation of each member's patch body (with the
+ * presets member filtered to the public roles). Concatenating top-level YAML
+ * sequences yields one sequence of `insert:` entries — exactly the dialect the
+ * loader reads — and it preserves each member's formatting verbatim, including
+ * `!!js` expressions and long block scalars that a parse/re-dump round trip
+ * could mangle.
  *
  *   node scripts/gen-bundle-patch.mjs [--check]
  */
@@ -28,6 +29,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import foldMeta from './lib/fold-meta.cjs';
+import { PUBLIC_ROLE_IDS, presetIdFor } from '../packages/sdlc-presets/src/roles.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const META_DIR = join(ROOT, 'packages', 'sdlc-orchestrator');
@@ -43,7 +45,7 @@ const CHECK = process.argv.includes('--check');
 const MEMBERS = [
   { dir: 'sdlc-core', what: 'host services (spec v3 C.2)' },
   { dir: 'sdlc-tools', what: 'model tools + the /sdlc command surface (C.4)' },
-  { dir: 'sdlc-presets', what: 'the 26 role presets (C.3)' },
+  { dir: 'sdlc-presets', what: 'role compositions; only the lead is a selectable preset (C.3)' },
   { dir: 'sdlc-client-ui', what: 'the web UI + host routes (C.1)' },
 ].map((m) => ({ ...m, pkg: JSON.parse(readFileSync(join(ROOT, 'packages', m.dir, 'package.json'), 'utf8')).name }));
 
@@ -56,7 +58,8 @@ const HEADER = `# sdlc-orchestrator — lead-profile meta-bundle (the ONE spec t
 # loads each one's OWN \`dsh.bundle.patch\`; it does not follow a bundle's
 # \`dependencies\`. So this package — the single spec the lead profile installs —
 # must declare the whole lead composition itself. Below is the union of its four
-# members' rows, concatenated verbatim by the generator:
+# members' rows, concatenated by the generator (the presets member is filtered
+# to the public role presets):
 #
 #   ${MEMBERS.map((m) => `${m.pkg.padEnd(34)} ${m.what}`).join('\n#   ')}
 #
@@ -73,6 +76,11 @@ const HEADER = `# sdlc-orchestrator — lead-profile meta-bundle (the ONE spec t
 # patch replaces that insert with an id-targeted override of the web template's
 # shipped row: a duplicate id+name is loader-accepted but blocks plugin-manager
 # uninstall. M0-02 pins one registry row whose default is sdlc-lead.
+#
+# The lead profile is the interactive DSH surface, so it publishes ONLY the
+# public role presets (currently the lead). The other role compositions remain
+# in the member patch for the headless probe and programmatic mounting; they
+# are not selectable options in the user's preset picker.
 `;
 
 const SELF_ROW = `# ── the meta-bundle's own row ────────────────────────────────────────────────
@@ -136,10 +144,35 @@ function withoutRegistryInsert(block) {
   return out.join('\n');
 }
 
+/**
+ * The lead profile is the only interactive surface, so it must not publish the
+ * whole role roster into DSH's preset picker. The member patch keeps all 26
+ * compositions for the headless probe and for programmatic mounting; the lead
+ * meta-bundle copies only the public role rows.
+ *
+ * Preset rows are top-level entries of the `insert:` block (indent 4); nested
+ * plugin rows are deeper and cannot match this pattern.
+ */
+const PUBLIC_PRESET_IDS = new Set(PUBLIC_ROLE_IDS.map(presetIdFor));
+
+function withoutNonPublicPresets(block) {
+  const out = [];
+  let skipping = false;
+  for (const line of block.split('\n')) {
+    const row = /^ {4}- id:\s*(.+)$/.exec(line);
+    if (row) {
+      const id = row[1].trim().replace(/^['"]|['"]$/g, '');
+      skipping = /^preset-sdlc-/.test(id) && !PUBLIC_PRESET_IDS.has(id);
+    }
+    if (!skipping) out.push(line);
+  }
+  return out.join('\n');
+}
+
 const blocks = MEMBERS.map((member) => {
   const rule = `# ── from ${member.pkg} — ${member.what}\n`;
   let body = member.dir === 'sdlc-presets'
-    ? `${REGISTRY_OVERRIDE}${withoutRegistryInsert(bodyOf(member))}`
+    ? `${REGISTRY_OVERRIDE}${withoutNonPublicPresets(withoutRegistryInsert(bodyOf(member)))}`
     : bodyOf(member);
   // The lead's retained preset slices own model-facing tools. Do not publish
   // lead-only capabilities globally where worker presets would inherit them.

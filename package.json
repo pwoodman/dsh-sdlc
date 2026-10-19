@@ -1,12 +1,12 @@
 {
   "name": "dsh-plugin-sdlc",
-  "version": "0.4.0-beta.23",
+  "version": "0.4.0-beta.24",
   "private": true,
   "type": "module",
   "description": "Universal SDLC Orchestrator — a DeepSeek Harness plugin suite (spec v3).",
   "packageManager": "pnpm@9.12.0",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "//": "The build is a zero-dependency src/ → lib/ artifact step (see scripts/build.mjs and SDLC_IMPLEMENTATION_NOTES.md, deviation D0). Test layers map 1:1 onto spec K.2 layers L2–L7. gate:P and gate:M0 require no LLM and no network; gate:M1..M8 are deterministic and use the sdlc-mock-llm provider.",
   "scripts": {
@@ -22,6 +22,9 @@
     "install:local": "node scripts/install-local.mjs",
     "install:registry": "node packages/sdlc-orchestrator/src/install.mjs",
     "verify:publish": "node scripts/verify-publish.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
+    "proof:mechanisms": "node scripts/proof-mechanisms.mjs --json .validation/proof-mechanisms.json",
+    "proof:artifacts": "node scripts/proof-artifacts.mjs --json .validation/proof-artifacts.json",
     "release:build": "node scripts/build-release.mjs",
     "set-scope": "node scripts/set-scope.mjs",
     "set-repository": "node scripts/set-repository.mjs",

@@ -21,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { ROOT } from '../lib/helpers.mjs';
 import { parseYaml } from '../../packages/sdlc-core/src/yaml-lite.js';
-import { ROLES, presetIdFor } from '../../packages/sdlc-presets/src/roles.js';
+import { ROLES, presetIdFor, PUBLIC_ROLE_IDS } from '../../packages/sdlc-presets/src/roles.js';
 
 /** The seven bundles that declare a patch (spec C.1). */
 const PATCH_PACKAGES = ['sdlc-core', 'sdlc-guard', 'sdlc-tools', 'sdlc-presets', 'sdlc-mock-llm', 'sdlc-client-ui', 'sdlc-orchestrator'];
@@ -204,8 +204,9 @@ test('contract: the lead recipe composes the whole lead from a single bundle', (
   for (const id of [...HOST_SERVICE_ROWS, 'sdlc-tools', 'sdlc-ui', 'sdlc-presets', 'sdlc-orchestrator']) {
     assert.ok(ids.has(id), `the composed lead is missing row "${id}"`);
   }
-  assert.equal(rows.filter((r) => /^preset-sdlc-/.test(r.id)).length, 26,
-    'the composed lead carries all 26 role presets');
+  const leadPresets = rows.filter((r) => /^preset-sdlc-/.test(r.id)).map((r) => r.id);
+  assert.deepEqual(leadPresets.sort(), PUBLIC_ROLE_IDS.map(presetIdFor).sort(),
+    'the composed lead publishes only the selectable role preset(s), not the worker roster');
 });
 
 test('contract: the lead meta-bundle overrides the shipped registry, never duplicates it', () => {

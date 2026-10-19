@@ -38,7 +38,7 @@ const G = {
   launchFailed: (ctx = {}) => ctx.launchFailed === true,
   hardFailure: (ctx = {}) => ctx.hardFailure === true,
   gatesFailed: (ctx = {}) => ctx.gatesPass === false,
-  gatesPass: (ctx = {}) => ctx.gatesPass !== false,
+  gatesPass: (ctx = {}) => ctx.gatesPass === true,
   loopMatched: (ctx = {}) => ctx.loopMatched === true,
   mergeSlotFree: (ctx = {}) => ctx.mergeSlotFree !== false,
   mergedAndGreen: (ctx = {}) => ctx.merged === true && ctx.postMergeGatesPass !== false,
@@ -277,8 +277,18 @@ export class TaskStateService {
         const pairLegal = TASK_TRANSITIONS.some((t) => t.to === to && (t.from === from || t.from === '*'));
         return fail(pairLegal ? `actor ${actor} may not perform ${from ?? '—'}→${to}` : `no transition ${from ?? '—'}→${to}`);
       }
+      // Single-writer is a DATABASE invariant, not a caller promise. When the
+      // caller does not state the slot, derive it from the one MERGING task in
+      // the store; a second ACCEPTED→MERGING with `{}` must fail closed.
+      let effectiveCtx = ctx;
+      if (to === 'MERGING') {
+        // The caller may VETO a free slot, never grant one: the holder is read
+        // inside the same BEGIN IMMEDIATE transaction as the state write.
+        const holder = this.db.prepare("SELECT id FROM tasks WHERE state = 'MERGING' AND id <> ?").get(taskId);
+        effectiveCtx = { ...ctx, mergeSlotFree: ctx.mergeSlotFree !== false && holder == null };
+      }
       const guard = GUARDS[entry.guard] ?? GUARDS.always;
-      if (!guard(ctx)) return fail(`guard ${entry.guard} rejected ${from ?? '—'}→${to}`);
+      if (!guard(effectiveCtx)) return fail(`guard ${entry.guard} rejected ${from ?? '—'}→${to}`);
 
       const attemptDelta = to === 'READY' && (from === 'FAILED' || from === 'ESCALATED') ? 1 : 0;
       const ts = this.now();

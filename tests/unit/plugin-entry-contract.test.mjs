@@ -257,6 +257,7 @@ test('sdlc-ui activates under Cordis when connection is provided, and fails clos
     'GET /api/sdlc.compare',
     'GET /api/sdlc.config',
     'GET /api/sdlc.metrics',
+    'GET /api/sdlc.flow',
     'POST /api/sdlc.config',
   ]);
 

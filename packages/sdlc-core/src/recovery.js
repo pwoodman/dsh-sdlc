@@ -78,11 +78,14 @@ export function reconcile({
       transitions.push({ taskId: task.id, to: 'ESCALATED', actor: 'recovery', evidence: 'active-state-without-run' });
       continue;
     }
-    const deadPid = run.pid != null && !isAlive(run.pid);
+    // A pid of null is not a live worker: in-process/API runs record no pid, and
+    // a crash leaves them unfinished forever. findOrphans already treats null as
+    // an orphan ('no-pid'); reconcile must agree or the resume path strands them.
+    const deadPid = run.pid == null || !isAlive(run.pid);
     const missingWorktree = Boolean(task.worktree_path) && !worktreeExists(task.worktree_path);
     const missingBranch = Boolean(task.branch) && !branchExists(task.branch);
 
-    if (deadPid) discrepancies.push({ taskId: task.id, kind: 'dead-worker', detail: `pid ${run.pid} is not alive` });
+    if (deadPid) discrepancies.push({ taskId: task.id, kind: 'dead-worker', detail: run.pid == null ? 'no-pid' : `pid ${run.pid} is not alive` });
     if (missingWorktree) discrepancies.push({ taskId: task.id, kind: 'missing-worktree', detail: task.worktree_path });
     if (missingBranch) discrepancies.push({ taskId: task.id, kind: 'missing-branch', detail: task.branch });
 

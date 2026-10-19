@@ -57,6 +57,21 @@ test('a dead worker with an intact worktree still salvages to FAILED exactly onc
   ]);
 });
 
+test('an unfinished run with no pid is an orphan (the resume path used to strand it)', () => {
+  const result = rec.reconcile({
+    tasks: [task()],
+    runs: [run({ pid: null })],
+    isAlive: () => false,
+    worktreeExists: () => true,
+    branchExists: () => true,
+  });
+  assert.deepEqual(result.transitions, [
+    { taskId: 'T1', to: 'FAILED', actor: 'recovery', evidence: 'ORPHAN_SALVAGE' },
+  ]);
+  const dead = result.discrepancies.find((d) => d.kind === 'dead-worker');
+  assert.equal(dead?.detail, 'no-pid');
+});
+
 test('every reconciled task yields at most one transition, whatever the combination', () => {
   const result = rec.reconcile({
     tasks: [

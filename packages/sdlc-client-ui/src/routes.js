@@ -16,6 +16,7 @@
  *   GET  /api/sdlc.config                      parsed config + validation
  *   POST /api/sdlc.config                      { path, value } → validate + write
  *   GET  /api/sdlc.metrics                     Prometheus exposition text
+ *   GET  /api/sdlc.flow                        bounded visualizer snapshot
  */
 
 export const SDLC_STATUS_PATH = '/api/sdlc.status';
@@ -24,6 +25,7 @@ export const SDLC_TASK_PATH = '/api/sdlc.task';
 export const SDLC_COMPARE_PATH = '/api/sdlc.compare';
 export const SDLC_CONFIG_PATH = '/api/sdlc.config';
 export const SDLC_METRICS_PATH = '/api/sdlc.metrics';
+export const SDLC_FLOW_PATH = '/api/sdlc.flow';
 
 /** Browser-relative forms (strip the leading slash for the Remote face). */
 export const SDLC_STATUS_ROUTE = SDLC_STATUS_PATH.slice(1);
@@ -32,6 +34,7 @@ export const SDLC_TASK_ROUTE = SDLC_TASK_PATH.slice(1);
 export const SDLC_COMPARE_ROUTE = SDLC_COMPARE_PATH.slice(1);
 export const SDLC_CONFIG_ROUTE = SDLC_CONFIG_PATH.slice(1);
 export const SDLC_METRICS_ROUTE = SDLC_METRICS_PATH.slice(1);
+export const SDLC_FLOW_ROUTE = SDLC_FLOW_PATH.slice(1);
 
 /** Resource-address prefix of an SDLC review tab in the right sidebar. */
 export const SDLC_REVIEW_ADDRESS = 'dsh-resource://sdlc-review/task/';
@@ -74,6 +77,24 @@ export function isConfigPayload(value) {
     && Array.isArray(value.validation.errors);
 }
 
+/** Validate the visualizer payload; every rendered array must be present. */
+export function isFlowPayload(value) {
+  if (!isRecord(value) || value.ok !== true) return false;
+  if (!isRecord(value.project) || !isRecord(value.totals) || !isRecord(value.gateSummary)) return false;
+  if (typeof value.gateSummary.pass !== 'number') return false;
+  if (!isRecord(value.locks) || !Array.isArray(value.locks.resources) || !Array.isArray(value.locks.violations)) return false;
+  const arrays = ['tasks', 'edges', 'runs', 'routing', 'gates', 'events', 'escalations', 'unavailable'];
+  if (!arrays.every((key) => Array.isArray(value[key]))) return false;
+  return value.tasks.every((t) => isRecord(t) && typeof t.id === 'string'
+      && typeof t.state === 'string' && typeof t.layer === 'number')
+    && value.edges.every((e) => isRecord(e) && typeof e.from === 'string' && typeof e.to === 'string')
+    && value.runs.every((r) => isRecord(r) && typeof r.runId === 'string' && typeof r.taskId === 'string')
+    && value.routing.every((r) => isRecord(r) && typeof r.taskId === 'string'
+      && 'tier' in r && typeof r.available === 'boolean')
+    && value.gates.every((g) => isRecord(g) && typeof g.gate === 'string' && typeof g.result === 'string')
+    && value.events.every((e) => isRecord(e) && typeof e.id === 'number');
+}
+
 /** Validate a config-write request body. */
 export function isConfigWrite(value) {
   if (!isRecord(value)) return false;
@@ -83,6 +104,6 @@ export function isConfigWrite(value) {
 
 export default {
   SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_COMPARE_PATH,
-  SDLC_CONFIG_PATH, SDLC_METRICS_PATH, sdlcReviewAddress, parseSdlcReviewAddress,
-  isStatusPayload, isBoardPayload, isConfigPayload, isConfigWrite,
+  SDLC_CONFIG_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH, sdlcReviewAddress, parseSdlcReviewAddress,
+  isStatusPayload, isBoardPayload, isConfigPayload, isConfigWrite, isFlowPayload,
 };

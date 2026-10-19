@@ -19,7 +19,7 @@ is the entry point and `main` points at `src/cli.mjs`. There is no build step.
 
 ## Requirements
 
-- Node.js ≥ 22.5 (`node:sqlite`)
+- Node.js ≥ 22.13 (`node:sqlite`)
 - `@deepseek-ai/dsh` `>=0.2.0-rc.2 <0.3.0-0` for the profiles it drives
 
 ## License

@@ -158,11 +158,14 @@ export function planStep(state, {
     }
   }
 
-  // Recompute active set including transitions proposed above (READY is not active).
-  const projected = tasks.map((t) => {
-    const change = transitions.find((x) => x.taskId === t.id);
-    return change ? { ...t, state: change.to } : t;
-  });
+  // Recompute active set including transitions proposed above (READY is not
+  // active). Copy every task: the working snapshot mutates state below, and
+  // aliasing the caller's objects would leak those mutations into its DAG.
+  const projected = tasks.map((task) => ({ ...task }));
+  for (const change of transitions) {
+    const task = projected.find((candidate) => candidate.id === change.taskId);
+    if (task) task.state = change.to;
+  }
 
   let activeCount = activeTasks(projected).length;
   for (const task of projected) {

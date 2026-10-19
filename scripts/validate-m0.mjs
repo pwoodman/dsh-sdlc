@@ -22,7 +22,7 @@
  *
  *     - composition      → `scripts/lib/composition.mjs` parses the real patch
  *                          files and the real profile recipes: unique row ids,
- *                          resolvable plugin modules, the 26 presets, E6 partition
+ *                          resolvable plugin modules, the public preset surface, E6 partition
  *     - tool/commands    → an in-process `SDLC_SELFTEST` report from the real
  *                          `apply()` entry points (the same hook the profile uses)
  *
@@ -44,6 +44,7 @@ import { runSuite, run, withTempDir, EXIT } from './lib/harness.mjs';
 import {
   ROOT, loadProfiles, validateProfileStatic, allPatchRows, composeProfile, loadPackages, loadPatchRows, ownBundlePrefix,
 } from './lib/composition.mjs';
+import { PUBLIC_ROLE_COUNT } from '../packages/sdlc-presets/src/roles.js';
 
 const HOME = process.env.DSH_HOME || join(process.env.HOME || '', '.dsh');
 const LEAD_PROFILE = process.env.SDLC_LEAD_PROFILE || 'sdlc-web';
@@ -63,6 +64,7 @@ const LEAD_META_PACKAGE = _meta;
 const LEAD_UI_PACKAGE = _base('dsh-sdlc-flow-ui');
 const LEAD_UI_ROW = 'sdlc-ui';
 const ROLE_COUNT = 26;
+const PUBLIC_PRESET_COUNT = PUBLIC_ROLE_COUNT;
 
 // ── live path (needs pnpm + a writable $DSH_HOME) ─────────────────────────
 
@@ -333,25 +335,25 @@ const checks = [
   },
   {
     id: 'M0-06-presets',
-    title: `${ROLE_COUNT} role presets present and unique`,
+    title: `${PUBLIC_PRESET_COUNT} selectable role preset(s) in the lead; ${ROLE_COUNT} compositions ship`,
     fn() {
       if (leadBundles) {
         const rows = parseRows(dumpConfig(LEAD_PROFILE).stdout);
         const presets = new Set(rows.map((r) => r.id).filter((id) => /^preset-sdlc-/.test(id)));
-        if (presets.size !== ROLE_COUNT) {
-          throw new Error(`expected ${ROLE_COUNT} preset-sdlc-* rows, found ${presets.size}`);
+        if (presets.size !== PUBLIC_PRESET_COUNT) {
+          throw new Error(`expected ${PUBLIC_PRESET_COUNT} selectable preset-sdlc-* rows in the lead, found ${presets.size}`);
         }
-        return { detail: `live: ${presets.size} presets` };
+        return { detail: `live: ${presets.size} selectable preset(s) (${ROLE_COUNT} role compositions in the probe bundle)` };
       }
       const report = staticFor(LEAD_PROFILE);
       if (!report) return { skip: `no profiles/${LEAD_PROFILE}/profile.json to validate` };
       const presets = report.composition.presetRows;
-      if (presets.length !== ROLE_COUNT) {
-        throw new Error(`expected ${ROLE_COUNT} preset-sdlc-* rows in the composed patch files, found ${presets.length}`);
+      if (presets.length !== PUBLIC_PRESET_COUNT) {
+        throw new Error(`expected ${PUBLIC_PRESET_COUNT} selectable preset-sdlc-* rows in the composed lead, found ${presets.length}`);
       }
       const unique = new Set(presets.map((p) => p.id));
-      if (unique.size !== ROLE_COUNT) throw new Error(`preset ids are not unique: ${unique.size} unique of ${presets.length}`);
-      return { detail: `static: ${unique.size} unique preset rows across the composed bundles` };
+      if (unique.size !== PUBLIC_PRESET_COUNT) throw new Error(`preset ids are not unique: ${unique.size} unique of ${presets.length}`);
+      return { detail: `static: ${unique.size} selectable preset row(s) across the composed lead` };
     },
   },
   {
