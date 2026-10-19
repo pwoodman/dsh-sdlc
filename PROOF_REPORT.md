@@ -17,6 +17,13 @@ passes from the published tarball locally, and the workflow now packs the
 tarball explicitly for the next release. Remaining items are product decisions
 and the developer-productivity study.
 
+> **Later update — beta.28.** The measurements below are the beta.25
+> snapshot. beta.27 is now live on npm (`beta` and `latest`), and beta.28 fixes
+> three user-visible sidebar defects found in a fresh live render: Status/Board/
+> Config never left `loading`, same-line JSX whitespace was dropped (`READY8`),
+> and the tab strip collapsed at 343 px. The beta.28 tree passes 844 offline
+> tests and gates P, M0 and Q; see [CHANGELOG.md](CHANGELOG.md).
+
 ---
 
 ## 1. Test suite

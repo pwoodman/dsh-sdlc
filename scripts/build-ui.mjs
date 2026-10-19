@@ -208,7 +208,12 @@ function compileJsx(source) {
       let t = '';
       while (i < text.length && text[i] !== '<' && text[i] !== '{') { t += text[i]; i += 1; }
       const norm = t.replace(/\s+/g, ' ');
+      // JSX rules: whitespace-only text is DROPPED when it spans lines (the
+      // indentation between elements) and preserved as a single space when it
+      // sits on one line between two children (`{state} {count}`). Dropping
+      // the latter concatenated words in the rendered panel ("READY8").
       if (norm.trim()) children.push(JSON.stringify(norm));
+      else if (t.length > 0 && !t.includes('\n')) children.push(JSON.stringify(' '));
     }
     if (!children.length) return `__jsx(${ref}, ${propsCode(tag.props)})`;
     if (children.length === 1) return `__jsx(${ref}, ${propsCode(tag.props, children[0])})`;

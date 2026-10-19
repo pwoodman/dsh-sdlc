@@ -19,6 +19,8 @@ const PANELS = ['flow', 'status', 'board', 'config', 'review'];
 
 export function SdlcTab({ stores, t }) {
   const [panel, setPanel] = useState('flow');
+  // A task card click opens Review with that task already in the picker.
+  const [reviewTask, setReviewTask] = useState(null);
   const status = useSyncExternalStore(stores.status.subscribe, stores.status.getSnapshot);
   const board = useSyncExternalStore(stores.board.subscribe, stores.board.getSnapshot);
   const config = useSyncExternalStore(stores.config.subscribe, stores.config.getSnapshot);
@@ -26,15 +28,18 @@ export function SdlcTab({ stores, t }) {
   const flow = useSyncExternalStore(stores.flow.subscribe, stores.flow.getSnapshot);
 
   useEffect(() => {
+    // Every tab loads its own snapshot on first reveal. Status/board/config
+    // used to stay in `loading` forever: only the flow panel had a loader, and
+    // the Reload buttons sit behind the panels' loading branches.
+    stores.loadPanel(panel);
     if (panel !== 'flow') return undefined;
-    stores.loadFlow();
     const timer = setInterval(() => { stores.loadFlow(); }, 5000);
     return () => clearInterval(timer);
   }, [panel, stores]);
 
   const selectPanel = (p) => setPanel(p);
   const openTaskReview = (taskId) => {
-    void taskId;
+    setReviewTask(taskId ?? null);
     setPanel('review');
   };
   const reloadStatus = () => stores.loadStatus();
@@ -71,7 +76,7 @@ export function SdlcTab({ stores, t }) {
       {panel === 'config' && (
         <ConfigPanel snapshot={config} onReload={reloadConfig} onSave={saveConfig} />
       )}
-      {panel === 'review' && <ReviewPanel snapshot={review} onCompare={loadCompare} />}
+      {panel === 'review' && <ReviewPanel snapshot={review} onCompare={loadCompare} initialTask={reviewTask} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current beta: 0.4.0-beta.27.** Install from this checkout
+> **Current beta: 0.4.0-beta.28.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -110,7 +110,7 @@ it upgrades an existing install instead of requiring an uninstall first.
 ```sh
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
-npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.27
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.28
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --check --json      # no changes
 ```
 
@@ -211,12 +211,12 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 > beta.19 kept installing after beta.20 was already `latest`. Prefer the
 > installer above; it pins the exact version and writes the exemption for you.
 > For a manual install, pin it exactly
-> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.27`) and add **one list item per
+> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.28`) and add **one list item per
 > pattern** to the profile's `pnpm-workspace.yaml`:
 >
 > ```yaml
 > minimumReleaseAgeExclude:
->   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.27'
+>   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.28'
 > ```
 >
 > A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
@@ -253,7 +253,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.27 && git push origin v0.4.0-beta.27
+git tag v0.4.0-beta.28 && git push origin v0.4.0-beta.28
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the

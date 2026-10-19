@@ -91,6 +91,19 @@ export function createSdlcStores(api) {
       : { phase: 'missing', task, a, b, reason: res.reason });
   }
 
+  /**
+   * Load the panel a tab switch just revealed. Status/board/config start in
+   * `loading` and had no caller, so those three tabs rendered "Loading…"
+   * forever (the in-panel Reload button is behind that loading branch).
+   */
+  function loadPanel(panel) {
+    if (panel === 'status') return loadStatus();
+    if (panel === 'board') return loadBoard();
+    if (panel === 'config') return loadConfig();
+    if (panel === 'flow') return loadFlow();
+    return Promise.resolve();
+  }
+
   function reset() {
     status.update({ phase: 'loading' });
     board.update({ phase: 'loading' });
@@ -109,7 +122,7 @@ export function createSdlcStores(api) {
 
   return {
     status, board, config, review, flow,
-    loadStatus, loadBoard, loadConfig, saveConfig, loadCompare, loadFlow, reset, dispose,
+    loadStatus, loadBoard, loadConfig, saveConfig, loadCompare, loadFlow, loadPanel, reset, dispose,
   };
 }
 

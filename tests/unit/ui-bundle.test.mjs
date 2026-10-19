@@ -176,4 +176,11 @@ test('the bundle registers a reachable SDLC tab with a guide entry', () => {
   assert.match(bundle, /__jsx\("span", \{children:/);
   assert.doesNotMatch(bundle, /__jsx\([^,]+, null[,)]/);
   assert.doesNotMatch(bundle, /__jsxs\([^,]+, null[,)]/);
+
+  // JSX whitespace between two expressions on one line is a single space.
+  // The compiler used to drop it, so the state legend rendered "READY8".
+  assert.ok(bundle.includes('(segment.state), " "'), 'a same-line space between expression children survives compilation');
+  // Every tab loads its snapshot on reveal; status/board/config used to sit in
+  // the loading phase forever because only the flow panel had a loader.
+  assert.match(bundle, /stores\.loadPanel\(panel\)/, 'the tab effect loads the revealed panel');
 });

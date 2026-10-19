@@ -15,23 +15,35 @@ export function Missing({ reason }) {
 }
 
 export function StatusPanel({ snapshot, onReload }) {
-  if (snapshot.phase === 'loading') return <div aria-live="polite">Loading flow status…</div>;
+  if (snapshot.phase === 'loading') return <div className="sdlc-loading" aria-live="polite">Loading flow status…</div>;
   if (snapshot.phase === 'missing') return <Missing reason={snapshot.reason} />;
   const { tasks, spend, projects } = snapshot.data;
   if (tasks.total === 0) return <div>No project initialised — run `sdlc init` first.</div>;
   return (
-    <section aria-label="SDLC status">
-      <button type="button" onClick={onReload}>Reload</button>
-      <p>{tasks.total} tasks · ${Number(spend.costUsd).toFixed(4)} (estimate) · {spend.tokens} tokens</p>
-      <ul>
+    <section aria-label="SDLC status" className="sdlc-panel">
+      <div className="sdlc-panel-head">
+        <span className="sdlc-overline">Status</span>
+        <button type="button" className="sdlc-btn" onClick={onReload}>Reload</button>
+      </div>
+      <div className="sdlc-summary">
+        <div><strong>{tasks.total}</strong><span>tasks</span></div>
+        <div><strong>{formatCost(spend.costUsd)}</strong><span>est. spend</span></div>
+        <div><strong>{formatTokens(spend.tokens)}</strong><span>tokens</span></div>
+      </div>
+      <ul className="sdlc-state-list">
         {Object.entries(tasks.byState).sort().map(([state, n]) => (
-          <li key={state}>{state}: {n}</li>
+          <li key={state} className={`sdlc-state-pill sdlc-tone-${toneOf(state)}`}>
+            <span>{state}</span><b>{n}</b>
+          </li>
         ))}
       </ul>
       {projects.length > 0 && (
-        <ul>
+        <ul className="sdlc-project-list">
           {projects.map((p) => (
-            <li key={p.id}>{p.id} — {p.state}</li>
+            <li key={p.id}>
+              <span className="sdlc-project-id">{p.id}</span>
+              <span className={`sdlc-chip sdlc-tone-${toneOf(p.state)}`}>{p.state}</span>
+            </li>
           ))}
         </ul>
       )}
@@ -40,12 +52,15 @@ export function StatusPanel({ snapshot, onReload }) {
 }
 
 export function BoardPanel({ snapshot, onReload, onOpenTask }) {
-  if (snapshot.phase === 'loading') return <div aria-live="polite">Loading task board…</div>;
+  if (snapshot.phase === 'loading') return <div className="sdlc-loading" aria-live="polite">Loading task board…</div>;
   if (snapshot.phase === 'missing') return <Missing reason={snapshot.reason} />;
   if (!snapshot.data.columns.length) return <div>No tasks yet.</div>;
   return (
-    <section aria-label="SDLC task board">
-      <button type="button" onClick={onReload}>Reload</button>
+    <section aria-label="SDLC task board" className="sdlc-panel">
+      <div className="sdlc-panel-head">
+        <span className="sdlc-overline">Board</span>
+        <button type="button" className="sdlc-btn" onClick={onReload}>Reload</button>
+      </div>
       {snapshot.data.columns.map((col) => (
         <BoardColumn key={col.state} col={col} onOpenTask={onOpenTask} />
       ))}
@@ -55,9 +70,13 @@ export function BoardPanel({ snapshot, onReload, onOpenTask }) {
 
 function BoardColumn({ col, onOpenTask }) {
   return (
-    <div>
-      <h3>{col.state} ({col.tasks.length})</h3>
-      <ul>
+    <div className="sdlc-board-col">
+      <h3>
+        <span className={`sdlc-dot sdlc-tone-${toneOf(col.state)}`} aria-hidden="true" />
+        {col.state}
+        <span className="sdlc-count">{col.tasks.length}</span>
+      </h3>
+      <ul className="sdlc-board-list">
         {col.tasks.map((t) => (
           <BoardRow key={t.id} t={t} onOpenTask={onOpenTask} />
         ))}
@@ -69,9 +88,10 @@ function BoardColumn({ col, onOpenTask }) {
 function BoardRow({ t, onOpenTask }) {
   const open = () => onOpenTask?.(t.id);
   return (
-    <li>
-      <button type="button" onClick={open}>{t.id}</button>
-      {' '}{t.title ?? t.id} · {t.role ?? '—'} · {t.riskClass ?? '—'}
+    <li className="sdlc-board-row">
+      <button type="button" className="sdlc-task-link" onClick={open}>{t.id}</button>
+      <span className="sdlc-board-title">{t.title ?? t.id}</span>
+      <span className="sdlc-board-meta">{t.role ?? '—'} · {t.riskClass ?? '—'}</span>
     </li>
   );
 }
@@ -95,7 +115,7 @@ function getPath(obj, path) {
 export function ConfigPanel({ snapshot, onReload, onSave }) {
   const [drafts, setDrafts] = useState({});
   const [errors, setErrors] = useState({});
-  if (snapshot.phase === 'loading') return <div aria-live="polite">Loading configuration…</div>;
+  if (snapshot.phase === 'loading') return <div className="sdlc-loading" aria-live="polite">Loading configuration…</div>;
   if (snapshot.phase === 'missing') return <Missing reason={snapshot.reason} />;
   const { config, validation } = snapshot.data;
   const setDraft = (path, value) => {
@@ -112,16 +132,19 @@ export function ConfigPanel({ snapshot, onReload, onSave }) {
     else setDrafts((d) => ({ ...d, [field.path]: undefined }));
   };
   return (
-    <section aria-label="SDLC configuration">
-      <button type="button" onClick={onReload}>Reload</button>
+    <section aria-label="SDLC configuration" className="sdlc-panel">
+      <div className="sdlc-panel-head">
+        <span className="sdlc-overline">Config</span>
+        <button type="button" className="sdlc-btn" onClick={onReload}>Reload</button>
+      </div>
       {!validation.ok && (
-        <div role="alert">
+        <div role="alert" className="sdlc-warn">
           {validation.errors.length} error(s):
           <ul>{validation.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>
       )}
-      {snapshot.saveError && <div role="alert">Save failed: {snapshot.saveError}</div>}
-      <ul>
+      {snapshot.saveError && <div role="alert" className="sdlc-warn">Save failed: {snapshot.saveError}</div>}
+      <ul className="sdlc-config-list">
         {CONFIG_FIELDS.map((field) => (
           <ConfigRow
             key={field.path}
@@ -143,27 +166,31 @@ function ConfigRow({ field, shown, saving, error, onDraft, onSave }) {
   const draftCheck = (e) => onDraft(field.path, e.target.checked);
   const draftText = (e) => onDraft(field.path, e.target.value);
   const saveField = () => onSave(field);
+  const controlId = `sdlc-config-${field.path.replace(/[^A-Za-z0-9_-]/g, '-')}`;
   return (
-    <li>
-      <label>
-        {field.label} <code>{field.path}</code>
+    <li className="sdlc-config-row">
+      <div className="sdlc-config-head">
+        <label className="sdlc-config-name" htmlFor={controlId}>{field.label}</label>
+        <code>{field.path}</code>
+      </div>
+      <div className="sdlc-config-control">
         {field.kind === 'select' && (
-          <select value={String(shown ?? '')} onChange={draftSelect}>
+          <select id={controlId} value={String(shown ?? '')} onChange={draftSelect}>
             {field.options.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         )}
         {field.kind === 'boolean' && (
-          <input type="checkbox" checked={shown === true || shown === 'true'} onChange={draftCheck} />
+          <input id={controlId} type="checkbox" checked={shown === true || shown === 'true'} onChange={draftCheck} />
         )}
         {field.kind !== 'select' && field.kind !== 'boolean' && (
-          <input type={field.kind === 'number' ? 'number' : 'text'} value={shown ?? ''} onChange={draftText} />
+          <input id={controlId} type={field.kind === 'number' ? 'number' : 'text'} value={shown ?? ''} onChange={draftText} />
         )}
-      </label>
-      {field.hint && <span> ({field.hint})</span>}
-      <button type="button" onClick={saveField} disabled={saving}>
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-      {error && <span role="alert"> Rejected: {error}</span>}
+        {field.hint && <span className="sdlc-config-hint">{field.hint}</span>}
+        <button type="button" className="sdlc-btn" onClick={saveField} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+      {error && <span role="alert" className="sdlc-config-error">Rejected: {error}</span>}
     </li>
   );
 }
@@ -173,17 +200,18 @@ function fmtMs(ms) {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-export function ReviewPanel({ snapshot, onCompare }) {
-  const [task, setTask] = useState(snapshot.task ?? '');
+export function ReviewPanel({ snapshot, onCompare, initialTask = null }) {
+  const [task, setTask] = useState(snapshot.task ?? initialTask ?? '');
   const [runA, setRunA] = useState(snapshot.a ?? '');
   const [runB, setRunB] = useState(snapshot.b ?? '');
   if (snapshot.phase === 'idle') {
     // fall through to the picker below
   } else if (snapshot.phase === 'loading') {
-    return <div aria-live="polite">Loading comparison…</div>;
+    return <div className="sdlc-loading" aria-live="polite">Loading comparison…</div>;
   } else if (snapshot.phase === 'missing') {
     return (
-      <section aria-label="SDLC review">
+      <section aria-label="SDLC review" className="sdlc-panel">
+        <div className="sdlc-panel-head"><span className="sdlc-overline">Review</span></div>
         <Missing reason={snapshot.reason} />
         <Picker task={task} setTask={setTask} runA={runA} setRunA={setRunA} runB={runB} setRunB={setRunB} onCompare={onCompare} />
       </section>
@@ -191,10 +219,11 @@ export function ReviewPanel({ snapshot, onCompare }) {
   } else if (snapshot.phase === 'ready') {
     const report = snapshot.data;
     return (
-      <section aria-label="SDLC review">
+      <section aria-label="SDLC review" className="sdlc-panel">
+        <div className="sdlc-panel-head"><span className="sdlc-overline">Review</span></div>
         <Picker task={task || report.task.id} setTask={setTask} runA={runA} setRunA={setRunA} runB={runB} setRunB={setRunB} onCompare={onCompare} />
-        <h3>{report.task.id} — {report.task.state}</h3>
-        <table>
+        <h3 className="sdlc-review-title">{report.task.id} — {report.task.state}</h3>
+        <table className="sdlc-review-table">
           <thead><tr><th>dimension</th><th>A</th><th>B</th><th>Δ (B−A)</th></tr></thead>
           <tbody>
             <tr><td>status</td><td>{report.runs.A.status}</td><td>{report.runs.B.status}</td><td>{'—'}</td></tr>
@@ -204,14 +233,14 @@ export function ReviewPanel({ snapshot, onCompare }) {
           </tbody>
         </table>
         <h4>Gates</h4>
-        <ul>
+        <ul className="sdlc-gate-review">
           {report.gatesCompared.map((g) => (
             <GateRow key={g.gate} g={g} />
           ))}
         </ul>
         <h4>Trace path</h4>
         <p>{report.traceSummary.states} ({report.traceSummary.steps} steps)</p>
-        <ol>
+        <ol className="sdlc-trace">
           {report.tracePath.map((s, i) => (
             <TraceRow key={i} s={s} />
           ))}
@@ -220,8 +249,9 @@ export function ReviewPanel({ snapshot, onCompare }) {
     );
   }
   return (
-    <section aria-label="SDLC review">
-      <p>Pick two runs of a task to compare.</p>
+    <section aria-label="SDLC review" className="sdlc-panel">
+      <div className="sdlc-panel-head"><span className="sdlc-overline">Review</span></div>
+      <p className="sdlc-review-hint">Pick two runs of a task to compare.</p>
       <Picker task={task} setTask={setTask} runA={runA} setRunA={setRunA} runB={runB} setRunB={setRunB} onCompare={onCompare} />
     </section>
   );
@@ -241,23 +271,23 @@ function Picker({ task, setTask, runA, setRunA, runB, setRunB, onCompare }) {
     if (task && runA && runB) onCompare(task, runA, runB);
   };
   return (
-    <form onSubmit={submit}>
+    <form className="sdlc-picker" onSubmit={submit}>
       <PickerTask task={task} setTask={setTask} />
       <PickerRun label="Run A" value={runA} setValue={setRunA} />
       <PickerRun label="Run B" value={runB} setValue={setRunB} />
-      <button type="submit">Compare</button>
+      <button type="submit" className="sdlc-btn sdlc-btn-primary sdlc-picker-submit">Compare</button>
     </form>
   );
 }
 
 function PickerTask({ task, setTask }) {
   const change = (e) => setTask(e.target.value);
-  return <label>Task <input value={task} onChange={change} placeholder="DEMO-…" /></label>;
+  return <label className="sdlc-field sdlc-field-wide">Task <input value={task} onChange={change} placeholder="DEMO-…" /></label>;
 }
 
 function PickerRun({ label, value, setValue }) {
   const change = (e) => setValue(e.target.value);
-  return <label>{label} <input value={value} onChange={change} placeholder="run id" /></label>;
+  return <label className="sdlc-field">{label} <input value={value} onChange={change} placeholder="run id" /></label>;
 }
 
 export default { StatusPanel, BoardPanel, ConfigPanel, ReviewPanel, CONFIG_FIELDS };
@@ -375,7 +405,7 @@ export function FlowPanel({ snapshot, onReload, onSelectTask, t }) {
         </div>
         <div className="sdlc-legend">
           {view.stateSegments.slice(0, 4).map((segment) => (
-            <span key={segment.state}><i className={`sdlc-tone-${segment.tone}`} />{segment.state} {segment.count}</span>
+            <span key={segment.state}><i className={`sdlc-tone-${segment.tone}`} />{segment.state} <b>{segment.count}</b></span>
           ))}
         </div>
       </div>
@@ -413,7 +443,7 @@ function FlowDag({ view, onSelectTask, t }) {
         <section className="sdlc-layer" key={layer.index}>
           <div className="sdlc-layer-head">
             <span>{`${t('flow.stage')} ${layer.index + 1}`}</span>
-            <span className="sdlc-muted">{layer.nodes.length}</span>
+            <span className="sdlc-muted">{layer.nodes.length} {t('flow.tasks')}</span>
           </div>
           <div className="sdlc-layer-nodes">
             {layer.nodes.map((node) => (

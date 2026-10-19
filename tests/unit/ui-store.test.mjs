@@ -81,6 +81,27 @@ test('loadCompare tracks the requested runs and resets to idle', async () => {
 });
 
 
+test('loadPanel loads the tab a panel switch reveals', async () => {
+  const api = stubApi();
+  const stores = uiStore.createSdlcStores(api);
+  assert.equal(stores.status.getSnapshot().phase, 'loading');
+  await stores.loadPanel('status');
+  assert.equal(stores.status.getSnapshot().phase, 'ready');
+  await stores.loadPanel('board');
+  assert.equal(stores.board.getSnapshot().phase, 'ready');
+  await stores.loadPanel('config');
+  assert.equal(stores.config.getSnapshot().phase, 'ready');
+  await stores.loadPanel('flow');
+  assert.equal(stores.flow.getSnapshot().phase, 'ready');
+  assert.deepEqual(api.calls, ['status', 'board', 'config', 'flow']);
+  // Review is user-driven (pick two runs); switching to it must not fetch.
+  await stores.loadPanel('review');
+  assert.equal(stores.review.getSnapshot().phase, 'idle');
+  assert.deepEqual(api.calls, ['status', 'board', 'config', 'flow']);
+  stores.dispose();
+});
+
+
 test('loadFlow resolves ready, keeps stale data on failure, and resets', async () => {
   const stores = uiStore.createSdlcStores(stubApi());
   await stores.loadFlow();

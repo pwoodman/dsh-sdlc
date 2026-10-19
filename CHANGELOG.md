@@ -2,6 +2,45 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.28] — 2026-10-19 — sidebar panels actually load; render fixes
+
+### Fixed
+
+- **Status, Board and Config no longer hang on “Loading…”.** Only the Flow panel
+  had a loader; the other three stores stayed in `loading` forever and their
+  Reload buttons were behind the loading branch. Every tab now loads its
+  snapshot when revealed (`stores.loadPanel`), pinned by `ui-store` and the
+  bundle contract test.
+- **The JSX compiler preserves a same-line space between expression children.**
+  `{state} {count}` compiled to `(state), (count)`, so the legend rendered
+  `READY8` / `IN_PROGRESS1`; multiline indentation is still dropped per JSX
+  rules. Rebuilt bundles now carry `(segment.state), " "`.
+- **The panel tab strip no longer collapses at narrow widths.** The root is a
+  scrolling flex column, and a scrollable child gets an automatic min-height of
+  0; at a 343 px sidebar the five tab labels were clipped to a 6 px sliver. The
+  tabs are now `flex: 0 0 auto`.
+- **State colours reach the task cards.** The generic `.sdlc-node` border
+  shorthand overrode the tone classes, so every card had a grey left edge. The
+  left edge, the state-distribution strip and its legend swatches now paint the
+  real state colour instead of a 7 % chip tint.
+- The stage header reads `9 tasks` instead of an unlabelled `9`, and clicking a
+  task card opens Review with that task ID prefilled in the picker.
+
+### Changed
+
+- Status/Board/Config/Review use the same quiet card system as Flow: styled
+  Reload/Compare/Save controls, bordered field cards, state pills, board rows
+  and a compact comparison table, in light and dark themes.
+
+### Verification
+
+- Live Playwright render against a fresh `sdlc-web` install on DSH 0.2.0-rc.2:
+  all five tabs render data, zero console/page errors, zero failed requests, no
+  horizontal overflow at 647 px and 343 px sidebar widths, light and dark themes,
+  9 task cards, 22 gate passes / 1 failing, and all fold sections expand. Task
+  click → Review is prefilled. Screenshots in gitignored `.validation/ui/`.
+- 844 offline tests pass; gates P, M0 and Q are green.
+
 ## [0.4.0-beta.27] — 2026-10-19 — flow panel layout nits
 
 ### Changed
