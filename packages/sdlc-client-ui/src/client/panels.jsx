@@ -298,15 +298,21 @@ function Fold({ title, count, open, children }) {
 
 function FlowUnavailable({ snapshot, onRetry, t }) {
   const hostOutdated = snapshot.code === 'HOST_OUTDATED';
+  const command = 'npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install';
+  const copy = () => {
+    try { void navigator.clipboard?.writeText(command); } catch { /* clipboard unavailable */ }
+  };
   return (
     <div className="sdlc-empty" role="alert">
+      <div className="sdlc-empty-icon" aria-hidden="true">!</div>
       <h3>{t('flow.unavailable')}</h3>
       <p>{hostOutdated ? t('flow.hostOutdated') : snapshot.reason}</p>
       {hostOutdated && (
-        <p className="sdlc-empty-hint">
-          {t('flow.hostOutdatedHint')}
-          <code>npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install</code>
-        </p>
+        <div className="sdlc-empty-hint">
+          <p>{t('flow.hostOutdatedHint')}</p>
+          <code>{command}</code>
+          <button type="button" className="sdlc-btn sdlc-empty-copy" onClick={copy}>{t('flow.copy')}</button>
+        </div>
       )}
       <button type="button" className="sdlc-btn" onClick={onRetry}>{t('flow.retry')}</button>
     </div>
@@ -321,15 +327,21 @@ export function FlowPanel({ snapshot, onReload, onSelectTask, t }) {
   const failing = view.gateSummary.fail + view.gateSummary.unknown;
   const projectLabel = view.project.available === false
     ? t('flow.noProject')
-    : `${view.project.name} · ${view.project.state}`;
+    : view.project.name;
+  const projectState = view.project.available === false ? null : view.project.state;
+  const completion = view.totals.tasks ? Math.round((view.done / view.totals.tasks) * 100) : 0;
   return (
     <section aria-label="SDLC flow" className="sdlc-flow">
       <div className="sdlc-flow-head">
-        <div>
-          <h2 className="sdlc-flow-title">{t('flow.title')}</h2>
-          <div className="sdlc-muted">{projectLabel}</div>
+        <div className="sdlc-head-copy">
+          <div className="sdlc-overline">SDLC FLOW</div>
+          <div className="sdlc-project-line">
+            <span className="sdlc-project-name">{projectLabel}</span>
+            {projectState && <span className={`sdlc-chip sdlc-tone-${projectState === 'IMPLEMENTATION' ? 'running' : 'idle'}`}>{projectState}</span>}
+            <span className={`sdlc-live ${snapshot.phase === 'stale' ? 'warn' : 'good'}`} title={snapshot.phase === 'stale' ? t('flow.stale') : t('flow.live')} />
+          </div>
         </div>
-        <button type="button" className="sdlc-btn" onClick={reload}>{t('flow.reload')}</button>
+        <button type="button" className="sdlc-icon-btn" onClick={reload} aria-label={t('flow.reload')} title={t('flow.reload')}>↻</button>
       </div>
 
       {snapshot.phase === 'stale' && <div role="status" className="sdlc-warn">{t('flow.stale')}: {snapshot.reason}</div>}
@@ -343,8 +355,29 @@ export function FlowPanel({ snapshot, onReload, onSelectTask, t }) {
         <Kpi value={view.totals.activeTasks ?? 0} label={t('flow.running')} tone="running" />
         <Kpi value={view.gateSummary.pass} label={t('flow.passing')} tone="good" />
         <Kpi value={failing} label={t('flow.failing')} tone={failing ? 'bad' : 'idle'} />
-        <Kpi value={formatCost(view.totals.spend ? view.totals.spend.costUsd : null)} label={t('flow.estimated')} />
-        <Kpi value={formatTokens(view.totals.spend ? view.totals.spend.tokens : null)} label={t('flow.tokens')} />
+      </div>
+
+      <div className="sdlc-meter" aria-label={t('flow.summary')}>
+        <div className="sdlc-meter-head">
+          <span><strong>{completion}%</strong>{' '}{t('flow.done')}</span>
+          <span className="sdlc-muted">{formatCost(view.totals.spend ? view.totals.spend.costUsd : null)} · {formatTokens(view.totals.spend ? view.totals.spend.tokens : null)} tok</span>
+        </div>
+        <div className="sdlc-progress"><i style={{ width: `${completion}%` }} /></div>
+        <div className="sdlc-statebar">
+          {view.stateSegments.map((segment) => (
+            <span
+              key={segment.state}
+              className={`sdlc-statebar-seg sdlc-tone-${segment.tone}`}
+              style={{ flexGrow: segment.count }}
+              title={`${segment.state}: ${segment.count}`}
+            />
+          ))}
+        </div>
+        <div className="sdlc-legend">
+          {view.stateSegments.slice(0, 4).map((segment) => (
+            <span key={segment.state}><i className={`sdlc-tone-${segment.tone}`} />{segment.state} {segment.count}</span>
+          ))}
+        </div>
       </div>
 
       {view.nodes.length === 0 && <div className="sdlc-empty">{t('flow.empty')}</div>}

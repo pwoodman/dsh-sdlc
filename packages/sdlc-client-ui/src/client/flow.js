@@ -77,6 +77,13 @@ export function buildFlowView(data) {
   const layers = [...byLayer.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([index, list]) => ({ index, nodes: list.map((node) => placed.get(node.id)) }));
+
+  const stateCounts = {};
+  for (const node of nodes) stateCounts[node.state] = (stateCounts[node.state] ?? 0) + 1;
+  const stateSegments = Object.entries(stateCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([state, count]) => ({ state, count, tone: STATE_TONE[state] ?? 'idle' }));
+  const done = stateCounts.DONE ?? 0;
   return {
     nodes: [...placed.values()],
     edges,
@@ -91,6 +98,10 @@ export function buildFlowView(data) {
     escalations: Array.isArray(data?.escalations) ? data.escalations : [],
     locks: data?.locks ?? { cap: 1, resources: [], pathOwners: [], violations: [] },
     totals: data?.totals ?? {},
+    stateCounts,
+    stateSegments,
+    done,
+    generatedAt: data?.generatedAt ?? null,
     project: data?.project ?? { available: false, reason: 'no payload' },
     unavailable: Array.isArray(data?.unavailable) ? data.unavailable : [],
     tasksTruncated: Boolean(data?.totals?.tasksTruncated),

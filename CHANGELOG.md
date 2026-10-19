@@ -2,6 +2,40 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.26] — 2026-10-19 — visual hierarchy pass for the flow panel
+
+### Changed
+
+- **Apple-inspired hierarchy and restraint.** The panel now opens with an
+  `SDLC FLOW` overline, the project name, a state pill and a live/stale dot;
+  the refresh action is a single quiet icon control. The six equal KPI cards
+  became four high-signal cards plus a progress meter, so the eye lands on
+  tasks/running/pass/failing first. Spacing, type scale and borders follow one
+  rhythm instead of per-widget defaults.
+- **Domo-inspired glanceability.** A completion bar and a stacked state
+  distribution bar (with a four-item legend) summarise the whole task mix above
+  the DAG. Gate counts paint pass/fail/skipped/unknown consistently across the
+  panel.
+- **Cursor-inspired developer density.** Task/run/event identifiers are
+  monospace, counts are tabular, the DAG is a responsive layered card grid
+  (2–3 cards per row at sidebar widths) instead of an absolute canvas, and
+  Subagents/Routing/Gates/Locks/Escalations/Events are collapsible sections
+  with counts. Task cards gained a state-coloured left edge, hover lift and
+  focus-visible rings.
+- The host-outdated panel gained an `!` status mark and a **Copy command**
+  action; it remains a distinct state from `NO_PROJECT`.
+- Motion is limited to 120–240 ms hover/progress transitions and disabled under
+  `prefers-reduced-motion`; colours use `Canvas`/`CanvasText`/`color-mix` so
+  light and dark themes stay legible.
+
+### Verification
+
+- Live Playwright render on DSH 0.2.1-alpha.2 at the real sidebar width: no
+  page/console errors, 9 task cards, 1 running, 22 gate passes, 1 failing,
+  collapsible sections, and a route-intercepted 404 showing the actionable
+  host/client mismatch state.
+- 843 offline tests pass; the coverage gate is green.
+
 ## [0.4.0-beta.25] — 2026-10-19 — flow panel polish and host-version diagnostics
 
 ### Fixed
