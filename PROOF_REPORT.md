@@ -18,11 +18,13 @@ tarball explicitly for the next release. Remaining items are product decisions
 and the developer-productivity study.
 
 > **Later update — beta.28.** The measurements below are the beta.25
-> snapshot. beta.27 is now live on npm (`beta` and `latest`), and beta.28 fixes
-> three user-visible sidebar defects found in a fresh live render: Status/Board/
-> Config never left `loading`, same-line JSX whitespace was dropped (`READY8`),
-> and the tab strip collapsed at 343 px. The beta.28 tree passes 844 offline
-> tests and gates P, M0 and Q; see [CHANGELOG.md](CHANGELOG.md).
+> snapshot. beta.28 is now live on npm (`beta` and `latest`) and in the
+> [GitHub release](https://github.com/pwoodman/dsh-sdlc/releases/tag/v0.4.0-beta.28).
+> It fixes three user-visible sidebar defects found in a fresh live render:
+> Status/Board/Config never left `loading`, same-line JSX whitespace was
+> dropped (`READY8`), and the tab strip collapsed at 343 px. The beta.28 tree
+> passes 844 offline tests and gates P, M0 and Q; see
+> [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
