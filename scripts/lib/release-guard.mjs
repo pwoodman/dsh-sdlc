@@ -45,6 +45,7 @@ export function evaluateRelease({
   readme = '',
   dirty = false,
   allowPublished = false,
+  allowCurrentTag = false,
 } = {}) {
   const problems = [];
   const warnings = [];
@@ -55,12 +56,17 @@ export function evaluateRelease({
   }
 
   const normalizedTags = tags.map((tag) => String(tag).replace(/^v/, '')).filter(Boolean);
+  // A local pre-tag run must refuse an existing tag. The Release workflow runs
+  // ON the tag, so it passes --allow-current-tag to permit exactly that one.
+  const consideredTags = allowCurrentTag
+    ? normalizedTags.filter((tag) => compare(version, tag) !== 0)
+    : normalizedTags;
   const equalTag = normalizedTags.find((tag) => compare(version, tag) === 0);
-  if (equalTag) problems.push(`git tag v${equalTag} already exists; bump the version before releasing`);
+  if (equalTag && !allowCurrentTag) problems.push(`git tag v${equalTag} already exists; bump the version before releasing`);
 
-  const ahead = normalizedTags.filter((tag) => compare(version, tag) > 0);
-  if (normalizedTags.length > 0 && ahead.length !== normalizedTags.length) {
-    const newer = normalizedTags.filter((tag) => compare(version, tag) <= 0);
+  const ahead = consideredTags.filter((tag) => compare(version, tag) > 0);
+  if (consideredTags.length > 0 && ahead.length !== consideredTags.length) {
+    const newer = consideredTags.filter((tag) => compare(version, tag) <= 0);
     problems.push(`version ${version} is not ahead of every tag (newer or equal: ${newer.map((t) => `v${t}`).join(', ')})`);
   }
 

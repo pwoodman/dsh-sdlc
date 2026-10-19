@@ -33,10 +33,17 @@ test('an already-published version fails (the publish loop would silently skip i
   assert.match(result.problems.join('\n'), /already published/);
 });
 
-test('a version equal to an existing tag fails', () => {
-  const result = evaluateRelease({ ...GOOD, tags: [...GOOD.tags, `v${GOOD.version}`] });
-  assert.equal(result.ok, false);
-  assert.match(result.problems.join('\n'), /already exists/);
+test('a version equal to an existing tag fails locally, but the release-tag run may allow it', () => {
+  const tags = [...GOOD.tags, `v${GOOD.version}`];
+  const local = evaluateRelease({ ...GOOD, tags });
+  assert.equal(local.ok, false);
+  assert.match(local.problems.join('\n'), /already exists/);
+  const release = evaluateRelease({ ...GOOD, tags, allowCurrentTag: true });
+  assert.equal(release.ok, true, release.problems.join('\n'));
+  // A newer tag still fails even with --allow-current-tag.
+  const newer = evaluateRelease({ ...GOOD, tags: [...tags, 'v0.4.0-beta.25'], allowCurrentTag: true });
+  assert.equal(newer.ok, false);
+  assert.match(newer.problems.join('\n'), /not ahead of every tag/);
 });
 
 test('a version older than a tag fails', () => {

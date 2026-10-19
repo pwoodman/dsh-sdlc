@@ -90,6 +90,7 @@ const report = evaluateRelease({
   readme: readFileSync(join(ROOT, 'README.md'), 'utf8'),
   dirty: has('--allow-dirty') ? false : dirty(),
   allowPublished: has('--allow-published'),
+  allowCurrentTag: has('--allow-current-tag'),
 });
 
 if (registryError) report.warnings.push(`could not read the npm registry (${registryError}); run without --offline to check`);

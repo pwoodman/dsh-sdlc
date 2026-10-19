@@ -83,7 +83,7 @@ jobs:
       # A version already on npm or already tagged makes the publish loop skip
       # every package and still report success. Fail before building anything.
       - name: the release version is unpublished and documented
-        run: node scripts/verify-release.mjs --json
+        run: node scripts/verify-release.mjs --allow-current-tag --json
 
       - name: build the release tarball (also regenerates patches and lib/)
         run: node scripts/build-release.mjs
