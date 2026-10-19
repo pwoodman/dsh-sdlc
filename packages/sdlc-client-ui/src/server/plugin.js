@@ -30,8 +30,9 @@ import {
   handleConfigGet, handleConfigPost, handleMetrics,
 } from './handlers.js';
 import { handleFlow } from './flow.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { isAbsolute, resolve } from 'node:path';
 
 // sdlc-core is a host-only bundle (never installed beside the UI in a
 // worker); resolve its selftest helper at runtime so the UI keeps the E6
@@ -61,8 +62,42 @@ function pkgVersion() {
   return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
 }
 
-function projectRootOf(config = {}) {
-  return config.projectRoot ?? process.env.SDLC_PROJECT_ROOT ?? process.cwd();
+/**
+ * Resolve the project root for one request.
+ *
+ * The browser is session-scoped, the host plugin is not: `process.cwd()` is
+ * the Harness installation/profile directory under the Desktop app, so the
+ * panel would read the wrong `.sdlc` (or none). The tab body therefore sends
+ * the active session's `cwd`, and this resolver accepts it only when it is an
+ * absolute, existing directory. Anything else keeps the configured root, so a
+ * malformed query can never escape to a path that does not exist.
+ *
+ * The route fence already authenticates the request; this adds no filesystem
+ * authority beyond "an `.sdlc` under a directory this user can enter".
+ *
+ * @param {object} config - the row config (`projectRoot` override).
+ * @param {Request} [request] - the fetcher request carrying `?cwd=`.
+ * @returns {string} absolute project root.
+ */
+export function resolveProjectRoot(config = {}, request = undefined) {
+  const fallback = config.projectRoot ?? process.env.SDLC_PROJECT_ROOT ?? process.cwd();
+  if (request === undefined) return fallback;
+  let requested;
+  try {
+    requested = new URL(request.url, 'http://localhost').searchParams.get('cwd');
+  } catch {
+    return fallback;
+  }
+  if (typeof requested !== 'string' || requested === '' || !isAbsolute(requested) || requested.includes('\0')) {
+    return fallback;
+  }
+  try {
+    const resolved = resolve(requested);
+    if (!existsSync(resolved) || !statSync(resolved).isDirectory()) return fallback;
+    return resolved;
+  } catch {
+    return fallback;
+  }
 }
 
 function statusResponse({ status, body, contentType }) {
@@ -108,18 +143,18 @@ function registerFenced(ctx, route, label) {
 
 /** Register every route; defensive so the package imports without a host. */
 export function registerRoutes(ctx, config = {}) {
-  const root = () => projectRootOf(config);
+  const root = (request) => resolveProjectRoot(config, request);
   const registered = [];
   if (typeof ctx?.connection?.fetch?.register !== 'function') return registered;
 
   const routes = [
-    [SDLC_STATUS_PATH, ['GET'], async () => statusResponse(handleStatus(root()))],
-    [SDLC_BOARD_PATH, ['GET'], async () => statusResponse(handleBoard(root()))],
-    [SDLC_TASK_PATH, ['GET'], async (request) => statusResponse(handleTask(root(), queryOf(request)))],
-    [SDLC_COMPARE_PATH, ['GET'], async (request) => statusResponse(handleCompare(root(), queryOf(request)))],
-    [SDLC_CONFIG_PATH, ['GET'], async () => statusResponse(handleConfigGet(root()))],
-    [SDLC_METRICS_PATH, ['GET'], async () => statusResponse(handleMetrics(root()))],
-    [SDLC_FLOW_PATH, ['GET'], async (request) => statusResponse(handleFlow(root(), queryOf(request)))],
+    [SDLC_STATUS_PATH, ['GET'], async (request) => statusResponse(handleStatus(root(request)))],
+    [SDLC_BOARD_PATH, ['GET'], async (request) => statusResponse(handleBoard(root(request)))],
+    [SDLC_TASK_PATH, ['GET'], async (request) => statusResponse(handleTask(root(request), queryOf(request)))],
+    [SDLC_COMPARE_PATH, ['GET'], async (request) => statusResponse(handleCompare(root(request), queryOf(request)))],
+    [SDLC_CONFIG_PATH, ['GET'], async (request) => statusResponse(handleConfigGet(root(request)))],
+    [SDLC_METRICS_PATH, ['GET'], async (request) => statusResponse(handleMetrics(root(request)))],
+    [SDLC_FLOW_PATH, ['GET'], async (request) => statusResponse(handleFlow(root(request), queryOf(request)))],
   ];
   for (const [path, methods, fetch] of routes) {
     try {
@@ -137,7 +172,7 @@ export function registerRoutes(ctx, config = {}) {
       fetch: async (request) => {
         const body = await readJson(request);
         if (!body) return statusResponse({ status: 400, body: { ok: false, error: 'BAD_JSON' } });
-        return statusResponse(handleConfigPost(root(), body));
+        return statusResponse(handleConfigPost(root(request), body));
       },
     }, `sdlc-ui: POST ${SDLC_CONFIG_PATH} Fetch route`);
     registered.push(`POST ${SDLC_CONFIG_PATH}`);

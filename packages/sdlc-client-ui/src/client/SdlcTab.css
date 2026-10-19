@@ -581,6 +581,28 @@
 }
 .sdlc-empty-hint { text-align: left; }
 .sdlc-empty-hint p { margin: 0 0 6px; }
+.sdlc-empty-label {
+  margin: 2px 0 3px;
+  color: var(--sdlc-muted);
+  font-size: 9px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sdlc-empty-versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin: 6px 0 0;
+  color: var(--sdlc-muted);
+  font-size: 10px;
+}
+.sdlc-empty-versions b {
+  color: CanvasText;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 600;
+}
+.sdlc-empty-command { margin-top: 4px; }
 .sdlc-empty-copy { margin-top: 6px; }
 
 /* Status / Board / Config / Review — the same quiet card system as Flow. */

@@ -283,7 +283,7 @@ test('the client entry returns nothing and declares its browser services in inje
   // JSX that node cannot import, and the bundle is what the web loader runs.
   const { id, exports } = clientBundleExports();
   assert.equal(id, '@patwoodman/dsh-sdlc-flow-ui', 'factory id equals the package name');
-  assert.deepEqual(exports.inject, ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote']);
+  assert.deepEqual(exports.inject, ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'sessions', 'uiSession']);
   // Same unwrap the web loader applies (cordis-plugin-loader unwrapExports):
   // `.default` wins. The shipped beta.7/beta.8 factories set only named
   // exports, so a loader that then treats the result as an ESM module

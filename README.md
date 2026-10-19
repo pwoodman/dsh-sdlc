@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current beta: 0.4.0-beta.28.** Install from this checkout
+> **Current beta: 0.4.0-beta.29.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -31,6 +31,30 @@ and reopen it. Do not edit the Desktop profile by hand. Once this build is
 installed, later registry releases are checked on startup: stable builds install
 automatically, prerelease builds report availability (`SDLC_AUTO_UPDATE=install`
 opts in; `off` disables). Restart to load the new code.
+
+### “The panel is newer than the SDLC host code”
+
+Host plugin code is loaded once at process start; an in-place update replaces
+files on disk but not the host code already running. The panel now probes the
+routes and distinguishes three cases before telling you what to do:
+
+- **status answers, flow does not** — an older host build is loaded; fully quit
+  Harness and reopen. Closing the window can leave it running in the background:
+  use **Quit** from the app/tray menu, or on Linux
+  `pkill -f deepseek-harness` / `flatpak kill com.deepseek.harness`.
+- **no SDLC route answers** — the host plugin is not registered or enabled in
+  this profile; enable it in **Plugins**, or install it for that profile.
+- **the probe cannot reach the host** — a transport/connection problem, not a
+  version mismatch.
+
+For the **Desktop app**, update through **Plugins → Add plugin** and restart.
+`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install` manages the
+`sdlc-web` / `sdlc-worker` / `sdlc-probe` CLI profiles; it cannot modify the
+app-owned `desktop` profile. The panel shows the panel/host builds and a
+**Copy diagnostics** action for support.
+
+The panel also reads the **open session's workspace**, not the Harness process
+directory, so the Desktop app shows the project you are actually working in.
 
 For an offline runtime check (no model and no second web server):
 
@@ -110,7 +134,7 @@ it upgrades an existing install instead of requiring an uninstall first.
 ```sh
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
-npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.28
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.29
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --check --json      # no changes
 ```
 
@@ -211,12 +235,12 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 > beta.19 kept installing after beta.20 was already `latest`. Prefer the
 > installer above; it pins the exact version and writes the exemption for you.
 > For a manual install, pin it exactly
-> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.28`) and add **one list item per
+> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.29`) and add **one list item per
 > pattern** to the profile's `pnpm-workspace.yaml`:
 >
 > ```yaml
 > minimumReleaseAgeExclude:
->   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.28'
+>   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.29'
 > ```
 >
 > A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
@@ -253,7 +277,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.28 && git push origin v0.4.0-beta.28
+git tag v0.4.0-beta.29 && git push origin v0.4.0-beta.29
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the

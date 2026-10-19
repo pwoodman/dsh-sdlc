@@ -4,6 +4,10 @@
  * Zero dependencies, no framework: thin JSON helpers with the same
  * never-fabricate rule as the eval collectors — an unmeasurable endpoint
  * resolves to `{ available: false, reason }`, never to a zero.
+ *
+ * Every call carries the active session's `cwd`. The host plugin is not
+ * session-scoped, so without it the Desktop app reads the Harness profile
+ * directory instead of the open workspace.
  */
 
 import {
@@ -11,6 +15,23 @@ import {
   SDLC_CONFIG_ROUTE, SDLC_METRICS_ROUTE, SDLC_FLOW_ROUTE,
   isStatusPayload, isBoardPayload, isConfigPayload, isFlowPayload,
 } from '../routes.js';
+
+/**
+ * Build-time constant injected by scripts/build-ui.mjs (`var __SDLC_VERSION__`).
+ * Source-level test imports see the guarded fallback instead of a ReferenceError.
+ */
+const PANEL_VERSION = typeof __SDLC_VERSION__ === 'string' ? __SDLC_VERSION__ : 'dev';
+
+/** The panel build, for mismatch diagnostics. */
+export function clientVersion() {
+  return PANEL_VERSION;
+}
+
+/** Attach the session workspace to a route without losing existing params. */
+function withCwd(path, cwd) {
+  if (typeof cwd !== 'string' || cwd === '') return path;
+  return `${path}${path.includes('?') ? '&' : '?'}cwd=${encodeURIComponent(cwd)}`;
+}
 
 async function getJson(path) {
   let res;
@@ -57,43 +78,66 @@ async function postJson(path, body) {
   return { available: true, data };
 }
 
-export async function fetchStatus() {
-  const res = await getJson(SDLC_STATUS_ROUTE);
+/**
+ * Classify a missing flow route instead of guessing "the host is old".
+ *
+ * - the status route answers (even NO_PROJECT) and flow 404s → the loaded host
+ *   is an older build that predates the flow route;
+ * - every SDLC route 404s → the host plugin is not registered/enabled;
+ * - the probe cannot reach the server at all → network/transport problem.
+ *
+ * @param {string} [cwd] - active session workspace.
+ * @returns {Promise<{answered: boolean, statusRoutePresent: boolean, status: number|null, code: string|null, pluginVersion: string|null}>}
+ */
+async function probeStatus(cwd) {
+  const res = await getJson(withCwd(SDLC_STATUS_ROUTE, cwd));
+  return {
+    answered: res.available === true || res.status !== undefined,
+    statusRoutePresent: res.available === true || res.code === 'NO_PROJECT'
+      || (res.status !== undefined && res.status !== 404),
+    status: res.status ?? null,
+    code: res.code ?? null,
+    pluginVersion: res.available && typeof res.data?.pluginVersion === 'string' ? res.data.pluginVersion : null,
+  };
+}
+
+export async function fetchStatus(cwd) {
+  const res = await getJson(withCwd(SDLC_STATUS_ROUTE, cwd));
   if (!res.available) return res;
   if (!isStatusPayload(res.data)) return { available: false, reason: 'host returned a malformed status payload' };
   return res;
 }
 
-export async function fetchBoard() {
-  const res = await getJson(SDLC_BOARD_ROUTE);
+export async function fetchBoard(cwd) {
+  const res = await getJson(withCwd(SDLC_BOARD_ROUTE, cwd));
   if (!res.available) return res;
   if (!isBoardPayload(res.data)) return { available: false, reason: 'host returned a malformed board payload' };
   return res;
 }
 
-export async function fetchTask(id) {
-  return getJson(`${SDLC_TASK_ROUTE}?id=${encodeURIComponent(id)}`);
+export async function fetchTask(id, cwd) {
+  return getJson(withCwd(`${SDLC_TASK_ROUTE}?id=${encodeURIComponent(id)}`, cwd));
 }
 
-export async function fetchCompare(task, a, b) {
+export async function fetchCompare(task, a, b, cwd) {
   const q = `task=${encodeURIComponent(task)}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`;
-  return getJson(`${SDLC_COMPARE_ROUTE}?${q}`);
+  return getJson(withCwd(`${SDLC_COMPARE_ROUTE}?${q}`, cwd));
 }
 
-export async function fetchConfig() {
-  const res = await getJson(SDLC_CONFIG_ROUTE);
+export async function fetchConfig(cwd) {
+  const res = await getJson(withCwd(SDLC_CONFIG_ROUTE, cwd));
   if (!res.available) return res;
   if (!isConfigPayload(res.data)) return { available: false, reason: 'host returned a malformed config payload' };
   return res;
 }
 
-export async function writeConfig(path, value) {
-  return postJson(SDLC_CONFIG_ROUTE, { path, value });
+export async function writeConfig(path, value, cwd) {
+  return postJson(withCwd(SDLC_CONFIG_ROUTE, cwd), { path, value });
 }
 
-export async function fetchMetrics() {
+export async function fetchMetrics(cwd) {
   try {
-    const res = await fetch(`/${SDLC_METRICS_ROUTE}`, { headers: { accept: 'text/plain' } });
+    const res = await fetch(`/${withCwd(SDLC_METRICS_ROUTE, cwd)}`, { headers: { accept: 'text/plain' } });
     if (!res.ok) return { available: false, reason: `http ${res.status}` };
     return { available: true, data: await res.text() };
   } catch (err) {
@@ -101,19 +145,45 @@ export async function fetchMetrics() {
   }
 }
 
-export async function fetchFlow({ task = null, events = 100, after = 0 } = {}) {
+export async function fetchFlow({ task = null, events = 100, after = 0, cwd = undefined } = {}) {
   const params = new URLSearchParams({ events: String(events), after: String(after) });
   if (task) params.set('task', task);
+  if (typeof cwd === 'string' && cwd !== '') params.set('cwd', cwd);
   const res = await getJson(`${SDLC_FLOW_ROUTE}?${params}`);
   if (!res.available) {
-    // A 404 with NO_PROJECT is the expected pre-init state. Any other 404 means
-    // the client bundle is newer than the host routes (an in-place update
-    // without a restart) — say that, instead of a generic HTTP error.
+    // A 404 with NO_PROJECT is the expected pre-init state. Any other 404 needs
+    // a probe: "the panel is newer" is only one explanation, and the running
+    // Desktop app is the common case (it keeps the old host loaded).
     if (res.status === 404 && res.code === 'NO_PROJECT') {
       return { available: false, code: 'NO_PROJECT', reason: 'no SDLC project — run `sdlc init` first' };
     }
     if (res.status === 404) {
-      return { available: false, code: 'HOST_OUTDATED', reason: '/api/sdlc.flow is not registered by the running host plugin' };
+      const probe = await probeStatus(cwd);
+      if (probe.statusRoutePresent) {
+        return {
+          available: false,
+          code: 'HOST_OUTDATED',
+          reason: '/api/sdlc.flow is not registered, but /api/sdlc.status does answer: the loaded host is an older build',
+          probe,
+          panelVersion: PANEL_VERSION,
+        };
+      }
+      if (probe.answered) {
+        return {
+          available: false,
+          code: 'HOST_MISSING',
+          reason: 'no SDLC route answered — the host plugin is not registered or enabled in this profile',
+          probe,
+          panelVersion: PANEL_VERSION,
+        };
+      }
+      return {
+        available: false,
+        code: 'HOST_UNREACHABLE',
+        reason: 'could not reach the Harness host to diagnose /api/sdlc.flow',
+        probe,
+        panelVersion: PANEL_VERSION,
+      };
     }
     return res;
   }
@@ -128,6 +198,9 @@ export async function fetchFlow({ task = null, events = 100, after = 0 } = {}) {
  * apply — shipped broken until the entry contract test called apply). The
  * default export stays for source-level ergonomics; the bundler strips it.
  */
-export const api = { fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics, fetchFlow };
+export const api = {
+  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics, fetchFlow,
+  clientVersion,
+};
 
 export default api;

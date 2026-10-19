@@ -101,7 +101,7 @@ test('compare, config write and metrics cover success and failure', async () => 
   });
 });
 
-test('flow: success, NO_PROJECT 404, bare-404 host mismatch, malformed', async () => {
+test('flow: success, NO_PROJECT 404, missing host, malformed', async () => {
   await withFetch(async () => json(flowPayload), async () => {
     const res = await fetchFlow();
     assert.equal(res.available, true);
@@ -114,7 +114,7 @@ test('flow: success, NO_PROJECT 404, bare-404 host mismatch, malformed', async (
   });
   await withFetch(async () => new Response('Not Found', { status: 404 }), async () => {
     const res = await fetchFlow();
-    assert.equal(res.code, 'HOST_OUTDATED');
+    assert.equal(res.code, 'HOST_MISSING');
   });
   await withFetch(async () => json({ ok: true, tasks: 'nope' }), async () => {
     assert.match((await fetchFlow()).reason, /malformed flow/);
@@ -122,4 +122,20 @@ test('flow: success, NO_PROJECT 404, bare-404 host mismatch, malformed', async (
   await withFetch(async () => { throw new Error('offline'); }, async () => {
     assert.match((await fetchFlow()).reason, /network/);
   });
+});
+
+test('every read call carries the session cwd', async () => {
+  const urls = [];
+  await withFetch(async (url) => {
+    urls.push(String(url));
+    return json({ ok: true, tasks: { total: 0 }, spend: {}, columns: [], config: {}, validation: { ok: true, errors: [] } });
+  }, async () => {
+    await fetchStatus('/w');
+    await fetchBoard('/w');
+    await fetchConfig('/w');
+    await fetchMetrics('/w');
+    await fetchFlow({ cwd: '/w' });
+  });
+  assert.equal(urls.length, 5);
+  assert.ok(urls.every((u) => u.includes('cwd=%2Fw')), JSON.stringify(urls));
 });

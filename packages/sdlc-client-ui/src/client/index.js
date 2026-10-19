@@ -13,8 +13,19 @@ import { NS, en, zh } from './locales.js';
 import { SDLC_ID, SDLC_KIND, sdlcDefinition } from './definition.js';
 import { SdlcTab, SdlcTitle } from './SdlcTab.jsx';
 
-/** Required browser services: tab registry, keyed seats, Remote, copy. */
-export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote'];
+/** Required browser services: tab registry, keyed seats, Remote, session cwd, copy. */
+export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'sessions', 'uiSession'];
+
+/** The cwd of the session on screen, when the shell exposes it. */
+function currentSessionCwd(ctx) {
+  try {
+    const key = ctx.uiSession?.adapter?.current?.getSnapshot?.()?.key;
+    if (key == null) return undefined;
+    return ctx.sessions?.list?.getSnapshot?.()?.byId?.[key]?.cwd;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Client plugin body: register dictionaries, the tab type, and the tab body.
@@ -53,7 +64,9 @@ export function apply(ctx, config = {}) {
       if (opened || checking || !ctx.sidebarRight.mounted.getSnapshot()) return;
       checking = true;
       try {
-        const status = await api.fetchStatus();
+        // The host is not session-scoped: without cwd it reads the Harness
+        // profile directory under the Desktop app and finds no project.
+        const status = await api.fetchStatus(currentSessionCwd(ctx));
         if (status.available && status.data.tasks.total > 0) {
           opened = true;
           try { ctx.sidebarRight.openTab(SDLC_KIND); } catch { /* no surface yet */ }
@@ -63,7 +76,13 @@ export function apply(ctx, config = {}) {
       }
     };
     const unsubscribe = ctx.sidebarRight.mounted.subscribe(() => { void maybeOpen(); });
-    ctx.effect(() => () => { unsubscribe?.(); }, 'sdlc-ui: auto-open flow panel');
+    // The selected session and its cwd can arrive after mount; re-check when
+    // the catalog settles so the panel still opens on the first real session.
+    const unsubscribeSessions = ctx.sessions?.list?.subscribe?.(() => { void maybeOpen(); });
+    ctx.effect(() => () => {
+      unsubscribe?.();
+      unsubscribeSessions?.();
+    }, 'sdlc-ui: auto-open flow panel');
   }
 }
 

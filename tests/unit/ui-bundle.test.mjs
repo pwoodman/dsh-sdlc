@@ -100,7 +100,7 @@ test('client bundle factory wires apply + inject under the loader contract', () 
   assert.equal(typeof exports.apply, 'function', 'exports.apply is wired at the factory tail');
   assert.deepEqual(
     exports.inject,
-    ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote'],
+    ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'sessions', 'uiSession'],
     'exports.inject is wired and names exactly the browser services the client apply reads',
   );
   // The web module table unwraps with `exports.default ?? exports` (the same
@@ -135,6 +135,8 @@ test('the bundle registers a reachable SDLC tab with a guide entry', () => {
     locale: { bind: () => (key) => key, register: () => () => {} },
     sidebarRightTabs: { register: (definition) => { definitions.push(definition); return () => {}; } },
     sidebarRight: { mounted: { getSnapshot: () => undefined, subscribe: () => () => {} }, openTab: () => {} },
+    sessions: { list: { getSnapshot: () => ({ byId: {} }), subscribe: () => () => {} } },
+    uiSession: { adapter: { current: { getSnapshot: () => ({}) } } },
     slots: {
       inject: (name, body) => {
         injected.push(name);
@@ -161,6 +163,8 @@ test('the bundle registers a reachable SDLC tab with a guide entry', () => {
   assert.deepEqual(injected.sort(), ['sidebar.right.pane.tab', 'sidebar.right.pane.tab.title']);
   assert.ok(exports.default.inject.includes('sidebarRightTabs'));
   assert.match(read('lib/client.js'), /Task DAG/);
+  assert.match(read('lib/client.js'), /__SDLC_VERSION__/, 'the panel build version is injected at bundle time');
+  assert.match(read('lib/client.js'), /sessionId/, 'the tab body reads the session id for the workspace cwd');
   assert.ok(bodyRegistration, 'the tab body was registered');
   assert.ok(registeredDefinition, 'the tab body definition was registered');
   assert.equal(typeof registeredDefinition.store?.create, 'function', 'the slot gets a DSH store handle, not a raw store');
@@ -182,5 +186,5 @@ test('the bundle registers a reachable SDLC tab with a guide entry', () => {
   assert.ok(bundle.includes('(segment.state), " "'), 'a same-line space between expression children survives compilation');
   // Every tab loads its snapshot on reveal; status/board/config used to sit in
   // the loading phase forever because only the flow panel had a loader.
-  assert.match(bundle, /stores\.loadPanel\(panel\)/, 'the tab effect loads the revealed panel');
+  assert.match(bundle, /stores\.loadPanel\(panel, cwd\)/, 'the tab effect loads the revealed panel with the session cwd');
 });

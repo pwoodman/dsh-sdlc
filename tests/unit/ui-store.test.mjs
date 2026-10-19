@@ -102,6 +102,40 @@ test('loadPanel loads the tab a panel switch reveals', async () => {
 });
 
 
+test('panel loads forward the session workspace to the host', async () => {
+  const seen = [];
+  const api = {
+    fetchStatus: async (cwd) => { seen.push(['status', cwd]); return { available: true, data: { ok: true, tasks: { total: 0 }, spend: {} } }; },
+    fetchBoard: async (cwd) => { seen.push(['board', cwd]); return { available: true, data: { ok: true, columns: [] } }; },
+    fetchConfig: async (cwd) => { seen.push(['config', cwd]); return { available: true, data: { ok: true, config: {}, validation: { ok: true, errors: [] } } }; },
+    fetchFlow: async (opts) => { seen.push(['flow', opts]); return { available: true, data: { ok: true, tasks: [] } }; },
+  };
+  const stores = uiStore.createSdlcStores(api);
+  await stores.loadPanel('status', '/w');
+  await stores.loadPanel('board', '/w');
+  await stores.loadPanel('config', '/w');
+  await stores.loadFlow({ cwd: '/w' });
+  assert.deepEqual(seen, [
+    ['status', '/w'], ['board', '/w'], ['config', '/w'], ['flow', { task: null, cwd: '/w' }],
+  ]);
+  stores.dispose();
+});
+
+test('a missing flow route keeps the probe for the diagnostics panel', async () => {
+  const probe = { answered: true, statusRoutePresent: true, pluginVersion: '0.4.0-beta.27' };
+  const stores = uiStore.createSdlcStores(stubApi({
+    flow: { available: false, code: 'HOST_OUTDATED', reason: 'old host', probe, panelVersion: '0.4.0-beta.29' },
+  }));
+  await stores.loadFlow();
+  const snap = stores.flow.getSnapshot();
+  assert.equal(snap.phase, 'missing');
+  assert.equal(snap.code, 'HOST_OUTDATED');
+  assert.equal(snap.probe.pluginVersion, '0.4.0-beta.27');
+  assert.equal(snap.panelVersion, '0.4.0-beta.29');
+  stores.dispose();
+});
+
+
 test('loadFlow resolves ready, keeps stale data on failure, and resets', async () => {
   const stores = uiStore.createSdlcStores(stubApi());
   await stores.loadFlow();

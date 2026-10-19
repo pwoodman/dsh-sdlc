@@ -34,47 +34,48 @@ export function createSdlcStores(api) {
   const review = createStore({ phase: 'idle' });
   const flow = createStore({ phase: 'loading' });
 
-  async function loadStatus() {
+  async function loadStatus(cwd) {
     status.update({ phase: 'loading' });
-    const res = await api.fetchStatus();
+    const res = await api.fetchStatus(cwd);
     status.update(res.available ? { phase: 'ready', data: res.data } : { phase: 'missing', reason: res.reason });
   }
 
-  async function loadBoard() {
+  async function loadBoard(cwd) {
     board.update({ phase: 'loading' });
-    const res = await api.fetchBoard();
+    const res = await api.fetchBoard(cwd);
     board.update(res.available ? { phase: 'ready', data: res.data } : { phase: 'missing', reason: res.reason });
   }
 
-  async function loadConfig() {
+  async function loadConfig(cwd) {
     config.update({ phase: 'loading' });
-    const res = await api.fetchConfig();
+    const res = await api.fetchConfig(cwd);
     config.update(res.available ? { phase: 'ready', data: res.data } : { phase: 'missing', reason: res.reason });
   }
 
-  async function saveConfig(path, value) {
+  async function saveConfig(path, value, cwd) {
     config.update((s) => ({ ...s, saving: path }));
-    const res = await api.writeConfig(path, value);
+    const res = await api.writeConfig(path, value, cwd);
     if (!res.available) {
       config.update((s) => ({ ...s, saving: null, saveError: res.reason }));
       return res;
     }
-    await loadConfig();
+    await loadConfig(cwd);
     config.update((s) => ({ ...s, saving: null, saveError: null }));
     return res;
   }
 
-  async function loadFlow({ task = null } = {}) {
+  async function loadFlow({ task = null, cwd = undefined } = {}) {
     const previous = flow.getSnapshot();
     try {
-      const res = await api.fetchFlow({ task });
+      const res = await api.fetchFlow({ task, cwd });
       if (res.available) {
         flow.update({ phase: 'ready', data: res.data });
         return;
       }
+      const diagnostic = { code: res.code, probe: res.probe ?? null, panelVersion: res.panelVersion ?? null };
       flow.update(previous.data
-        ? { phase: 'stale', data: previous.data, reason: res.reason, code: res.code }
-        : { phase: 'missing', reason: res.reason, code: res.code });
+        ? { phase: 'stale', data: previous.data, reason: res.reason, ...diagnostic }
+        : { phase: 'missing', reason: res.reason, ...diagnostic });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       flow.update(previous.data
@@ -83,9 +84,9 @@ export function createSdlcStores(api) {
     }
   }
 
-  async function loadCompare(task, a, b) {
+  async function loadCompare(task, a, b, cwd) {
     review.update({ phase: 'loading', task, a, b });
-    const res = await api.fetchCompare(task, a, b);
+    const res = await api.fetchCompare(task, a, b, cwd);
     review.update(res.available
       ? { phase: 'ready', task, a, b, data: res.data }
       : { phase: 'missing', task, a, b, reason: res.reason });
@@ -96,11 +97,11 @@ export function createSdlcStores(api) {
    * `loading` and had no caller, so those three tabs rendered "Loading…"
    * forever (the in-panel Reload button is behind that loading branch).
    */
-  function loadPanel(panel) {
-    if (panel === 'status') return loadStatus();
-    if (panel === 'board') return loadBoard();
-    if (panel === 'config') return loadConfig();
-    if (panel === 'flow') return loadFlow();
+  function loadPanel(panel, cwd) {
+    if (panel === 'status') return loadStatus(cwd);
+    if (panel === 'board') return loadBoard(cwd);
+    if (panel === 'config') return loadConfig(cwd);
+    if (panel === 'flow') return loadFlow({ cwd });
     return Promise.resolve();
   }
 

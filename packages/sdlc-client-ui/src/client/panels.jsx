@@ -327,21 +327,59 @@ function Fold({ title, count, open, children }) {
 }
 
 function FlowUnavailable({ snapshot, onRetry, t }) {
+  const [copied, setCopied] = useState(false);
   const hostOutdated = snapshot.code === 'HOST_OUTDATED';
+  const hostMissing = snapshot.code === 'HOST_MISSING';
+  const unreachable = snapshot.code === 'HOST_UNREACHABLE';
+  const probe = snapshot.probe ?? null;
+  const panelVersion = snapshot.panelVersion ?? null;
+  const hostVersion = probe && typeof probe.pluginVersion === 'string' ? probe.pluginVersion : null;
   const command = 'npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install';
-  const copy = () => {
-    try { void navigator.clipboard?.writeText(command); } catch { /* clipboard unavailable */ }
+  const diagnostics = [
+    'SDLC panel diagnostics',
+    `code: ${snapshot.code ?? 'UNKNOWN'}`,
+    `reason: ${snapshot.reason ?? ''}`,
+    `panel: ${panelVersion ?? 'unknown'}`,
+    `host: ${hostVersion ?? 'unknown'}`,
+    `status probe: ${JSON.stringify(probe)}`,
+    `url: ${typeof location !== 'undefined' ? location.href : ''}`,
+  ].join('\n');
+  const copy = (text) => {
+    try {
+      void navigator.clipboard?.writeText(text);
+      setCopied(true);
+    } catch { /* clipboard unavailable */ }
   };
+  const message = hostOutdated
+    ? t('flow.hostOutdated')
+    : hostMissing
+      ? t('flow.hostMissing')
+      : unreachable
+        ? t('flow.hostUnreachable')
+        : snapshot.reason;
   return (
     <div className="sdlc-empty" role="alert">
       <div className="sdlc-empty-icon" aria-hidden="true">!</div>
       <h3>{t('flow.unavailable')}</h3>
-      <p>{hostOutdated ? t('flow.hostOutdated') : snapshot.reason}</p>
-      {hostOutdated && (
+      <p>{message}</p>
+      {(hostOutdated || hostMissing) && (
         <div className="sdlc-empty-hint">
-          <p>{t('flow.hostOutdatedHint')}</p>
-          <code>{command}</code>
-          <button type="button" className="sdlc-btn sdlc-empty-copy" onClick={copy}>{t('flow.copy')}</button>
+          <p>{hostOutdated ? t('flow.hostOutdatedHint') : t('flow.hostMissingHint')}</p>
+          {hostOutdated && <p>{t('flow.hostOutdatedDesktop')}</p>}
+          {hostOutdated && (
+            <div className="sdlc-empty-command">
+              <p className="sdlc-empty-label">{t('flow.hostOutdatedCli')}</p>
+              <code>{command}</code>
+              <button type="button" className="sdlc-btn sdlc-empty-copy" onClick={() => copy(command)}>{t('flow.copy')}</button>
+            </div>
+          )}
+          <div className="sdlc-empty-versions">
+            <span>{t('flow.panelVersion')} <b>{panelVersion ?? '—'}</b></span>
+            <span>{t('flow.hostVersion')} <b>{hostVersion ?? t('flow.unknown')}</b></span>
+          </div>
+          <button type="button" className="sdlc-btn sdlc-empty-copy" onClick={() => copy(diagnostics)}>
+            {copied ? t('flow.diagnosticsCopied') : t('flow.copyDiagnostics')}
+          </button>
         </div>
       )}
       <button type="button" className="sdlc-btn" onClick={onRetry}>{t('flow.retry')}</button>

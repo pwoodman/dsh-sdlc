@@ -2,6 +2,45 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.29] — 2026-10-19 — Desktop workspace scoping; honest host diagnostics
+
+### Fixed
+
+- **The panel reads the open session's workspace, not the Harness process
+  directory.** The host plugin is not session-scoped, so on the Desktop app it
+  read `<profile>/.sdlc` — usually no project at all. The tab body now sends its
+  session `cwd` with every request; the host accepts it only when it is an
+  absolute, existing directory and otherwise falls back to the configured root.
+  The auto-open probe uses the same workspace. Status/Board/Config/Review share
+  the routing, and the config POST is still constrained to an existing `.sdlc`.
+- **A missing flow route is diagnosed instead of assumed.** A bare 404 used to
+  claim "the panel is newer". The client now probes `/api/sdlc.status`:
+  - status answers + flow 404 → `HOST_OUTDATED` (an old host build is loaded);
+  - no SDLC route answers → `HOST_MISSING` (plugin not loaded/enabled);
+  - the probe cannot reach the server → `HOST_UNREACHABLE`.
+- **The restart guidance is actionable.** The panel explains that closing the
+  window can leave Harness running in the background (with per-OS quit/kill
+  examples), that the Desktop app updates through **Plugins → Add plugin**, and
+  that the `npx` installer only manages the `sdlc-web` / `sdlc-worker` /
+  `sdlc-probe` CLI profiles. It shows the panel and host builds and offers
+  **Copy diagnostics**.
+- `pluginVersion` is included in the status and flow payloads so a current host
+  can identify itself to a newer panel (an old host naturally reports unknown).
+
+### Verification
+
+- Against the still-running Oct-18 Desktop host (old host, current panel):
+  `/api/sdlc.status` 200, `/api/sdlc.flow` 404 → the panel renders the new
+  `HOST_OUTDATED` state with panel build/host unknown, quit/update steps, and no
+  page errors.
+- A host launched from `.validation` (no project) serving a session whose
+  workspace is this repo requested `/api/sdlc.status` and `/api/sdlc.flow` with
+  `?cwd=<repo>` and rendered the demo project (9 tasks, 22 gate passes, 1
+  failing), proving the session workspace drives the panel.
+- 850 offline tests pass, gates P/M0/Q are green, 41/41 packed-artifact checks
+  pass, and the 1.0 MiB release tarball installs end-to-end (all profiles, M0
+  green).
+
 ## [0.4.0-beta.28] — 2026-10-19 — sidebar panels actually load; render fixes
 
 ### Fixed

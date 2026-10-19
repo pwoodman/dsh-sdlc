@@ -11,7 +11,7 @@
  * are unit-testable without a DSH boot.
  */
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Runtime } from '../../../sdlc-core/src/runtime.js';
 import { loadConfig, validateConfig, deepMerge, dumpConfigYaml } from '../../../sdlc-core/src/config.js';
@@ -19,8 +19,22 @@ import { setPath } from '../../../sdlc-cli/src/cli.mjs';
 import { compareRuns } from '../../../sdlc-core/src/debug.js';
 import { collectMetricsSnapshot, renderPrometheus } from '../../../sdlc-core/src/metrics.js';
 
+/**
+ * The host build serving this payload. The panel compares it with its own
+ * build when `/api/sdlc.flow` is missing: an older host answers status but not
+ * flow, and the user needs to know which half to update.
+ * Resolves beside the source tree and beside the folded `lib/rows/ui/` copy.
+ */
+function pluginVersion() {
+  try {
+    return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+  } catch {
+    return null;
+  }
+}
+
 function noProject(projectRoot) {
-  return { status: 404, body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot } };
+  return { status: 404, body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot, pluginVersion: pluginVersion() } };
 }
 
 function openRuntime(projectRoot) {
@@ -49,6 +63,7 @@ export function handleStatus(projectRoot) {
       status: 200,
       body: {
         ok: true,
+        pluginVersion: pluginVersion(),
         dbPath,
         projects: projects.map((p) => ({ id: p.id, name: p.name, state: p.state, blocked_state: p.blocked_state })),
         tasks: {
@@ -146,6 +161,9 @@ function coerceBody(value) {
  * the file is only written when the FULL merged config validates.
  */
 export function handleConfigPost(projectRoot, body = {}) {
+  // The request may name a session workspace (`?cwd=`). Never create `.sdlc`
+  // content in a directory that is not already an SDLC project.
+  if (!existsSync(join(projectRoot, '.sdlc'))) return noProject(projectRoot);
   const { path, value } = body;
   if (typeof path !== 'string' || !path) {
     return { status: 400, body: { ok: false, error: 'MISSING_PATH', detail: 'body { path, value } is required' } };

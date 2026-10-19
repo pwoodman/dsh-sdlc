@@ -64,6 +64,25 @@ test('route paths are stable and browser-relative forms strip the slash', () => 
   assert.equal(routes.parseSdlcReviewAddress('dsh-resource://other/x'), undefined);
 });
 
+test('the session cwd overrides the host process cwd, safely', async () => {
+  const plugin = await core.uiPlugin();
+  const dirA = tempDir('sdlc-ui-root-a-');
+  const dirB = tempDir('sdlc-ui-root-b-');
+  try {
+    const request = (cwd) => new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(cwd)}`);
+    // The browser's session workspace wins over the Desktop app's process cwd.
+    assert.equal(plugin.resolveProjectRoot({ projectRoot: dirA }, request(dirB)), dirB);
+    // Relative, missing, and NUL-bearing paths fall back to the configured root.
+    assert.equal(plugin.resolveProjectRoot({ projectRoot: dirA }, request('relative/dir')), dirA);
+    assert.equal(plugin.resolveProjectRoot({ projectRoot: dirA }, request(join(dirA, 'does-not-exist'))), dirA);
+    assert.equal(plugin.resolveProjectRoot({ projectRoot: dirA }, request(`${dirA}\0evil`)), dirA);
+    assert.equal(plugin.resolveProjectRoot({ projectRoot: dirA }), dirA);
+  } finally {
+    cleanup(dirA);
+    cleanup(dirB);
+  }
+});
+
 test('status/board/task/compare read live DB rows', () => {
   const dir = scaffold();
   try {
@@ -72,6 +91,7 @@ test('status/board/task/compare read live DB rows', () => {
     assert.equal(status.status, 200);
     assert.equal(status.body.ok, true);
     assert.equal(status.body.tasks.total, 1);
+    assert.equal(typeof status.body.pluginVersion, 'string');
     assert.ok(routes.isStatusPayload(status.body));
 
     const board = handlers.handleBoard(dir);
@@ -116,6 +136,10 @@ test('uninitialised projects are 404, never fabricated', () => {
     assert.equal(handlers.handleBoard(dir).status, 404);
     assert.equal(handlers.handleCompare(dir, { task: 'T', a: 'A', b: 'B' }).status, 404);
     assert.equal(handlers.handleTask(dir, { id: 'T' }).status, 404);
+    const post = handlers.handleConfigPost(dir, { path: 'observability.logLevel', value: 'warn' });
+    assert.equal(post.status, 404);
+    assert.equal(post.body.error, 'NO_PROJECT');
+    assert.equal(existsSync(join(dir, '.sdlc')), false, 'a config write must not create .sdlc');
     assert.equal(routes.isFlowPayload({}), false);
   } finally { cleanup(dir); }
 });
@@ -248,6 +272,25 @@ test('plugin fetch handlers serve live responses end-to-end (no host)', async ()
     const metricsRes = await handlersByKey.get('GET /api/sdlc.metrics')();
     assert.equal(metricsRes.status, 200);
     assert.match(await metricsRes.text(), /sdlc_tasks_total/);
+
+    // The browser's session workspace overrides the fallback root. dirOther has
+    // no .sdlc, so a routed request that honors ?cwd must answer NO_PROJECT and
+    // name that root (proving the host did not read the fallback project).
+    const dirOther = scaffold();
+    try {
+      const otherStatus = await handlersByKey.get('GET /api/sdlc.status')(
+        new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dirOther)}`),
+      );
+      assert.equal(otherStatus.status, 404);
+      const otherBody = await otherStatus.json();
+      assert.equal(otherBody.error, 'NO_PROJECT');
+      assert.equal(otherBody.root, dirOther);
+      const otherFlow = await handlersByKey.get('GET /api/sdlc.flow')(
+        new Request(`http://localhost/api/sdlc.flow?cwd=${encodeURIComponent(dirOther)}`),
+      );
+      assert.equal(otherFlow.status, 404);
+      assert.equal((await otherFlow.json()).error, 'NO_PROJECT');
+    } finally { cleanup(dirOther); }
 
     // GET config.
     const configRes = await handlersByKey.get('GET /api/sdlc.config')();

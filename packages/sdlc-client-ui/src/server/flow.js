@@ -11,7 +11,7 @@
  * otherwise only visible in logs. It is a VIEW: no writes, no lock, no model.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Runtime } from '../../../sdlc-core/src/runtime.js';
@@ -19,6 +19,15 @@ import { loadConfig } from '../../../sdlc-core/src/config.js';
 import {
   activeTasks, checkNoOverlap, depsBlocking, resourcesOf, topoSort,
 } from '../../../sdlc-core/src/scheduler.js';
+
+/** Host build serving this snapshot (see handlers.js — used for mismatch diagnosis). */
+function pluginVersion() {
+  try {
+    return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+  } catch {
+    return null;
+  }
+}
 
 export const FLOW_LIMITS = {
   tasks: 200,
@@ -373,19 +382,22 @@ export function handleFlow(projectRoot, query = {}) {
   if (!existsSync(join(projectRoot, '.sdlc', 'sdlc.db'))) {
     return {
       status: 404,
-      body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot },
+      body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot, pluginVersion: pluginVersion() },
     };
   }
   return {
     status: 200,
-    body: buildFlowModel(projectRoot, {
-      taskId: query.task ?? null,
-      taskLimit: intParam(query.tasks, FLOW_LIMITS.tasks, 1, 1000),
-      runsPerTask: intParam(query.runs, FLOW_LIMITS.runsPerTask, 1, 10),
-      eventLimit: intParam(query.events, FLOW_LIMITS.events, 1, 500),
-      afterEventId: intParam(query.after, 0, 0, Number.MAX_SAFE_INTEGER),
-      escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
-    }),
+    body: {
+      ...buildFlowModel(projectRoot, {
+        taskId: query.task ?? null,
+        taskLimit: intParam(query.tasks, FLOW_LIMITS.tasks, 1, 1000),
+        runsPerTask: intParam(query.runs, FLOW_LIMITS.runsPerTask, 1, 10),
+        eventLimit: intParam(query.events, FLOW_LIMITS.events, 1, 500),
+        afterEventId: intParam(query.after, 0, 0, Number.MAX_SAFE_INTEGER),
+        escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
+      }),
+      pluginVersion: pluginVersion(),
+    },
   };
 }
 

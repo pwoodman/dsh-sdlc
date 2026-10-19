@@ -36,6 +36,7 @@ const CHECK = process.argv.includes('--check');
 // string here — that also makes a publish-scope rename (scripts/set-scope.mjs) a
 // one-time edit rather than a hunt for a hardcoded literal.
 const BUNDLE_ID = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')).name;
+const BUNDLE_VERSION = JSON.parse(readFileSync(join(PKG, 'package.json'), 'utf8')).version;
 
 /**
  * Minimal JSX compiler for the panels' subset: intrinsic + component tags,
@@ -523,6 +524,7 @@ function buildClientBundle() {
     var useEffect = react.useEffect;
     var __jsx = react_jsx_runtime.jsx;
     var __jsxs = react_jsx_runtime.jsxs;
+    var __SDLC_VERSION__ = ${JSON.stringify(BUNDLE_VERSION)};
     ${JSON.stringify(css.length)}; // css length marker (injected below)
     ${compiled.join('\n')}
     exports.apply = (typeof apply !== "undefined") ? apply : undefined;

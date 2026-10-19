@@ -17,10 +17,19 @@ import { StatusPanel, BoardPanel, ConfigPanel, ReviewPanel, FlowPanel } from './
 
 const PANELS = ['flow', 'status', 'board', 'config', 'review'];
 
-export function SdlcTab({ stores, t }) {
+/** Fallback for tests/stubs where the session seat is not wired. */
+function noSessions(selector) {
+  return selector({ byId: {} });
+}
+
+export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) {
   const [panel, setPanel] = useState('flow');
   // A task card click opens Review with that task already in the picker.
   const [reviewTask, setReviewTask] = useState(null);
+  // The host is not session-scoped; send the tab's workspace with every call so
+  // the Desktop app reads the open workspace instead of its profile directory.
+  const useSessions = useSessionsProp ?? noSessions;
+  const cwd = useSessions((sessions) => sessions.byId?.[sessionId]?.cwd);
   const status = useSyncExternalStore(stores.status.subscribe, stores.status.getSnapshot);
   const board = useSyncExternalStore(stores.board.subscribe, stores.board.getSnapshot);
   const config = useSyncExternalStore(stores.config.subscribe, stores.config.getSnapshot);
@@ -31,23 +40,23 @@ export function SdlcTab({ stores, t }) {
     // Every tab loads its own snapshot on first reveal. Status/board/config
     // used to stay in `loading` forever: only the flow panel had a loader, and
     // the Reload buttons sit behind the panels' loading branches.
-    stores.loadPanel(panel);
+    stores.loadPanel(panel, cwd);
     if (panel !== 'flow') return undefined;
-    const timer = setInterval(() => { stores.loadFlow(); }, 5000);
+    const timer = setInterval(() => { stores.loadFlow({ cwd }); }, 5000);
     return () => clearInterval(timer);
-  }, [panel, stores]);
+  }, [panel, stores, cwd]);
 
   const selectPanel = (p) => setPanel(p);
   const openTaskReview = (taskId) => {
     setReviewTask(taskId ?? null);
     setPanel('review');
   };
-  const reloadStatus = () => stores.loadStatus();
-  const reloadBoard = () => stores.loadBoard();
-  const reloadConfig = () => stores.loadConfig();
-  const saveConfig = (path, value) => stores.saveConfig(path, value);
-  const loadCompare = (task, a, b) => stores.loadCompare(task, a, b);
-  const loadFlow = () => stores.loadFlow();
+  const reloadStatus = () => stores.loadStatus(cwd);
+  const reloadBoard = () => stores.loadBoard(cwd);
+  const reloadConfig = () => stores.loadConfig(cwd);
+  const saveConfig = (path, value) => stores.saveConfig(path, value, cwd);
+  const loadCompare = (task, a, b) => stores.loadCompare(task, a, b, cwd);
+  const loadFlow = () => stores.loadFlow({ cwd });
 
   return (
     <div className="sdlc-root">
