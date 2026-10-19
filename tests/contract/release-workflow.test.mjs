@@ -59,7 +59,9 @@ test('members publish after their dependencies, meta last', () => {
 test('a post-publish registry install smoke exists (the only path that resolves members from npm)', () => {
   assert.match(workflow, /post-publish registry install smoke/);
   const step = workflow.slice(workflow.indexOf('post-publish registry install smoke'));
-  assert.match(step, /dsh-sdlc-install --only all/);
-  assert.match(step, /dsh-sdlc-install --check/);
-  assert.match(step, /--uninstall --only all/);
+  assert.match(step, /npm pack "@patwoodman\/dsh-sdlc-flow@\$version"/);
+  assert.match(step, /node "\$installer" --only all --version "\$version"/);
+  assert.match(step, /node "\$installer" --check --only all --version "\$version"/);
+  assert.match(step, /node "\$installer" --uninstall --only all/);
+  assert.match(step, /dsh --profile sdlc-probe/);
 });

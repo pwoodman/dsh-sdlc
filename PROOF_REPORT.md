@@ -6,12 +6,16 @@ artifacts, the flow visualizer, and the deterministic verification mechanisms.
 **No live model, no registry publish, no external install.** Every number below
 comes from a command in this checkout; commands are listed at the end.
 
-**One-line result:** the tree now passes its release guard, 835 offline tests are
-green, the beta artifact is ~1 MiB with zero local state, the packed CLI installs
-and runs, the flow visualizer ships as a reachable right-sidebar panel, and the
-plugin's seven core safety mechanisms are proven against an unguarded baseline
-(7/7 prevented vs 7/7 escaped). The remaining open items are explicit product
-decisions and the real post-publish smoke — this is **not a publish approval**.
+**One-line result:** **shipped.** `v0.4.0-beta.24` is pushed, CI is green,
+npm has **0.4.0-beta.24 on both `beta` and `latest`**, 835 offline tests pass,
+the beta artifact is ~1 MiB with zero local state, the packed CLI installs and
+runs, the flow panel was verified in a real browser, and the plugin's seven core
+safety mechanisms are proven against an unguarded baseline (7/7 prevented vs
+7/7 escaped). The Release workflow's *post-publish* smoke step failed on its
+`npx` invocation (exit 127); the same install/check/probe/uninstall sequence
+passes from the published tarball locally, and the workflow now packs the
+tarball explicitly for the next release. Remaining items are product decisions
+and the developer-productivity study.
 
 ---
 
@@ -176,9 +180,29 @@ after `node scripts/install-local.mjs`.
 
 ---
 
-## 6. Release guard
+## 6. Ship result
 
-`node scripts/verify-release.mjs --allow-dirty --json` on this tree:
+```
+git commit   ff5e6de  (main)
+git tag      v0.4.0-beta.24  → pushed
+CI           success (v0.4.0-beta.24)
+npm          beta  = 0.4.0-beta.24
+             latest= 0.4.0-beta.24
+```
+
+The Release workflow ran through publish (npm has all seven packages at
+beta.24), then failed at `post-publish registry install smoke` with **exit 127**
+from the `npx … dsh-sdlc-install` invocation. Re-running the exact sequence
+against the published tarball — install `--only all`, `--check`, boot
+`sdlc-probe`, uninstall — passes locally (7 tools, 20 commands, 9 services,
+26 presets in the probe report). The workflow now uses
+`npm pack` + `node lib/install.mjs` instead of `npx`, so the next release's
+smoke is independent of npx command-resolution semantics. The beta.24 tag keeps
+the historical failed step; do not move a published tag — the fix is on `main`.
+
+## 7. Release guard
+
+`node scripts/verify-release.mjs --allow-current-tag --json` on the tagged tree:
 
 ```json
 {
@@ -190,20 +214,20 @@ after `node scripts/install-local.mjs`.
 }
 ```
 
-Before the version bump, the same guard correctly refused beta.23 with six
-problems: tag already exists, version not ahead, already on npm, CHANGELOG says
-unpublished, README says unpublished, dirty tree. Those are now fixed except the
-dirty tree, which is expected until this work is committed. The guard is wired
-before the build/publish steps; `release.yml` also requires a `v*` tag to
-publish, publishes in dependency order, and adds a post-publish registry install
-smoke (`--only all`, `--check`, probe boot, uninstall).
+Before the version bump, the same guard refused beta.23 with six problems: tag
+already exists, version not ahead, already on npm, CHANGELOG says unpublished,
+README says unpublished, dirty tree. All are fixed. The Release workflow runs on
+the tag, so it passes `--allow-current-tag`: that permits exactly the tag being
+released (a newer tag, or an already-published version, still fails). The guard
+runs before build/publish; `release.yml` requires a `v*` tag, publishes in
+dependency order, and runs the packed-tarball post-publish smoke.
 
 Decision table: `tests/contract/release-guard.test.mjs` (9 tests).
 Workflow wiring: `tests/contract/release-workflow.test.mjs` (4 tests).
 
 ---
 
-## 7. Fixes with regression tests
+## 8. Fixes with regression tests
 
 | Area | Fix | Test |
 |---|---|---|
@@ -223,10 +247,12 @@ Workflow wiring: `tests/contract/release-workflow.test.mjs` (4 tests).
 
 ---
 
-## 8. Still open / human decisions
+## 9. Still open / human decisions
 
-1. **Post-publish registry smoke has not run locally** (no `dsh`, no npm
-   publish). It is wired into `release.yml`; the first real release executes it.
+1. **The beta.24 tag's Release run is red at the old `npx` smoke step.** The
+   published artifacts are fine and the packed-tarball sequence passes locally;
+   `release.yml` is fixed on `main` for the next release. A published tag is not
+   moved.
 2. **Windows CI job** is not added. The spawn resolver is unit-tested; a
    `windows-latest` runner is a CI decision.
 3. **Desktop is reported, not managed.** `--check` honestly reports the
@@ -242,7 +268,7 @@ Workflow wiring: `tests/contract/release-workflow.test.mjs` (4 tests).
 
 ---
 
-## 9. Reproduce
+## 10. Reproduce
 
 ```sh
 # all offline tests

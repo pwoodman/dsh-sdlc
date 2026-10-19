@@ -2,7 +2,7 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
-## [0.4.0-beta.24] — release candidate — pre-npm hardening and the flow visualizer
+## [0.4.0-beta.24] — 2026-10-19 — pre-npm hardening and the flow visualizer
 
 ### Added
 

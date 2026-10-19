@@ -306,22 +306,29 @@ jobs:
             done
           fi
 
-      # Prove the path a user actually takes. Pre-publish verification installs
-      # member tarballs with link: (they are not on the registry yet); only this
-      # step resolves the exact intra-suite versions from npm.
+      # Prove the path a user actually takes, using the published tarball.
+      # `npx pkg@version dsh-sdlc-install` was the only failing step on beta.24
+      # (exit 127: the command name was resolved before the package bin), while
+      # the same install/check/probe/uninstall sequence passes from the packed
+      # tarball. Pack explicitly so the smoke does not depend on npx semantics.
       - name: post-publish registry install smoke
         if: startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
+          pack_dir="$(mktemp -d)"
+          npm pack "@patwoodman/dsh-sdlc-flow@$version" --pack-destination "$pack_dir" >/dev/null
+          tar xzf "$pack_dir"/*.tgz -C "$pack_dir"
+          installer="$pack_dir/package/lib/install.mjs"
+          test -f "$installer"
           export DSH_HOME="$(mktemp -d)"
           echo "fresh DSH_HOME: $DSH_HOME"
-          npx -y "@patwoodman/dsh-sdlc-flow@$version" dsh-sdlc-install --only all --version "$version" --json
-          npx -y "@patwoodman/dsh-sdlc-flow@$version" dsh-sdlc-install --check --only all --version "$version" --json
+          node "$installer" --only all --version "$version" --json
+          node "$installer" --check --only all --version "$version" --json
           SDLC_SELFTEST="$DSH_HOME/selftest.json" dsh --profile sdlc-probe
           test -s "$DSH_HOME/selftest.json"
-          npx -y "@patwoodman/dsh-sdlc-flow@$version" dsh-sdlc-install --uninstall --only all --json
-          echo "registry install, check, probe boot and uninstall all passed"
+          node "$installer" --uninstall --only all --json
+          echo "published tarball: install, check, probe boot and uninstall all passed"
 
       - name: explain an npm refusal
         if: failure() && vars.PUBLISH_NPM == 'true' && env.NPM_TOKEN != ''
