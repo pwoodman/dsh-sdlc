@@ -275,36 +275,99 @@ function shortModel(model) {
   return String(model).split('/').at(-1);
 }
 
+function Kpi({ label, value, tone }) {
+  return (
+    <div className={`sdlc-kpi ${tone ? `sdlc-tone-${tone}` : ''}`}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function Fold({ title, count, open, children }) {
+  return (
+    <details className="sdlc-fold" open={open}>
+      <summary>
+        <span>{title}</span>
+        <span className="sdlc-count">{count}</span>
+      </summary>
+      <div className="sdlc-fold-body">{children}</div>
+    </details>
+  );
+}
+
+function FlowUnavailable({ snapshot, onRetry, t }) {
+  const hostOutdated = snapshot.code === 'HOST_OUTDATED';
+  return (
+    <div className="sdlc-empty" role="alert">
+      <h3>{t('flow.unavailable')}</h3>
+      <p>{hostOutdated ? t('flow.hostOutdated') : snapshot.reason}</p>
+      {hostOutdated && (
+        <p className="sdlc-empty-hint">
+          {t('flow.hostOutdatedHint')}
+          <code>npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install</code>
+        </p>
+      )}
+      <button type="button" className="sdlc-btn" onClick={onRetry}>{t('flow.retry')}</button>
+    </div>
+  );
+}
+
 export function FlowPanel({ snapshot, onReload, onSelectTask, t }) {
-  if (snapshot.phase === 'loading') return <div aria-live="polite">{t('flow.loading')}</div>;
-  if (snapshot.phase === 'missing') return <Missing reason={snapshot.reason} />;
+  if (snapshot.phase === 'loading') return <div className="sdlc-loading" aria-live="polite">{t('flow.loading')}</div>;
+  if (snapshot.phase === 'missing') return <FlowUnavailable snapshot={snapshot} onRetry={onReload} t={t} />;
   const view = buildFlowView(snapshot.data);
   const reload = () => onReload();
+  const failing = view.gateSummary.fail + view.gateSummary.unknown;
+  const projectLabel = view.project.available === false
+    ? t('flow.noProject')
+    : `${view.project.name} · ${view.project.state}`;
   return (
     <section aria-label="SDLC flow" className="sdlc-flow">
       <div className="sdlc-flow-head">
-        <button type="button" onClick={reload}>{t('flow.reload')}</button>
-        <span className="sdlc-muted">
-          {view.totals.tasks ?? 0} {t('flow.tasks')} · {view.totals.activeTasks ?? 0} {t('flow.active')}
-          {' · '}{formatCost(view.totals.spend ? view.totals.spend.costUsd : null)} {t('flow.estimated')}
-          {' · '}{formatTokens(view.totals.spend ? view.totals.spend.tokens : null)} tokens
-        </span>
+        <div>
+          <h2 className="sdlc-flow-title">{t('flow.title')}</h2>
+          <div className="sdlc-muted">{projectLabel}</div>
+        </div>
+        <button type="button" className="sdlc-btn" onClick={reload}>{t('flow.reload')}</button>
       </div>
+
       {snapshot.phase === 'stale' && <div role="status" className="sdlc-warn">{t('flow.stale')}: {snapshot.reason}</div>}
       {view.tasksTruncated && <div role="status" className="sdlc-warn">{t('flow.truncated')}</div>}
-      {view.project.available === false && <Missing reason={view.project.reason || 'no project'} />}
       {view.unavailable.map((item) => (
         <div role="status" className="sdlc-warn" key={item.section}>{item.section}: {item.reason}</div>
       ))}
-      {view.nodes.length === 0 && <div>{t('flow.empty')}</div>}
+
+      <div className="sdlc-kpis">
+        <Kpi value={view.totals.tasks ?? 0} label={t('flow.tasks')} />
+        <Kpi value={view.totals.activeTasks ?? 0} label={t('flow.running')} tone="running" />
+        <Kpi value={view.gateSummary.pass} label={t('flow.passing')} tone="good" />
+        <Kpi value={failing} label={t('flow.failing')} tone={failing ? 'bad' : 'idle'} />
+        <Kpi value={formatCost(view.totals.spend ? view.totals.spend.costUsd : null)} label={t('flow.estimated')} />
+        <Kpi value={formatTokens(view.totals.spend ? view.totals.spend.tokens : null)} label={t('flow.tokens')} />
+      </div>
+
+      {view.nodes.length === 0 && <div className="sdlc-empty">{t('flow.empty')}</div>}
       {view.nodes.length > 0 && <FlowDag view={view} onSelectTask={onSelectTask} t={t} />}
-      <FlowSummary view={view} t={t} />
-      <FlowRuns view={view} t={t} />
-      <FlowRouting view={view} t={t} />
-      <FlowGates view={view} t={t} />
-      <FlowLocks view={view} t={t} />
-      <FlowEscalations view={view} t={t} />
-      <FlowEvents view={view} t={t} />
+
+      <Fold title={t('flow.subagents')} count={view.runs.length} open={view.runs.length <= 4}>
+        <FlowRuns view={view} t={t} />
+      </Fold>
+      <Fold title={t('flow.routing')} count={view.routing.length} open={false}>
+        <FlowRouting view={view} t={t} />
+      </Fold>
+      <Fold title={t('flow.gates')} count={view.gates.length} open={false}>
+        <FlowGates view={view} t={t} />
+      </Fold>
+      <Fold title={t('flow.locks')} count={view.locks.resources.length} open={false}>
+        <FlowLocks view={view} t={t} />
+      </Fold>
+      <Fold title={t('flow.escalations')} count={view.escalations.length} open={false}>
+        <FlowEscalations view={view} t={t} />
+      </Fold>
+      <Fold title={t('flow.events')} count={view.events.length} open={false}>
+        <FlowEvents view={view} t={t} />
+      </Fold>
     </section>
   );
 }
@@ -312,169 +375,157 @@ export function FlowPanel({ snapshot, onReload, onSelectTask, t }) {
 function FlowDag({ view, onSelectTask, t }) {
   const label = t('flow.dagLabel').replace('{tasks}', String(view.nodes.length)).replace('{edges}', String(view.edges.length));
   return (
-    <div className="sdlc-dag" style={{ width: view.width, height: view.height }} role="img" aria-label={label}>
-      <svg className="sdlc-dag-edges" width={view.width} height={view.height} aria-hidden="true">
-        {view.edges.map((edge) => (
-          <path key={edge.key} d={edge.d} className={edge.bad ? 'sdlc-edge bad' : 'sdlc-edge'} />
-        ))}
-      </svg>
-      {view.nodes.map((node) => (
-        <FlowNode key={node.id} node={node} x={node.x} y={node.y} onSelectTask={onSelectTask} />
+    <div className="sdlc-dag" role="img" aria-label={label}>
+      {view.layers.map((layer) => (
+        <section className="sdlc-layer" key={layer.index}>
+          <div className="sdlc-layer-head">
+            <span>{t('flow.stage')} {layer.index + 1}</span>
+            <span className="sdlc-muted">{layer.nodes.length}</span>
+          </div>
+          <div className="sdlc-layer-nodes">
+            {layer.nodes.map((node) => (
+              <FlowNode key={node.id} node={node} onSelectTask={onSelectTask} />
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
 }
 
-function FlowNode({ node, x, y, onSelectTask }) {
+function FlowNode({ node, onSelectTask }) {
   const open = () => onSelectTask(node.id);
-  const deps = node.dependsOn.length ? `← ${node.dependsOn.join(', ')}` : '';
+  const deps = node.dependsOn.length ? node.dependsOn.join(', ') : null;
   return (
     <button
       type="button"
       className={`sdlc-node sdlc-tone-${toneOf(node.state)}`}
-      style={{ left: x, top: y }}
       onClick={open}
       title={node.title}
     >
-      <span className="sdlc-node-id">{node.id}</span>
-      <span className="sdlc-node-state">{node.state}</span>
+      <span className="sdlc-node-head">
+        <span className="sdlc-node-id">{node.id}</span>
+        <span className="sdlc-state">{node.state}</span>
+      </span>
+      <span className="sdlc-node-title">{node.title}</span>
       <span className="sdlc-node-meta">{node.role ?? '—'} · {node.riskClass ?? '—'}</span>
       <span className="sdlc-node-meta">{node.tier ?? '—'} · {shortModel(node.model)}</span>
-      {deps && <span className="sdlc-node-deps">{deps}</span>}
+      {deps && <span className="sdlc-node-deps">after {deps}</span>}
     </button>
-  );
-}
-
-function FlowSummary({ view, t }) {
-  const gates = view.gateSummary;
-  return (
-    <div className="sdlc-chips" aria-label={t('flow.summary')}>
-      <span className="sdlc-chip sdlc-tone-good">{t('flow.pass')} {gates.pass}</span>
-      <span className="sdlc-chip sdlc-tone-bad">{t('flow.fail')} {gates.fail}</span>
-      <span className="sdlc-chip sdlc-tone-warn">{t('flow.skipped')} {gates.skipped}</span>
-      <span className="sdlc-chip sdlc-tone-idle">{t('flow.unknown')} {gates.unknown}</span>
-      <span className="sdlc-chip sdlc-tone-merge">{t('flow.active')} {view.totals.activeTasks ?? 0}</span>
-    </div>
   );
 }
 
 function FlowRuns({ view, t }) {
   if (view.runs.length === 0) return <div className="sdlc-muted">{t('flow.noRuns')}</div>;
   return (
-    <section aria-label={t('flow.subagents')} className="sdlc-flow-section">
-      <h3>{t('flow.subagents')}</h3>
-      <ul className="sdlc-run-list">
-        {view.runs.map((run) => <FlowRun key={run.runId} run={run} />)}
-      </ul>
-    </section>
+    <ul className="sdlc-run-list">
+      {view.runs.map((run) => <FlowRun key={run.runId} run={run} />)}
+    </ul>
   );
 }
 
 function FlowRun({ run }) {
-  const live = run.durationSource === 'live' ? ' (live)' : '';
+  const tone = run.status === 'completed' ? 'good' : run.status === 'failed' ? 'bad' : 'running';
   return (
-    <li className={`sdlc-run sdlc-tone-${run.status === 'completed' ? 'good' : run.status === 'failed' ? 'bad' : 'running'}`}>
+    <li className={`sdlc-run sdlc-tone-${tone}`}>
       <span className="sdlc-run-role">{run.role ?? '—'}</span>
+      <span className="sdlc-run-status">{run.status}</span>
+      <span className="sdlc-run-meta">{run.modelProvider ? `${run.modelProvider}/` : ''}{shortModel(run.modelId)}</span>
+      <span className="sdlc-run-meta">{formatTokens(run.tokensTotal)} tok · {formatDuration(run.durationMs)}{run.durationSource === 'live' ? ' live' : ''}</span>
+      <span className="sdlc-run-meta">{run.pid == null ? 'no pid' : `pid ${run.pid}`}</span>
       <span className="sdlc-run-id">{run.taskId}/{run.runId}</span>
-      <span>{run.status}</span>
-      <span>{run.modelProvider ? `${run.modelProvider}/` : ''}{shortModel(run.modelId)}</span>
-      <span>{formatTokens(run.tokensTotal)} tok</span>
-      <span>{formatDuration(run.durationMs)}{live}</span>
-      <span>{run.pid == null ? 'no pid' : `pid ${run.pid}`}</span>
       {run.orphaned && <span className="sdlc-bad">orphaned</span>}
     </li>
   );
 }
 
 function FlowRouting({ view, t }) {
-  if (view.routing.length === 0) return null;
+  if (view.routing.length === 0) return <div className="sdlc-muted">{t('flow.noRouting')}</div>;
   return (
-    <section aria-label={t('flow.routing')} className="sdlc-flow-section">
-      <h3>{t('flow.routing')}</h3>
-      <ul className="sdlc-routing-list">
-        {view.routing.map((route) => (
-          <li key={route.taskId} className="sdlc-route">
-            <span className="sdlc-route-task">{route.taskId}</span>
-            <span className={`sdlc-chip sdlc-tone-${route.available ? 'good' : 'warn'}`}>{route.tier ?? '—'}</span>
-            <span className="sdlc-muted">rule {route.rule ?? '—'} · {route.source}{route.partial ? ' (partial)' : ''}</span>
-            <span className="sdlc-muted">{route.reason}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <ul className="sdlc-routing-list">
+      {view.routing.map((route) => (
+        <li key={route.taskId} className="sdlc-route">
+          <span className="sdlc-route-task">{route.taskId}</span>
+          <span className={`sdlc-chip sdlc-tone-${route.available ? 'good' : 'warn'}`}>{route.tier ?? '—'}</span>
+          <span className="sdlc-muted">rule {route.rule ?? '—'} · {route.source}{route.partial ? ' · partial' : ''}</span>
+          <span className="sdlc-route-reason">{route.reason}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function FlowGates({ view, t }) {
-  if (view.gates.length === 0) return null;
+  if (view.gates.length === 0) return <div className="sdlc-muted">{t('flow.noGates')}</div>;
+  const failures = view.gates.filter((g) => g.result !== 'pass');
   return (
-    <section aria-label={t('flow.gates')} className="sdlc-flow-section">
-      <h3>{t('flow.gates')}</h3>
-      <ul className="sdlc-gate-list">
-        {view.gates.map((gate) => (
-          <li key={`${gate.taskId}/${gate.gate}`} className={`sdlc-chip sdlc-tone-${gate.result === 'pass' ? 'good' : gate.result === 'fail' ? 'bad' : gate.result === 'skipped' ? 'warn' : 'idle'}`}>
-            {gate.taskId} · {gate.gate} · {gate.status}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <div>
+      <div className="sdlc-chips">
+        <span className="sdlc-chip sdlc-tone-good">{t('flow.pass')} {view.gateSummary.pass}</span>
+        <span className="sdlc-chip sdlc-tone-bad">{t('flow.fail')} {view.gateSummary.fail}</span>
+        <span className="sdlc-chip sdlc-tone-warn">{t('flow.skipped')} {view.gateSummary.skipped}</span>
+        <span className="sdlc-chip sdlc-tone-idle">{t('flow.unknown')} {view.gateSummary.unknown}</span>
+      </div>
+      {failures.length > 0 && (
+        <ul className="sdlc-gate-list">
+          {failures.map((gate) => (
+            <li key={`${gate.taskId}/${gate.gate}`} className={`sdlc-chip sdlc-tone-${gate.result === 'pass' ? 'good' : gate.result === 'fail' ? 'bad' : 'warn'}`}>
+              {gate.taskId} · {gate.gate} · {gate.status}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
 function FlowLocks({ view, t }) {
   const violations = view.locks.violations ?? [];
   return (
-    <section aria-label={t('flow.locks')} className="sdlc-flow-section">
-      <h3>{t('flow.locks')}</h3>
+    <div>
       {view.locks.resources.length === 0 && <div className="sdlc-muted">{t('flow.noResources')}</div>}
       <ul className="sdlc-lock-list">
         {view.locks.resources.map((lock) => (
           <li key={lock.resource} className={`sdlc-chip sdlc-tone-${lock.status === 'held' ? 'running' : 'bad'}`}>
-            {lock.resource}: {lock.holders.join(', ')} ({lock.status})
+            {lock.resource}: {lock.holders.join(', ')}
           </li>
         ))}
       </ul>
       {violations.map((v, index) => (
         <div key={index} role="alert" className="sdlc-bad">{v.kind}: {v.a} ↔ {v.b}</div>
       ))}
-    </section>
+    </div>
   );
 }
 
 function FlowEscalations({ view, t }) {
-  if (view.escalations.length === 0) return null;
+  if (view.escalations.length === 0) return <div className="sdlc-muted">{t('flow.noEscalations')}</div>;
   return (
-    <section aria-label={t('flow.escalations')} className="sdlc-flow-section">
-      <h3>{t('flow.escalations')}</h3>
-      <ul className="sdlc-escalation-list">
-        {view.escalations.map((item) => (
-          <li key={item.id} className="sdlc-escalation">
-            <span className={`sdlc-chip sdlc-tone-${item.resolution ? 'good' : 'warn'}`}>{item.level ?? '—'}</span>
-            <span>{item.taskId ?? '—'}</span>
-            <span>{item.question ?? '—'}</span>
-            <span className="sdlc-muted">{item.source}{item.resolution ? ` · ${item.resolution}` : ''}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <ul className="sdlc-escalation-list">
+      {view.escalations.map((item) => (
+        <li key={item.id} className="sdlc-escalation">
+          <span className={`sdlc-chip sdlc-tone-${item.resolution ? 'good' : 'warn'}`}>{item.level ?? '—'}</span>
+          <span className="sdlc-escalation-task">{item.taskId ?? '—'}</span>
+          <span className="sdlc-escalation-question">{item.question ?? '—'}</span>
+          <span className="sdlc-muted">{item.source}{item.resolution ? ` · ${item.resolution}` : ''}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function FlowEvents({ view, t }) {
-  if (view.events.length === 0) return null;
+  if (view.events.length === 0) return <div className="sdlc-muted">{t('flow.noEvents')}</div>;
   return (
-    <section aria-label={t('flow.events')} className="sdlc-flow-section">
-      <h3>{t('flow.events')}</h3>
-      <ol className="sdlc-event-list">
-        {view.events.slice(-30).map((event) => (
-          <li key={event.id}>
-            <span className="sdlc-muted">{event.ts ?? ''}</span>
-            {' '}<strong>{event.actor ?? '—'}</strong> {event.action ?? ''}
-            {event.taskId ? ` · ${event.taskId}` : ''}
-            {event.result && event.result !== 'ok' ? ` · ${event.result}` : ''}
-          </li>
-        ))}
-      </ol>
-    </section>
+    <ol className="sdlc-event-list">
+      {view.events.slice(-8).map((event) => (
+        <li key={event.id}>
+          <span className="sdlc-muted">{event.ts ? event.ts.slice(11, 19) : ''}</span>
+          {' '}<strong>{event.actor ?? '—'}</strong> {event.action ?? ''}
+          {event.taskId ? ` · ${event.taskId}` : ''}
+          {event.result && event.result !== 'ok' ? ` · ${event.result}` : ''}
+        </li>
+      ))}
+    </ol>
   );
 }

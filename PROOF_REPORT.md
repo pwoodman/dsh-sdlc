@@ -1,13 +1,13 @@
 # Proof report — tested, fixed and measured
 
-**Date:** 2026-10-18. **Version:** `0.4.0-beta.24` (release candidate).
+**Date:** 2026-10-18. **Version:** `0.4.0-beta.25` (release candidate). beta.24 is live.
 **Scope:** pre-npm release integrity, installer/updater safety, packed
 artifacts, the flow visualizer, and the deterministic verification mechanisms.
 **No live model, no registry publish, no external install.** Every number below
 comes from a command in this checkout; commands are listed at the end.
 
-**One-line result:** **shipped.** `v0.4.0-beta.24` is pushed, CI is green,
-npm has **0.4.0-beta.24 on both `beta` and `latest`**, 835 offline tests pass,
+**One-line result:** **shipped beta.24; beta.25 adds the UI fix.** `v0.4.0-beta.24` is pushed, CI is green,
+npm has **0.4.0-beta.24 on both `beta` and `latest`**, 843 offline tests pass,
 the beta artifact is ~1 MiB with zero local state, the packed CLI installs and
 runs, the flow panel was verified in a real browser, and the plugin's seven core
 safety mechanisms are proven against an unguarded baseline (7/7 prevented vs
@@ -23,19 +23,19 @@ and the developer-productivity study.
 
 | Layer | Before this pass | Now |
 |---|---|---|
-| unit | 560 | **594** |
+| unit | 560 | **602** |
 | contract | 103 | **121** |
 | integration | 47 | **64** |
 | fault | 23 | **27** |
 | adversarial | 23 | **29** |
-| **offline total** | **756** | **835 pass, 0 fail** |
+| **offline total** | **756** | **843 pass, 0 fail** |
 | e2e | 9 pass + 1 skip | **9 pass + 1 skip** (live opt-in) |
 
 Coverage gate (`node scripts/validate-coverage.mjs --json .validation/gate-Q.json`):
 
 ```
-835 tests, 835 pass, 0 fail
-all files            95.09 lines | 81.84 branches | 96.01 functions
+843 tests, 843 pass, 0 fail
+all files            95.06 lines | 81.92 branches | 95.95 functions
 sdlc-core            98.52        | 85.24          | (28 files)
 sdlc-orchestrator    87.44        | 78.22          | (4 files)
 sdlc-client-ui       95.98        | 81.85          | (6 files)
@@ -171,6 +171,13 @@ The live render caught two integration bugs unit tests could not:
 
 Both are fixed and pinned by `ui-bundle.test.mjs` (children-in-props, no
 `null`-props `__jsx`, and `store.create` is callable).
+
+**Beta.25 UI follow-up:** the first iteration used a 200-px-layer absolute
+canvas that did not fit a ~460 px sidebar. It is now a responsive layered
+layout (six KPI cards, 2–3 cards/row, collapsible sections) with no absolute
+canvas. A bare 404 from `/api/sdlc.flow` is reported as `HOST_OUTDATED` with a
+quit/reopen + reinstall hint; `NO_PROJECT` stays a separate state. Pinned by
+`tests/unit/ui-flow-api.test.mjs` and re-verified live (no console errors).
 
 **DSH limitation:** the right sidebar has no surface without a session, so the
 Start/hero screen cannot show the panel. Start a session (the flow auto-opens) or

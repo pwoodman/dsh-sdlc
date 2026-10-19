@@ -21,8 +21,15 @@ async function getJson(path) {
   }
   if (!res.ok) {
     let detail = '';
-    try { detail = JSON.stringify(await res.json()); } catch { detail = res.statusText; }
-    return { available: false, reason: `http ${res.status}: ${detail.slice(0, 200)}` };
+    let code = null;
+    try {
+      const payload = await res.json();
+      code = typeof payload?.error === 'string' ? payload.error : null;
+      detail = payload?.detail ? `${payload.error ?? 'error'}: ${payload.detail}` : JSON.stringify(payload);
+    } catch {
+      detail = res.statusText;
+    }
+    return { available: false, status: res.status, code, reason: `http ${res.status}: ${detail.slice(0, 200)}` };
   }
   try {
     return { available: true, data: await res.json() };
@@ -98,7 +105,18 @@ export async function fetchFlow({ task = null, events = 100, after = 0 } = {}) {
   const params = new URLSearchParams({ events: String(events), after: String(after) });
   if (task) params.set('task', task);
   const res = await getJson(`${SDLC_FLOW_ROUTE}?${params}`);
-  if (!res.available) return res;
+  if (!res.available) {
+    // A 404 with NO_PROJECT is the expected pre-init state. Any other 404 means
+    // the client bundle is newer than the host routes (an in-place update
+    // without a restart) — say that, instead of a generic HTTP error.
+    if (res.status === 404 && res.code === 'NO_PROJECT') {
+      return { available: false, code: 'NO_PROJECT', reason: 'no SDLC project — run `sdlc init` first' };
+    }
+    if (res.status === 404) {
+      return { available: false, code: 'HOST_OUTDATED', reason: '/api/sdlc.flow is not registered by the running host plugin' };
+    }
+    return res;
+  }
   if (!isFlowPayload(res.data)) return { available: false, reason: 'host returned a malformed flow payload' };
   return res;
 }

@@ -74,12 +74,14 @@ export function buildFlowView(data) {
     };
   }).filter(Boolean);
 
-  const layers = [...byLayer.keys()].sort((a, b) => a - b);
+  const layers = [...byLayer.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, list]) => ({ index, nodes: list.map((node) => placed.get(node.id)) }));
   return {
     nodes: [...placed.values()],
     edges,
     layers,
-    width: 24 + (layers.length ? (layers.at(-1) + 1) * X : X),
+    width: 24 + (layers.length ? (layers.at(-1).index + 1) * X : X),
     height: 24 + maxPerLayer * Y,
     runs: Array.isArray(data?.runs) ? data.runs : [],
     routing: Array.isArray(data?.routing) ? data.routing : [],

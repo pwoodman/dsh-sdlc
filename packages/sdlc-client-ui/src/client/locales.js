@@ -58,6 +58,20 @@ export const en = {
   'flow.noResources': 'No active resource locks.',
   'flow.escalations': 'Escalations',
   'flow.events': 'Recent events',
+  'flow.title': 'Task flow',
+  'flow.unavailable': 'Flow view unavailable',
+  'flow.hostOutdated': 'The panel is newer than the running host plugin. An in-place update does not replace loaded host code.',
+  'flow.hostOutdatedHint': 'Quit DeepSeek Harness completely, reopen it, and if this persists reinstall: ',
+  'flow.retry': 'Retry',
+  'flow.running': 'running',
+  'flow.passing': 'gates pass',
+  'flow.failing': 'failing',
+  'flow.tokens': 'tokens',
+  'flow.stage': 'Stage',
+  'flow.noRouting': 'No routing decisions yet.',
+  'flow.noGates': 'No gate evidence yet.',
+  'flow.noEscalations': 'No escalations.',
+  'flow.noEvents': 'No events yet.',
 };
 
 /** Simplified Chinese dictionary. */
@@ -113,6 +127,20 @@ export const zh = {
   'flow.noResources': '没有活跃的资源锁。',
   'flow.escalations': '升级',
   'flow.events': '最近事件',
+  'flow.title': '任务流',
+  'flow.unavailable': '流程视图不可用',
+  'flow.hostOutdated': '面板版本高于正在运行的主机插件。原地更新不会替换已加载的主机代码。',
+  'flow.hostOutdatedHint': '请完全退出 DeepSeek Harness 后重新打开；若仍失败，请重装：',
+  'flow.retry': '重试',
+  'flow.running': '运行中',
+  'flow.passing': '门禁通过',
+  'flow.failing': '失败',
+  'flow.tokens': 'tokens',
+  'flow.stage': '阶段',
+  'flow.noRouting': '暂无路由决策。',
+  'flow.noGates': '暂无门禁证据。',
+  'flow.noEscalations': '暂无升级。',
+  'flow.noEvents': '暂无事件。',
 };
 
 export default { NS, en, zh };

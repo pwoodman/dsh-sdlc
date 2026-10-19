@@ -73,13 +73,13 @@ export function createSdlcStores(api) {
         return;
       }
       flow.update(previous.data
-        ? { phase: 'stale', data: previous.data, reason: res.reason }
-        : { phase: 'missing', reason: res.reason });
+        ? { phase: 'stale', data: previous.data, reason: res.reason, code: res.code }
+        : { phase: 'missing', reason: res.reason, code: res.code });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       flow.update(previous.data
-        ? { phase: 'stale', data: previous.data, reason }
-        : { phase: 'missing', reason });
+        ? { phase: 'stale', data: previous.data, reason, code: 'NETWORK' }
+        : { phase: 'missing', reason, code: 'NETWORK' });
     }
   }
 

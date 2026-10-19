@@ -2,6 +2,33 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [0.4.0-beta.25] — 2026-10-19 — flow panel polish and host-version diagnostics
+
+### Fixed
+
+- **The Flow panel no longer shows a generic `http 404: Not Found` after an
+  in-place update.** A 404 from `/api/sdlc.flow` is split into the expected
+  `NO_PROJECT` state and a `HOST_OUTDATED` state. The latter tells the user the
+  client panel is newer than the loaded host code, to quit DeepSeek Harness
+  completely and reopen it, and gives the exact reinstall command. Generic HTTP
+  errors still render with their real reason.
+- **The panel is redesigned for a narrow right sidebar.** The wide absolute
+  DAG canvas (200 px layers, 168 px cards, 700 px+ tall) is replaced by a
+  responsive layered layout: six compact KPI cards, 2–3 task cards per row,
+  state-coloured borders, and collapsible Subagents/Routing/Gates/Locks/
+  Escalations/Events sections with counts. It uses `Canvas`/`CanvasText` and
+  `color-mix` so it follows light and dark themes, and the panel switcher is a
+  compact segmented control instead of browser-default buttons.
+- The Flow panel now stays usable at ~420–650 px wide, which is the actual
+  rendered sidebar width; no horizontal page growth and no giant empty canvas.
+
+### Verification
+
+- `tests/unit/ui-flow-api.test.mjs` pins `NO_PROJECT`, bare-404
+  `HOST_OUTDATED`, and malformed-payload handling.
+- Live Playwright render on DSH 0.2.1-alpha.2: no console/page errors, 9 task
+  cards, 22/1 gate KPIs, collapsible sections; screenshot captured.
+
 ## [0.4.0-beta.24] — 2026-10-19 — pre-npm hardening and the flow visualizer
 
 ### Added
