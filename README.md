@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current beta: 0.4.0-beta.29.** Install from this checkout
+> **Current release: 1.0.0.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -97,24 +97,44 @@ node packages/sdlc-cli/bin/sdlc.mjs selftest --mock
 
 While a session is open, the DSH right sidebar contains an **SDLC Flow** entry
 (the guide's capsule, or auto-open on the first session that has an SDLC
-project). It is a live, read-only view of the orchestrator:
+project). It is a live, read-only view of the orchestrator, built around one
+question: **what needs attention?** The old Status and Board tabs were duplicates
+of data already in the flow snapshot, so the panel now has three primary
+surfaces plus settings:
 
-- **DAG** — every task node with state, role, risk, routing tier/model, and
-  dependency edges;
-- **Subagents** — worker runs with role, model, status, pid, tokens and duration;
-- **Routing** — tier, rule, provider/model and whether the decision was recorded
-  or computed;
-- **Gates** — pass/fail/skipped/unknown chips plus per-task detail;
-- **Locks / escalations / events** — shared-resource holders, recorded and
-  task-state escalations, and the latest 100 events.
+- **Flow** — a live **animated task map** (below) plus a “Needs attention” queue
+  first (unresolved escalations, failed tasks, failing gates, orphaned worker
+  runs, path conflicts), a progress ring and state distribution, live workers,
+  and collapsible gates/routing/activity evidence. Click a task node to open its
+  detail: role, risk, tier/model, attempts, resources, runs, gates, dependencies
+  and the latest event, plus **Compare runs**.
+- **Live map** — a deterministic SVG rendered in the browser from the flow
+  snapshot (no model call, no generated diagram). Stages are horizontal bands, so
+  parallel branches appear side by side; running nodes glow and stream packets
+  along their dependency edges, completed paths stay lit, and blocked or failed
+  paths turn red. Hover or select a node to trace its upstream and downstream
+  path. The parallel meter shows active workers against the host-computed
+  effective cap, and the progress card shows recorded tokens per completed task.
+- **Tasks** — the board without columns: search, All/Active/Blocked/Done
+  filters, tasks grouped by lifecycle state, and the same inline task detail.
+- **Review** — task and run **selects** populated from the flow snapshot (no
+  hand-typed IDs); defaults to the newest two runs, shows signed time/token/cost
+  deltas, changed gates, and a collapsed trace path.
+- **Settings** (gear) — a validated `.sdlc/config.yml` editor grouped by section.
+  Only changed fields get a Save button; rejected writes never touch the file.
 
-It polls `/api/sdlc.flow` every 5 s; on a failed poll the last snapshot is shown
-as *stale* rather than blanked. A 404 with no project is reported as such; a
-bare 404 is reported as a host/client version mismatch with a restart and
-reinstall hint (an in-place update does not replace loaded host code). Missing cost/tokens/duration stay `—` with a
-reason, never `0`. Set `autoOpen: false` in the UI row config to stop the
-automatic open. DSH's right sidebar has **no surface without a session**, so the
-Start screen cannot show it — start a session first.
+All surfaces share one `/api/sdlc.flow` snapshot and one config snapshot. Polling
+is adaptive — 2.5 s while a task or worker is in flight, 8 s when quiet — and
+each poll sends the newest event id as a cursor, so only new events cross the
+wire and the client merges them into a bounded window. On a failed poll the last
+snapshot is shown as *stale* rather than blanked. A 404 with no project becomes a
+guided “No SDLC project here” state with a copyable `sdlc init` command; a bare
+404 is diagnosed as a host/client version mismatch with restart and reinstall
+guidance (an in-place update does not replace loaded host code). Missing
+cost/tokens/duration stay `—` with a reason, never `0`. Set `autoOpen: false` in
+the UI row config to stop the automatic open. DSH's right sidebar has **no
+surface without a session**, so the Start screen cannot show it — start a session
+first.
 
 ## Install
 
@@ -134,7 +154,7 @@ it upgrades an existing install instead of requiring an uninstall first.
 ```sh
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
-npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 0.4.0-beta.29
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 1.0.0
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --check --json      # no changes
 ```
 
@@ -146,7 +166,7 @@ It is idempotent. Prerequisites: `dsh` and `pnpm` on `PATH`, Node ≥ 22.13.
 > new session can still report the previous version's `agent-preset/invalid`.
 > The installer prints this reminder.
 
-### Beta testers — no clone, no build
+### No-clone install — prebuilt release artifact
 
 Download the release artifact and run its installer. Nothing is compiled on your
 machine, and you do not need the source.
@@ -229,18 +249,17 @@ dsh --profile sdlc-web
 
 Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugins page.
 
-> **Fresh beta not installing?** pnpm 11 applies a 24-hour
-> `minimumReleaseAge` to range and `latest` installs, so a beta published in the
-> last day can resolve to the *previous* beta — this is how a known-broken
-> beta.19 kept installing after beta.20 was already `latest`. Prefer the
-> installer above; it pins the exact version and writes the exemption for you.
-> For a manual install, pin it exactly
-> (`@patwoodman/dsh-sdlc-flow@0.4.0-beta.29`) and add **one list item per
-> pattern** to the profile's `pnpm-workspace.yaml`:
+> **Fresh release not installing?** pnpm 11 applies a 24-hour
+> `minimumReleaseAge` to range and `latest` installs, so a release published in
+> the last day can resolve to the *previous* version. Prefer the installer
+> above; it pins the exact version and writes the exemption for you. For a
+> manual install, pin it exactly
+> (`@patwoodman/dsh-sdlc-flow@1.0.0`) and add **one list item per pattern** to
+> the profile's `pnpm-workspace.yaml`:
 >
 > ```yaml
 > minimumReleaseAgeExclude:
->   - '@patwoodman/dsh-sdlc-flow@0.4.0-beta.29'
+>   - '@patwoodman/dsh-sdlc-flow@1.0.0'
 > ```
 >
 > A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
@@ -277,7 +296,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v0.4.0-beta.29 && git push origin v0.4.0-beta.29
+git tag v1.0.0 && git push origin v1.0.0
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
@@ -350,11 +369,10 @@ packages/sdlc-tools/     propose-only model tools + the /sdlc command surface
 packages/sdlc-presets/   26 dsh-agent-preset rows (generated from roles.js)
 packages/sdlc-cli/       the `sdlc` executable
 packages/sdlc-mock-llm/  deterministic ctx.llm provider (test-only)
-packages/sdlc-client-ui/ web UI: config editor, task board, side-by-side review (sdlc-web only)
+packages/sdlc-client-ui/ web UI: live flow map, tasks, review, validated config (sdlc-web only)
 profiles/                installer recipes: sdlc-web, sdlc-worker, sdlc-probe
 scripts/                 gates (P, M0–M8, Q), build, installer, doctor, harness
 tests/                   unit · contract · integration · fault · adversarial · e2e
-demo/                    zero-dependency fullstack task-tracker proving the loop end-to-end
 ```
 
 ## Modes (spec C.2)
@@ -376,21 +394,25 @@ of the state machine: it can run work but cannot unblock itself.
 
 | Panel | What it does |
 |---|---|
-| Status | live project + task + spend summary from `sdlc.db` |
-| Board | tasks grouped by state machine state |
-| Config | validated editor for `.sdlc/config.yml` (tiers, budgets, gates — writes rejected when validation fails) |
+| Flow | live animated task map, attention queue, parallel-worker meter, progress/spend, task detail |
+| Tasks | search, All/Active/Blocked/Done filters, lifecycle grouping, inline task detail |
 | Review | side-by-side time/tokens/tracepaths for two runs of one task |
+| Settings | validated editor for `.sdlc/config.yml` (tiers, budgets, gates — writes rejected when validation fails) |
 
 Host routes (`/api/sdlc.status`, `/api/sdlc.board`, `/api/sdlc.task`,
-`/api/sdlc.compare`, `/api/sdlc.config`, `/api/sdlc.metrics`) read the live
-DB; the one POST validates through the same `validateConfig` the CLI uses.
+`/api/sdlc.compare`, `/api/sdlc.config`, `/api/sdlc.metrics`,
+`/api/sdlc.flow`) read the live DB and are scoped to the open session's
+workspace; the one POST validates through the same `validateConfig` the CLI
+uses. A project row belonging to another checkout is never rendered.
 The browser bundle is built offline by `node scripts/build-ui.mjs` (part of
 `npm run build`) with zero dependencies.
 
 ## Status
 
-`gate:P` and `gate:M0`…`gate:M8` plus `gate:Q` pass (11/11); 662 offline tests
+`gate:P` and `gate:M0`…`gate:M8` plus `gate:Q` pass (11/11); 875 offline tests
 pass across unit/contract/integration/fault/adversarial, 9/10 e2e (1 skipped
-by design), 86/86 eval harness, 6/6 demo. `doctor` passes with 0 errors and
-0 warnings on a configured host. See the validation report §1 for the two
+by design), 86/86 eval harness. The 1.0.0 packed tarballs install, boot the
+probe, create a lead session and uninstall cleanly; the no-clone tarball also
+installs end-to-end in a fresh `DSH_HOME` and passes M0. `doctor` passes with 0
+errors and 0 warnings on a configured host. See the validation report §1 for the two
 environment-dependent skips (pnpm-present vs absent, Playwright stack).

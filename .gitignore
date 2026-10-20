@@ -7,7 +7,6 @@
 .sdlc/sdlc.db-*
 .sdlc/sdlc.lock
 .sdlc/debug.log
-.sdlc/debug-demo/
 
 # validation evidence bundles
 .validation/
@@ -44,8 +43,4 @@ packages/*/dist/
 .tools/
 npm-debug.log*
 
-# demo runtime outputs (verification logs + file-store data)
-demo/.sdlc/
-demo/data/
-demo/dist/
 pnpm-lock.yaml

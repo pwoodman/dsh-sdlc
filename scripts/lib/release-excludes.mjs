@@ -18,7 +18,6 @@ export const RELEASE_EXCLUDE = [
   '.pnpm-store', 'pnpm-store',
   '.eval-home', '.eval-tarball-home', '.eval-tarball-home2', '.eval-out', '.eval-out-live', '.eval-out-pilot',
   '.eval-out-shard0', '.eval-out-shard1', '.eval-out-merged',
-  'demo/.sdlc', 'demo/data', 'demo/dist',
   // The repo keeps no workspace lockfile (zero-dependency build); a stray one
   // must not travel in a release artifact where it would look authoritative.
   'pnpm-lock.yaml',

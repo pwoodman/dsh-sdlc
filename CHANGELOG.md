@@ -2,6 +2,112 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.0.0] — 2026-10-20 — first production release
+
+First production release. The sidebar is now an attention-first live flow view
+with an animated task map, real-data-only workspace scoping, parallel-worker
+capacity, cheaper polling, and a validated settings surface. The demo fixture
+that seeded fake project rows is gone; every rendered row comes from the open
+session's own `.sdlc` database.
+
+### Changed
+
+- **Flow now answers “what needs attention?” first.** A single queue surfaces
+  unresolved escalations, failed tasks, failing gates, orphaned worker runs and
+  path conflicts; each row opens the task that owns it. Below it: one progress
+  ring, state distribution and spend, the staged DAG, live workers, and
+  collapsible gates/routing/activity evidence.
+- **Task cards open an inline detail** at the top of their stage: role, risk,
+  tier/model, attempts, resources, branch, dependencies, runs, gates and the
+  latest event, plus **Compare runs** (prefilled when the task has two runs).
+- **Tasks replaces the column board** with search, All/Active/Blocked/Done
+  filters, lifecycle grouping, attention markers, and the same inline detail.
+- **Review is select-driven.** Task and run pickers are populated from the flow
+  snapshot, default to the newest two runs, and show signed time/token/cost
+  deltas, changed gates and a collapsed trace path. Stale results are hidden when
+  the selection changes.
+- **Settings is a secondary surface behind the gear.** Fields are grouped by
+  section, only changed fields show Save, and rejected writes still never touch
+  `.sdlc/config.yml`.
+- **One snapshot feeds Flow and Tasks.** The tab polls `/api/sdlc.flow` once and
+  keeps the last snapshot as stale on failure; config loads only when Settings
+  opens.
+- Every panel string is localized (en/zh), including project states, with a
+  parity test that fails when a key is missing from either dictionary.
+- Empty and unavailable states are actionable: a guided “No SDLC project here”
+  card with a copyable `sdlc init` command, and a compact host-mismatch panel
+  with versions, quit/update steps and diagnostics.
+
+### Added
+
+- **Live animated task map** on Flow. A deterministic SVG is derived in the
+  browser from the flow snapshot — no model call and no generated HTML. Stages
+  are horizontal bands, so parallel branches sit side by side; running nodes
+  glow, active dependency edges stream dashed packets, completed paths stay lit,
+  and blocked/failed paths turn red. Hover or select a node to trace the upstream
+  and downstream path. Keyboard focus, `aria-label`s and reduced-motion fallbacks
+  are included.
+- **Parallel-worker meter**. The host snapshot now exposes
+  `totals.parallelism` (`configured`, `effective`, `active`, `saturated`) using
+  the scheduler's documented `min(cores/2, ram/2, provider, configured)` rule;
+  the panel shows active slots and capacity instead of guessing from `auto`.
+- **Token-throughput line.** The progress card shows recorded tokens per
+  completed task, derived only from runs that actually recorded tokens (no
+  fabricated zero). The visual itself adds no model calls.
+- **Cheaper polling.** Flow/Tasks poll every 2.5 s while work is in flight and
+  every 8 s when quiet. Each poll carries the newest event id as a cursor, so the
+  host returns only new events and the client merges them into a bounded window.
+
+### Removed
+
+- The **demo fixture** (`demo/`), the demo seeder (`scripts/demo-run.mjs`) and
+  the `DEMO` project/tasks it wrote into `.sdlc/sdlc.db`. The panel renders only
+  the current workspace's project and tasks; there is no seeded/fallback task
+  data. Flow and status ignore a project row whose `repo_path` belongs to
+  another checkout.
+- The **Status** and **Board** tabs. Both rendered data already present in the
+  flow snapshot (project/totals/spend; every task), so they were a second view
+  to maintain and a third place to look for the same answer.
+- The free-text Review picker (typing task and run IDs) and the always-expanded
+  trace path.
+- Per-panel Reload buttons and reload-on-tab-switch fetches; one refresh target
+  per surface remains.
+- Two competing root CSS blocks and the dead rules behind the removed panels.
+
+### Verification
+
+- **875 offline tests pass**: 634 unit, 121 contract, 64 integration,
+  29 adversarial, 27 fault. New unit coverage includes attention ordering,
+  task-detail joins, review defaults, number/cost formatting, and en/zh key
+  parity with every static `t()` key checked against both dictionaries.
+- **Live-map coverage**: 49 UI unit tests pass on the current tree (graph
+  geometry and parallel lanes, edge lifecycle states, path tracing, the
+  old-host no-fabricated-cap fallback, compact token formatting, cursor merge
+  and workspace reset, bundle/syntax contract plus React-binding completeness,
+  en/zh parity). The full unit
+  suite (`node --test 'tests/unit/**/*.test.mjs'`) passes 634/634.
+- **All 11 gates pass** (P, M0–M8, Q) on the final tree. M0 was run against a
+  fresh `install-local` profile: the lead composes exactly one self-contained
+  `@patwoodman/dsh-sdlc-flow` bundle (197 unique rows incl. `sdlc-ui` and the
+  Lead Orchestrator preset).
+- **Real Chromium verification** against a workspace-scoped fixture at 647 px
+  and 343 px: the Flow map rendered 4 nodes with active and blocked edges, the
+  parallel meter showed 1/2 slots, Tasks/Blocked filtering, Review pickers,
+  Settings fields, inline task detail and keyboard activation all worked, and
+  reduced motion removed the travelling packets. There were zero page errors and
+  zero horizontal overflow (`scrollWidth === clientWidth` at 343 px); the only
+  console entry is the expected 404 when a workspace has no project.
+- **Packed publish proof passes**: every member packs without `src/`, the
+  tarballs install into scratch profiles, the probe boots 7 tools / 20 commands
+  / 9 services / 26 presets, the packed lead creates a session and uninstalls
+  cleanly. The 1.0.0 no-clone tarball also installs end-to-end in a fresh
+  `DSH_HOME`, composes 197 unique rows, and passes M0.
+- **Runtime and mechanism proofs pass**: 26/26 role compositions mount with the
+  expected scoped tools, and 7/7 hazard mechanisms are prevented by the plugin
+  versus 7/7 escaping the unguarded baseline; 41/41 packed-artifact checks pass.
+- **E2E**: 9 deterministic §53 tests pass; the live-provider test is skipped by
+  design unless a funded key is supplied.
+
 ## [0.4.0-beta.29] — 2026-10-19 — Desktop workspace scoping; honest host diagnostics
 
 ### Fixed
@@ -35,9 +141,12 @@ All notable changes to the DSH SDLC Flow plugin suite.
   page errors.
 - A host launched from `.validation` (no project) serving a session whose
   workspace is this repo requested `/api/sdlc.status` and `/api/sdlc.flow` with
-  `?cwd=<repo>` and rendered the demo project (9 tasks, 22 gate passes, 1
-  failing), proving the session workspace drives the panel.
-- 850 offline tests pass, gates P/M0/Q are green, 41/41 packed-artifact checks
+  `?cwd=<repo>`, proving the session workspace — not the host process cwd —
+  selects the project.
+- Flow and status are now workspace-scoped: a project row whose `repo_path`
+  points at another checkout is ignored, so stale or foreign rows (including
+  the removed demo seed) can never render as real data.
+- 875 offline tests pass, gates P/M0/Q are green, 41/41 packed-artifact checks
   pass, and the 1.0 MiB release tarball installs end-to-end (all profiles, M0
   green).
 

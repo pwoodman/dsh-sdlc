@@ -1,6 +1,6 @@
 name: Release
 
-# Cuts a beta release: verifies the tree, builds the no-clone tarball, attaches
+# Cuts a release: verifies the tree, builds the no-clone tarball, attaches
 # it to a GitHub Release, and — when the repository variable PUBLISH_NPM is true
 # and an NPM_TOKEN secret exists — publishes the packages so
 # `dsh plugin --profile sdlc-web add @patwoodman/dsh-sdlc-flow` works exactly like

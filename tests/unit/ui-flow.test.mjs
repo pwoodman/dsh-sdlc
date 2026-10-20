@@ -13,6 +13,7 @@ import { join } from 'node:path';
 
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
 import { handleFlow, buildFlowModel } from '../../packages/sdlc-client-ui/src/server/flow.js';
+import { handleStatus, handleTask, handleCompare } from '../../packages/sdlc-client-ui/src/server/handlers.js';
 
 const routes = await core.uiRoutes();
 const runtimeMod = await core.runtime();
@@ -92,6 +93,11 @@ test('the flow payload contains the DAG, runs, routing, gates and locks', () => 
     assert.ok(res.body.locks.resources.some((l) => l.resource === 'package.json'));
     assert.equal(res.body.totals.tasks, 2);
     assert.equal(res.body.totals.workerRuns, 1);
+    const parallel = res.body.totals.parallelism;
+    assert.equal(parallel.configured, 'auto');
+    assert.ok(Number.isInteger(parallel.effective) && parallel.effective >= 1, 'effective parallelism is a host number');
+    assert.equal(parallel.active, res.body.totals.activeTasks);
+    assert.equal(typeof parallel.saturated, 'boolean');
   } finally { cleanup(dir); }
 });
 
@@ -122,5 +128,62 @@ test('the model is pure over an explicit limit and rejects malformed payloads', 
     assert.equal(routes.isFlowPayload(model), true);
     assert.equal(routes.isFlowPayload({ ...model, gateSummary: undefined }), false);
     assert.equal(routes.isFlowPayload({ ...model, tasks: 'nope' }), false);
+  } finally { cleanup(dir); }
+});
+
+test('flow and status only expose this workspace project, never a foreign/demo row', () => {
+  const dir = scaffold();
+  try {
+    seed(dir);
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      // A stale demo-style project pointing at a different checkout. Its tasks
+      // must never appear in this workspace's flow or status payload.
+      runtime.createProject({ id: 'FOREIGN', name: 'demo fullstack (task tracker)', repoPath: '/tmp/some-other-repo' });
+      runtime.addTask({ id: 'DEMO-001', project_id: 'FOREIGN', title: 'Task-tracker API + frontend', role: 'fullstack-engineer' });
+    } finally { runtime.close({ releaseLock: false }); }
+
+    const flow = handleFlow(dir, { events: 10 });
+    assert.equal(flow.status, 200);
+    assert.equal(flow.body.project.id, 'P1');
+    assert.deepEqual(flow.body.tasks.map((task) => task.id).sort(), ['T-1', 'T-2']);
+    assert.equal(flow.body.totals.tasks, 2);
+    assert.equal(flow.body.tasks.some((task) => task.id === 'DEMO-001'), false);
+
+    const status = handleStatus(dir);
+    assert.equal(status.status, 200);
+    assert.deepEqual(status.body.projects.map((project) => project.id), ['P1']);
+    assert.deepEqual(status.body.tasks.items.map((task) => task.id).sort(), ['T-1', 'T-2']);
+    assert.equal(status.body.tasks.total, 2);
+  } finally { cleanup(dir); }
+});
+
+test('a DB with only a foreign project answers NO_PROJECT, not foreign rows', () => {
+  const dir = scaffold();
+  try {
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      runtime.createProject({ id: 'FOREIGN', name: 'demo fullstack (task tracker)', repoPath: '/tmp/some-other-repo' });
+      runtime.addTask({ id: 'DEMO-001', project_id: 'FOREIGN', title: 'Task-tracker API + frontend', role: 'fullstack-engineer' });
+      runtime.transition('DEMO-001', 'READY', 'scheduler', { depStates: {} });
+    } finally { runtime.close({ releaseLock: false }); }
+
+    const flow = handleFlow(dir, { events: 10 });
+    assert.equal(flow.status, 404);
+    assert.equal(flow.body.error, 'NO_PROJECT');
+    assert.match(flow.body.detail, /another workspace/);
+
+    const status = handleStatus(dir);
+    assert.equal(status.status, 200);
+    assert.deepEqual(status.body.projects, []);
+    assert.equal(status.body.tasks.total, 0);
+    assert.equal(status.body.workerRuns.total, 0);
+    assert.equal(status.body.spend.tokens, 0);
+    assert.equal(handleTask(dir, { id: 'DEMO-001' }).status, 404, 'a foreign task is not readable');
+    assert.equal(handleCompare(dir, { task: 'DEMO-001', a: 'A', b: 'B' }).status, 404, 'a foreign task is not comparable');
   } finally { cleanup(dir); }
 });

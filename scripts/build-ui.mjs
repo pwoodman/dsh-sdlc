@@ -444,16 +444,29 @@ function compileJsx(source) {
   }
 }
 function readClientSources() {
-  const files = ['routes.js', 'client/api.js', 'client/store.js', 'client/locales.js', 'client/definition.js', 'client/flow.js', 'client/panels.jsx', 'client/SdlcTab.jsx', 'client/index.js'];
+  const files = ['routes.js', 'client/api.js', 'client/store.js', 'client/locales.js', 'client/definition.js', 'client/flow.js', 'client/config-fields.js', 'client/panels.jsx', 'client/SdlcTab.jsx', 'client/index.js'];
   const parts = [];
+  const reactImports = new Map();
   for (const rel of files) {
     const path = join(SRC, rel);
     if (!existsSync(path)) throw new Error(`client source missing: ${rel}`);
-    parts.push(`//#region src/${rel}\n${stripModules(readFileSync(path, 'utf8'), rel)}\n//#endregion`);
+    const source = readFileSync(path, 'utf8');
+    // Collect the named React bindings BEFORE stripModules removes the import
+    // lines. Hardcoding this list shipped `useRef is not defined` once; derive
+    // it from the sources so a newly used hook can never silently disappear.
+    for (const match of source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]react['"]/g)) {
+      for (const raw of match[1].split(',')) {
+        const entry = raw.trim();
+        if (!entry) continue;
+        const [imported, local = imported] = entry.split(/\s+as\s+/).map((name) => name.trim());
+        reactImports.set(local, imported);
+      }
+    }
+    parts.push(`//#region src/${rel}\n${stripModules(source, rel)}\n//#endregion`);
   }
   const cssPath = join(SRC, 'client', 'SdlcTab.css');
   const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
-  return { parts, css };
+  return { parts, css, reactImports };
 }
 
 /**
@@ -490,7 +503,11 @@ function stripModules(source, rel = '') {
 }
 
 function buildClientBundle() {
-  const { parts, css } = readClientSources();
+  const { parts, css, reactImports } = readClientSources();
+  const reactBindings = [...reactImports.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([local, imported]) => `    var ${local} = react.${imported};`)
+    .join('\n');
   // The factory receives the loader's require(): react resolves through the
   // injected module table (no globals, no import map) — the ui-approval pattern.
   // NOTE: parts still contain JSX (the panels). JSX is compiled below by
@@ -519,9 +536,7 @@ function buildClientBundle() {
     Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
     var react = require("react");
     var react_jsx_runtime = require("react/jsx-runtime");
-    var useState = react.useState;
-    var useSyncExternalStore = react.useSyncExternalStore;
-    var useEffect = react.useEffect;
+${reactBindings}
     var __jsx = react_jsx_runtime.jsx;
     var __jsxs = react_jsx_runtime.jsxs;
     var __SDLC_VERSION__ = ${JSON.stringify(BUNDLE_VERSION)};

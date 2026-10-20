@@ -1,5 +1,12 @@
 # Proof report — tested, fixed and measured
 
+> **Current release: 1.0.0.** 875 offline tests pass, all 11 gates (P, M0–M8,
+> Q) are green, 9/10 e2e pass (one live test skipped by design), the packed
+> publish artifact installs/uninstalls cleanly, and the sidebar was verified in
+> a real Chromium session against workspace-scoped data. The narrative below
+> preserves the original beta.25 measurement pass; later update blocks record
+> what changed since.
+
 **Date:** 2026-10-18. **Version:** `0.4.0-beta.25` (release candidate). beta.24 is live.
 **Scope:** pre-npm release integrity, installer/updater safety, packed
 artifacts, the flow visualizer, and the deterministic verification mechanisms.
@@ -32,8 +39,9 @@ and the developer-productivity study.
 > longer reads the Harness profile directory), classifies a missing flow route
 > from a status probe (`HOST_OUTDATED` / `HOST_MISSING` / `HOST_UNREACHABLE`),
 > and replaces the reinstall-only hint with full-quit and per-install-channel
-> guidance plus panel/host builds and Copy diagnostics. 850 offline tests pass;
-> gates P, M0 and Q are green.
+> guidance plus panel/host builds and Copy diagnostics. 875 offline tests pass;
+> gates P, M0–M8 and Q are green, and the sidebar now renders a live flow map
+> from workspace-scoped data only.
 
 ---
 
@@ -41,22 +49,22 @@ and the developer-productivity study.
 
 | Layer | Before this pass | Now |
 |---|---|---|
-| unit | 560 | **602** |
+| unit | 560 | **634** |
 | contract | 103 | **121** |
 | integration | 47 | **64** |
 | fault | 23 | **27** |
 | adversarial | 23 | **29** |
-| **offline total** | **756** | **843 pass, 0 fail** |
+| **offline total** | **756** | **875 pass, 0 fail** |
 | e2e | 9 pass + 1 skip | **9 pass + 1 skip** (live opt-in) |
 
 Coverage gate (`node scripts/validate-coverage.mjs --json .validation/gate-Q.json`):
 
 ```
-843 tests, 843 pass, 0 fail
-all files            95.06 lines | 81.92 branches | 95.95 functions
+875 tests, 875 pass, 0 fail
+all files            95.56 lines | 81.72 branches | 96.03 functions
 sdlc-core            98.52        | 85.24          | (28 files)
 sdlc-orchestrator    87.44        | 78.22          | (4 files)
-sdlc-client-ui       95.98        | 81.85          | (6 files)
+sdlc-client-ui       96.92        | 86.41          | (10 files)
 ```
 
 The gate passes every per-package threshold, per-file floor and quality
@@ -175,10 +183,12 @@ React JSX codegen; `Task DAG` compiled into the artifact).
 
 **Live verification (DSH 0.2.1-alpha.2, temporary `sdlc-web` profile).**
 Playwright opened the real GUI, dismissed the provider modal, and found the
-**SDLC** tab open on the right with the **Flow** panel: 9 task nodes
-(`DEMO-001 IN_PROGRESS`, eight `READY`), `22 pass / 1 fail / 0 skipped / 1 active`
-gate chips, and the Subagents/Routing/Gates sections below. Screenshot:
-`.validation/flow-panel.png` (gitignored).
+**SDLC** tab open on the right with the **Flow** panel: 9 task nodes from the
+then-current demo seed (since removed), `22 pass / 1 fail / 0 skipped / 1 active`
+gate chips, and the Subagents/Routing/Gates sections below. That observation
+used the demo seed that has since been removed together with its screenshots;
+the current build is workspace-scoped and renders only live project/task rows
+(a foreign or stale project row is ignored).
 
 The live render caught two integration bugs unit tests could not:
 1. the client JSX compiler emitted `__jsx(tag, props, child)` — React's third

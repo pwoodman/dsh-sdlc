@@ -1,91 +1,230 @@
 /**
  * packages/sdlc-client-ui/src/client/SdlcTab.jsx — the SDLC sidebar tab body.
  *
- * Panel switcher (Status | Board | Config | Review) over the four stores.
- * Uses `useSyncExternalStore` against the framework-free stores so the tab
- * works under any React 18 the host provides.
+ * Three primary surfaces plus settings:
+ *   Flow    — attention, progress, stages, task detail and evidence
+ *   Tasks   — searchable task list grouped by lifecycle state
+ *   Review  — compare two runs of one task
+ *   Settings (gear) — validated .sdlc/config.yml editor
  *
- * NOTE (subset rule): prop callbacks are single expressions — the offline
- * JSX compiler supports balanced braces but not statement blocks or bare
- * arrow parameters inside `{…}` props. Multi-statement handlers live as
- * named functions above; panel switching loads lazily via the tab buttons'
- * onClick below (single-expression arrows are fine).
+ * Status and Board were removed: Flow already carries the project/total/spend
+ * header and Tasks is the board with filters. One flow snapshot now feeds Flow
+ * and Tasks, so there is one poll and one source of truth.
+ *
+ * NOTE (subset rule): prop callbacks are single expressions — the offline JSX
+ * compiler supports balanced braces but not statement blocks or bare arrow
+ * parameters inside `{…}` props. Multi-statement handlers live as named
+ * functions above.
  */
 
 import { useState, useSyncExternalStore, useEffect } from 'react';
-import { StatusPanel, BoardPanel, ConfigPanel, ReviewPanel, FlowPanel } from './panels.jsx';
+import { FlowPanel, TasksPanel, ReviewPanel, SettingsPanel } from './panels.jsx';
+import { buildFlowView, buildAttention } from './flow.js';
 
-const PANELS = ['flow', 'status', 'board', 'config', 'review'];
+const PANELS = ['flow', 'tasks', 'review'];
+const TABS = ['flow', 'tasks', 'review', 'settings'];
+// Poll faster while workers run, slower when the graph is quiet. Combined with
+// the event cursor in the store this keeps the live feel without paying for a
+// full event page on every tick.
+const POLL_ACTIVE_MS = 2500;
+const POLL_IDLE_MS = 8000;
+
+/** True while at least one task or worker run is in flight. */
+function hasLiveWork(snapshot) {
+  const data = snapshot?.data;
+  if (!data) return false;
+  if (Number(data.totals?.activeTasks ?? 0) > 0) return true;
+  return Array.isArray(data.runs) && data.runs.some((run) => (
+    run.finishedAt == null && run.status !== 'completed' && run.status !== 'failed' && run.status !== 'cancelled'
+  ));
+}
 
 /** Fallback for tests/stubs where the session seat is not wired. */
 function noSessions(selector) {
   return selector({ byId: {} });
 }
 
+function scrollTaskDetailIntoView() {
+  if (typeof document === 'undefined') return;
+  const node = document.getElementById('sdlc-task-detail');
+  if (node && typeof node.scrollIntoView === 'function') {
+    node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
 export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) {
   const [panel, setPanel] = useState('flow');
-  // A task card click opens Review with that task already in the picker.
+  const [selectedTask, setSelectedTask] = useState(null);
+  // A "Compare runs" click opens Review with that task already selected.
   const [reviewTask, setReviewTask] = useState(null);
   // The host is not session-scoped; send the tab's workspace with every call so
   // the Desktop app reads the open workspace instead of its profile directory.
   const useSessions = useSessionsProp ?? noSessions;
   const cwd = useSessions((sessions) => sessions.byId?.[sessionId]?.cwd);
-  const status = useSyncExternalStore(stores.status.subscribe, stores.status.getSnapshot);
-  const board = useSyncExternalStore(stores.board.subscribe, stores.board.getSnapshot);
+  const flow = useSyncExternalStore(stores.flow.subscribe, stores.flow.getSnapshot);
   const config = useSyncExternalStore(stores.config.subscribe, stores.config.getSnapshot);
   const review = useSyncExternalStore(stores.review.subscribe, stores.review.getSnapshot);
-  const flow = useSyncExternalStore(stores.flow.subscribe, stores.flow.getSnapshot);
 
   useEffect(() => {
-    // Every tab loads its own snapshot on first reveal. Status/board/config
-    // used to stay in `loading` forever: only the flow panel had a loader, and
-    // the Reload buttons sit behind the panels' loading branches.
-    stores.loadPanel(panel, cwd);
-    if (panel !== 'flow') return undefined;
-    const timer = setInterval(() => { stores.loadFlow({ cwd }); }, 5000);
-    return () => clearInterval(timer);
+    let cancelled = false;
+    let inFlight = false;
+    let timer = null;
+    const tick = async () => {
+      if (cancelled) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        timer = setTimeout(tick, POLL_IDLE_MS);
+        return;
+      }
+      if (!inFlight) {
+        inFlight = true;
+        try {
+          await stores.loadFlow({ cwd });
+        } finally {
+          inFlight = false;
+        }
+      }
+      if (cancelled) return;
+      timer = setTimeout(tick, hasLiveWork(stores.flow.getSnapshot()) ? POLL_ACTIVE_MS : POLL_IDLE_MS);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [stores, cwd]);
+
+  useEffect(() => {
+    if (panel !== 'settings') return;
+    if (stores.config.getSnapshot().phase === 'loading') stores.loadConfig(cwd);
   }, [panel, stores, cwd]);
 
-  const selectPanel = (p) => setPanel(p);
-  const openTaskReview = (taskId) => {
+  useEffect(() => {
+    if (!selectedTask) return undefined;
+    const timer = setTimeout(scrollTaskDetailIntoView, 40);
+    return () => clearTimeout(timer);
+  }, [selectedTask, panel]);
+
+  const view = flow.data ? buildFlowView(flow.data) : null;
+  const attentionCount = view ? buildAttention(view).length : 0;
+  const taskCount = view ? view.nodes.length : 0;
+
+  const selectPanel = (next) => setPanel(next);
+  const showTasks = () => setPanel('tasks');
+  const openReview = (taskId) => {
     setReviewTask(taskId ?? null);
     setPanel('review');
   };
-  const reloadStatus = () => stores.loadStatus(cwd);
-  const reloadBoard = () => stores.loadBoard(cwd);
-  const reloadConfig = () => stores.loadConfig(cwd);
+  const loadFlow = () => stores.loadFlow({ cwd });
+  const loadConfig = () => stores.loadConfig(cwd);
   const saveConfig = (path, value) => stores.saveConfig(path, value, cwd);
   const loadCompare = (task, a, b) => stores.loadCompare(task, a, b, cwd);
-  const loadFlow = () => stores.loadFlow({ cwd });
+  const toggleTask = (taskId) => setSelectedTask((current) => (
+    current === taskId ? null : taskId
+  ));
+
+  const onTabKeyDown = (event) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const from = TABS.indexOf(panel);
+    let next = from;
+    if (event.key === 'ArrowRight') next = (from + 1) % TABS.length;
+    if (event.key === 'ArrowLeft') next = (from - 1 + TABS.length) % TABS.length;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = TABS.length - 1;
+    setPanel(TABS[next]);
+    const focusTarget = document.getElementById(`sdlc-tab-${TABS[next]}`);
+    if (focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus();
+  };
 
   return (
     <div className="sdlc-root">
-      <div className="sdlc-tabs" role="tablist" aria-label="SDLC panels">
-        {PANELS.map((p) => (
+      <div className="sdlc-tabs" role="tablist" aria-label={t('panel.tabsLabel')} onKeyDown={onTabKeyDown}>
+        {PANELS.map((item) => (
           <button
-            key={p}
+            key={item}
+            id={`sdlc-tab-${item}`}
             role="tab"
             type="button"
-            aria-selected={panel === p}
-            onClick={() => selectPanel(p)}
+            className="sdlc-tab"
+            aria-selected={panel === item}
+            aria-controls={panel === item ? `sdlc-panel-${item}` : undefined}
+            tabIndex={panel === item ? 0 : -1}
+            onClick={() => selectPanel(item)}
           >
-            {t(`panel.${p}`)}
+            <span>{t(`panel.${item}`)}</span>
+            {item === 'flow' && attentionCount > 0 && (
+              <span className="sdlc-tab-badge sdlc-tab-badge-bad">{attentionCount}</span>
+            )}
+            {item === 'tasks' && taskCount > 0 && (
+              <span className="sdlc-tab-badge">{taskCount}</span>
+            )}
           </button>
         ))}
+        <button
+          id="sdlc-tab-settings"
+          role="tab"
+          type="button"
+          className="sdlc-tab sdlc-tab-icon"
+          aria-selected={panel === 'settings'}
+          aria-controls={panel === 'settings' ? 'sdlc-panel-settings' : undefined}
+          aria-label={t('panel.settingsLabel')}
+          title={t('panel.settings')}
+          tabIndex={panel === 'settings' ? 0 : -1}
+          onClick={() => selectPanel('settings')}
+        >
+          <span aria-hidden="true">⚙</span>
+        </button>
       </div>
-      {panel === 'flow' && <FlowPanel snapshot={flow} onReload={loadFlow} onSelectTask={openTaskReview} t={t} />}
-      {panel === 'status' && <StatusPanel snapshot={status} onReload={reloadStatus} />}
-      {panel === 'board' && (
-        <BoardPanel
-          snapshot={board}
-          onReload={reloadBoard}
-          onOpenTask={openTaskReview}
-        />
-      )}
-      {panel === 'config' && (
-        <ConfigPanel snapshot={config} onReload={reloadConfig} onSave={saveConfig} />
-      )}
-      {panel === 'review' && <ReviewPanel snapshot={review} onCompare={loadCompare} initialTask={reviewTask} />}
+      <div
+        className="sdlc-panel-body"
+        role="tabpanel"
+        id={`sdlc-panel-${panel}`}
+        aria-labelledby={`sdlc-tab-${panel}`}
+      >
+        {panel === 'flow' && (
+          <FlowPanel
+            snapshot={flow}
+            t={t}
+            cwd={cwd}
+            selectedTask={selectedTask}
+            onSelectTask={toggleTask}
+            onOpenReview={openReview}
+            onReload={loadFlow}
+            onShowTasks={showTasks}
+          />
+        )}
+        {panel === 'tasks' && (
+          <TasksPanel
+            snapshot={flow}
+            t={t}
+            cwd={cwd}
+            selectedTask={selectedTask}
+            onSelectTask={toggleTask}
+            onOpenReview={openReview}
+            onReload={loadFlow}
+          />
+        )}
+        {panel === 'review' && (
+          <ReviewPanel
+            snapshot={review}
+            flowSnapshot={flow}
+            t={t}
+            cwd={cwd}
+            initialTask={reviewTask}
+            onCompare={loadCompare}
+            onRetryFlow={loadFlow}
+          />
+        )}
+        {panel === 'settings' && (
+          <SettingsPanel
+            snapshot={config}
+            t={t}
+            cwd={cwd}
+            onReload={loadConfig}
+            onSave={saveConfig}
+          />
+        )}
+      </div>
     </div>
   );
 }

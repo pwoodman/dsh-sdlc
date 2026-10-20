@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Runtime } from '../../../sdlc-core/src/runtime.js';
 import { loadConfig, validateConfig, deepMerge, dumpConfigYaml } from '../../../sdlc-core/src/config.js';
 import { setPath } from '../../../sdlc-cli/src/cli.mjs';
@@ -48,17 +48,59 @@ function closeRuntime(runtime) {
   try { runtime.close({ releaseLock: false }); } catch { /* already closed */ }
 }
 
+/**
+ * Project rows and tasks that belong to the workspace on screen.
+ *
+ * A DB can outlive a checkout move or carry a stale row from another project
+ * (the removed demo seed wrote `DEMO` into this repo's DB). Only rows whose
+ * `repo_path` matches the resolved workspace are real for this session.
+ */
+function workspaceScopes(runtime, projectRoot) {
+  const rootPath = resolve(projectRoot);
+  const projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all()
+    .filter((p) => !p.repo_path || resolve(p.repo_path) === rootPath);
+  const projectIds = new Set(projects.map((p) => p.id));
+  const tasks = projects.length === 0
+    ? []
+    : runtime.listTasks().filter((t) => t.project_id == null || projectIds.has(t.project_id));
+  return { projects, projectIds, tasks, taskIds: new Set(tasks.map((t) => t.id)) };
+}
+
+function inWorkspaceTask(scope, task) {
+  if (scope.projects.length === 0 || !task) return false;
+  return task.project_id == null || scope.projectIds.has(task.project_id);
+}
+
 /** GET /api/sdlc.status — project + task + spend summary (mirrors `sdlc status --json`). */
 export function handleStatus(projectRoot) {
   const dbPath = join(projectRoot, '.sdlc', 'sdlc.db');
   if (!existsSync(dbPath)) return noProject(projectRoot);
   const { runtime } = openRuntime(projectRoot);
   try {
-    const projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
-    const taskRows = runtime.listTasks();
+    const scope = workspaceScopes(runtime, projectRoot);
+    const { projects, taskIds } = scope;
+    const taskRows = scope.tasks;
     const byState = {};
     for (const t of taskRows) byState[t.state] = (byState[t.state] ?? 0) + 1;
-    const runs = runtime.listWorkerRuns();
+    const runs = runtime.listWorkerRuns().filter((r) => taskIds.has(r.task_id));
+    // Unknown totals stay null when runs exist but recorded no value; no runs
+    // at all is a real zero. The panel renders "—" for null, never "0".
+    const spendKnown = {
+      cost: runs.length === 0 || runs.some((run) => run.cost_usd != null),
+      duration: runs.length === 0 || runs.some((run) => run.duration_ms != null),
+      tokens: runs.length === 0 || runs.some((run) => run.tokens_in != null || run.tokens_out != null),
+    };
+    const totals = runs.reduce((total, run) => {
+      total.costUsd += Number(run.cost_usd ?? 0);
+      total.durationMs += Number(run.duration_ms ?? 0);
+      total.tokens += Number(run.tokens_in ?? 0) + Number(run.tokens_out ?? 0);
+      return total;
+    }, { costUsd: 0, durationMs: 0, tokens: 0 });
+    const spend = {
+      costUsd: spendKnown.cost ? totals.costUsd : null,
+      durationMs: spendKnown.duration ? totals.durationMs : null,
+      tokens: spendKnown.tokens ? totals.tokens : null,
+    };
     return {
       status: 200,
       body: {
@@ -75,7 +117,7 @@ export function handleStatus(projectRoot) {
           })),
         },
         workerRuns: { total: runs.length, orphaned: runs.filter((r) => r.orphaned).length },
-        spend: runtime.spentTotals(),
+        spend,
       },
     };
   } finally { closeRuntime(runtime); }
@@ -105,8 +147,9 @@ export function handleTask(projectRoot, query = {}) {
   if (!existsSync(dbPath)) return noProject(projectRoot);
   const { runtime } = openRuntime(projectRoot);
   try {
+    const scope = workspaceScopes(runtime, projectRoot);
     const task = runtime.getTask(id);
-    if (!task) return { status: 404, body: { ok: false, error: 'NO_SUCH_TASK', id } };
+    if (!inWorkspaceTask(scope, task)) return { status: 404, body: { ok: false, error: 'NO_SUCH_TASK', id } };
     const events = runtime.getEvents({ taskId: id });
     const workerRuns = runtime.listWorkerRuns({ taskId: id }).map((r) => ({
       id: r.id, attempt: r.attempt, status: r.status, exitCode: r.exit_code,
@@ -131,6 +174,10 @@ export function handleCompare(projectRoot, query = {}) {
   if (!existsSync(dbPath)) return noProject(projectRoot);
   const { runtime } = openRuntime(projectRoot);
   try {
+    const scope = workspaceScopes(runtime, projectRoot);
+    if (!inWorkspaceTask(scope, runtime.getTask(task))) {
+      return { status: 404, body: { ok: false, error: 'NO_SUCH_TASK', id: task } };
+    }
     const report = compareRuns(runtime, task, a, b);
     const missing = [!report.runs.A.available, !report.runs.B.available].filter(Boolean).length;
     return { status: missing ? 404 : 200, body: { ok: missing === 0, ...report } };

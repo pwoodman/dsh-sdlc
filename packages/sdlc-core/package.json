@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-core",
-  "version": "0.4.0-beta.29",
+  "version": "1.0.0",
   "type": "module",
   "description": "Host services (tasks, scheduler, router, verifier, integration, evidence, escalation, worker-mgr). NEVER installed into a worker profile.",
   "main": "lib/index.js",
@@ -50,6 +50,6 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-guard": "0.4.0-beta.29"
+    "@patwoodman/dsh-sdlc-flow-guard": "1.0.0"
   }
 }

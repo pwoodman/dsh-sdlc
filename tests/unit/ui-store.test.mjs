@@ -16,8 +16,6 @@ function stubApi(overrides = {}) {
   const calls = [];
   return {
     calls,
-    fetchStatus: async () => (calls.push('status'), overrides.status ?? { available: true, data: { ok: true, tasks: { total: 1 }, spend: {} } }),
-    fetchBoard: async () => (calls.push('board'), overrides.board ?? { available: true, data: { ok: true, columns: [] } }),
     fetchConfig: async () => (calls.push('config'), overrides.config ?? { available: true, data: { ok: true, config: {}, validation: { ok: true, errors: [] } } }),
     writeConfig: async (path, value) => (calls.push(`write:${path}=${value}`), overrides.write ?? { available: true, data: { ok: true } }),
     fetchCompare: async (task, a, b) => (calls.push(`compare:${task}`), overrides.compare ?? { available: true, data: { task: { id: task }, runs: {}, deltas: null, gatesCompared: [], tracePath: [], traceSummary: {} } }),
@@ -36,15 +34,9 @@ test('createStore publishes updates to subscribers', () => {
   assert.deepEqual(seen, [1, 2]);
 });
 
-test('loadStatus/loadBoard/loadConfig resolve ready or missing', async () => {
-  const stores = uiStore.createSdlcStores(stubApi());
-  assert.equal(stores.status.getSnapshot().phase, 'loading');
-  await stores.loadStatus();
-  assert.equal(stores.status.getSnapshot().phase, 'ready');
-  await stores.loadBoard();
-  assert.equal(stores.board.getSnapshot().phase, 'ready');
-
+test('loadConfig resolves ready or missing', async () => {
   const failing = uiStore.createSdlcStores(stubApi({ config: { available: false, reason: 'http 404' } }));
+  assert.equal(failing.config.getSnapshot().phase, 'loading');
   await failing.loadConfig();
   assert.equal(failing.config.getSnapshot().phase, 'missing');
   assert.match(failing.config.getSnapshot().reason, /404/);
@@ -81,23 +73,21 @@ test('loadCompare tracks the requested runs and resets to idle', async () => {
 });
 
 
-test('loadPanel loads the tab a panel switch reveals', async () => {
+test('loadPanel maps Flow and Tasks to one snapshot and Settings to config', async () => {
   const api = stubApi();
   const stores = uiStore.createSdlcStores(api);
-  assert.equal(stores.status.getSnapshot().phase, 'loading');
-  await stores.loadPanel('status');
-  assert.equal(stores.status.getSnapshot().phase, 'ready');
-  await stores.loadPanel('board');
-  assert.equal(stores.board.getSnapshot().phase, 'ready');
-  await stores.loadPanel('config');
-  assert.equal(stores.config.getSnapshot().phase, 'ready');
+  assert.equal(stores.flow.getSnapshot().phase, 'loading');
   await stores.loadPanel('flow');
   assert.equal(stores.flow.getSnapshot().phase, 'ready');
-  assert.deepEqual(api.calls, ['status', 'board', 'config', 'flow']);
+  await stores.loadPanel('tasks');
+  assert.equal(stores.flow.getSnapshot().phase, 'ready');
+  await stores.loadPanel('settings');
+  assert.equal(stores.config.getSnapshot().phase, 'ready');
+  assert.deepEqual(api.calls, ['flow', 'flow', 'config']);
   // Review is user-driven (pick two runs); switching to it must not fetch.
   await stores.loadPanel('review');
   assert.equal(stores.review.getSnapshot().phase, 'idle');
-  assert.deepEqual(api.calls, ['status', 'board', 'config', 'flow']);
+  assert.deepEqual(api.calls, ['flow', 'flow', 'config']);
   stores.dispose();
 });
 
@@ -105,18 +95,15 @@ test('loadPanel loads the tab a panel switch reveals', async () => {
 test('panel loads forward the session workspace to the host', async () => {
   const seen = [];
   const api = {
-    fetchStatus: async (cwd) => { seen.push(['status', cwd]); return { available: true, data: { ok: true, tasks: { total: 0 }, spend: {} } }; },
-    fetchBoard: async (cwd) => { seen.push(['board', cwd]); return { available: true, data: { ok: true, columns: [] } }; },
     fetchConfig: async (cwd) => { seen.push(['config', cwd]); return { available: true, data: { ok: true, config: {}, validation: { ok: true, errors: [] } } }; },
     fetchFlow: async (opts) => { seen.push(['flow', opts]); return { available: true, data: { ok: true, tasks: [] } }; },
   };
   const stores = uiStore.createSdlcStores(api);
-  await stores.loadPanel('status', '/w');
-  await stores.loadPanel('board', '/w');
-  await stores.loadPanel('config', '/w');
-  await stores.loadFlow({ cwd: '/w' });
+  await stores.loadPanel('flow', '/w');
+  await stores.loadPanel('tasks', '/w');
+  await stores.loadPanel('settings', '/w');
   assert.deepEqual(seen, [
-    ['status', '/w'], ['board', '/w'], ['config', '/w'], ['flow', { task: null, cwd: '/w' }],
+    ['flow', { task: null, cwd: '/w' }], ['flow', { task: null, cwd: '/w' }], ['config', '/w'],
   ]);
   stores.dispose();
 });
@@ -159,4 +146,64 @@ test('loadFlow resolves ready, keeps stale data on failure, and resets', async (
   assert.equal(stores2.flow.getSnapshot().phase, 'loading');
   assert.ok(original);
   stores2.dispose();
+});
+
+test('flow polling advances the event cursor and merges only new events', async () => {
+  const calls = [];
+  let page = 0;
+  const api = {
+    fetchFlow: async (opts) => {
+      calls.push(opts);
+      page += 1;
+      if (page === 1) {
+        return {
+          available: true,
+          data: {
+            ok: true, tasks: [], events: [{ id: 1 }, { id: 2 }],
+            eventsMeta: { nextAfterId: 2, returned: 2, limit: 100, hasMore: false },
+          },
+        };
+      }
+      return {
+        available: true,
+        data: {
+          ok: true, tasks: [], events: [{ id: 3 }, { id: 4 }],
+          eventsMeta: { nextAfterId: 4, returned: 2, limit: 100, hasMore: false },
+        },
+      };
+    },
+  };
+  const stores = uiStore.createSdlcStores(api);
+  await stores.loadFlow();
+  assert.equal(calls[0].after, undefined, 'the first poll takes the full snapshot');
+  assert.deepEqual(stores.flow.getSnapshot().data.events.map((event) => event.id), [1, 2]);
+  await stores.loadFlow();
+  assert.equal(calls[1].after, 2, 'the next poll resumes after the newest event');
+  assert.deepEqual(stores.flow.getSnapshot().data.events.map((event) => event.id), [1, 2, 3, 4]);
+  assert.equal(stores.flow.getSnapshot().data.eventsMeta.nextAfterId, 4);
+  stores.dispose();
+});
+
+test('flow cursor resets when the workspace changes', async () => {
+  const calls = [];
+  const api = {
+    fetchFlow: async (opts) => {
+      calls.push(opts);
+      return {
+        available: true,
+        data: {
+          ok: true, tasks: [], events: [{ id: 9 }],
+          eventsMeta: { nextAfterId: 9, returned: 1 },
+        },
+      };
+    },
+  };
+  const stores = uiStore.createSdlcStores(api);
+  await stores.loadFlow({ cwd: '/work/a' });
+  await stores.loadFlow({ cwd: '/work/a' });
+  await stores.loadFlow({ cwd: '/work/b' });
+  assert.equal(calls[0].after, undefined);
+  assert.equal(calls[1].after, 9);
+  assert.equal(calls[2].after, undefined, 'a new workspace starts from a full snapshot');
+  stores.dispose();
 });

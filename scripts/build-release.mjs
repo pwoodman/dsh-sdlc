@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * scripts/build-release.mjs — the beta-tester artifact.
+ * scripts/build-release.mjs — the no-clone release artifact.
  *
- * WHY THIS EXISTS. A source checkout is not something a beta tester should
+ * WHY THIS EXISTS. A source checkout is not something a release user should
  * need: `git clone` + `npm install` + `node scripts/install-local.mjs` is three
  * steps, one of which needs a toolchain. This script produces ONE file that
  * contains everything needed to install the plugin on a machine that has only
@@ -65,7 +65,7 @@ const IGNORED = ignoredPaths();
 const excluded = makeReleaseExcluder({ ignored: IGNORED });
 
 const INSTALL_SH = `#!/bin/sh
-# dsh-sdlc beta installer — no clone, no build, one command.
+# dsh-sdlc installer — no clone, no build, one command.
 #
 #   ./install.sh                 # install/refresh the three profiles
 #   ./install.sh --dry-run       # show what it would do

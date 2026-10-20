@@ -1,10 +1,11 @@
 # SDLC Orchestrator — implementation notes
 
 **Subject:** `universal_sdlc_orchestrator_dsh_spec_v3.md` (2,336 lines)
-**This build:** the `dsh-plugin-sdlc` monorepo — six packages, three profile
-recipes, seven test layers, ten milestone gates.
-**Platform:** Node v26.8.1, `@deepseek-ai/dsh` 0.2.0-rc.2, Linux x64.
-**Status:** `gate:P` + `gate:M0` … `gate:M8` all green; 402 offline tests (401 pass, 1 skipped by design).
+**This build:** the `dsh-plugin-sdlc` monorepo — eight packages, three profile
+recipes, seven test layers, eleven gates (P, M0–M8, Q).
+**Platform:** Node ≥ 22.13 (verified v24.21.0), `@deepseek-ai/dsh` 0.2.0-rc.2, Linux x64.
+**Status:** `gate:P` + `gate:M0` … `gate:M8` + `gate:Q` all green; 875 offline
+tests and 9/10 e2e pass (the live-provider e2e is skipped by design).
 
 Read this document together with the validation report
 (`SDLC_V3_IMPLEMENTATION_VALIDATION_REPORT.md`). Where this file says
@@ -198,8 +199,9 @@ writes `.validation/gate-<id>.json` evidence bundles for every gate.
 | Windows support | B.10 explicitly excludes Windows through M8 (POSIX signals, `O_EXCL` semantics, worktree paths) |
 | L8 live tests | manual only by design (`tests/e2e/live.test.mjs` is skipped unless explicitly selected) |
 
-(`sdlc-client-ui` was optional in C.1 and is now IMPLEMENTED — Status/Board/
-validated Config editor/Review tab on `sdlc-web` only. Launching the
+(`sdlc-client-ui` was optional in C.1 and is now IMPLEMENTED — attention-first
+Flow, filterable Tasks, validated Settings editor and select-driven Review tab
+on `sdlc-web` only. Launching the
 DSH-hosted lead is proven live via M0's boot probe on a configured host.)
 
 ---

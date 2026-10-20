@@ -12,12 +12,13 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpus, totalmem } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { Runtime } from '../../../sdlc-core/src/runtime.js';
 import { loadConfig } from '../../../sdlc-core/src/config.js';
 import {
-  activeTasks, checkNoOverlap, depsBlocking, resourcesOf, topoSort,
+  activeTasks, checkNoOverlap, depsBlocking, effectiveParallelism, resourcesOf, topoSort,
 } from '../../../sdlc-core/src/scheduler.js';
 
 /** Host build serving this snapshot (see handlers.js — used for mismatch diagnosis). */
@@ -113,14 +114,27 @@ export function buildFlowModel(projectRoot, {
 } = {}) {
   const { runtime, config } = openRuntime(projectRoot);
   try {
-    const project = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at LIMIT 1').get() ?? null;
-    const allTasks = runtime.listTasks();
+    // Only this workspace's project. A stale DB can contain a project row from
+    // another checkout (the old demo seed did); rendering it would present
+    // foreign data as if it were real. If no row matches this root, the panel
+    // shows the honest "no project here" state instead of somebody else's DAG.
+    const rootPath = resolve(projectRoot);
+    const sourceProjects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
+    const project = sourceProjects.find((candidate) => (
+      !candidate.repo_path || resolve(candidate.repo_path) === rootPath
+    )) ?? null;
+    const projectMismatch = !project && sourceProjects.length > 0;
+    const sourceTasks = runtime.listTasks();
+    const allTasks = project
+      ? sourceTasks.filter((task) => task.project_id == null || task.project_id === project.id)
+      : [];
+    const projectTaskIds = new Set(allTasks.map((task) => task.id));
     const tasks = allTasks.slice(0, taskLimit);
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const ids = tasks.map((t) => t.id);
 
     // Newest N runs per task, from the ASC list the runtime returns.
-    const allRuns = runtime.listWorkerRuns();
+    const allRuns = runtime.listWorkerRuns().filter((run) => projectTaskIds.has(run.task_id));
     const runsByTask = new Map();
     for (const run of allRuns) {
       const list = runsByTask.get(run.task_id) ?? [];
@@ -264,7 +278,7 @@ export function buildFlowModel(projectRoot, {
         durationMs: row.duration_ms ?? null,
         detail: { from: payload.from ?? null, to: payload.to ?? null, guard: payload.guard ?? null },
       };
-    });
+    }).filter((event) => project && (event.taskId == null || projectTaskIds.has(event.taskId)));
 
     // Resource locks and ownership overlap.
     const active = activeTasks(tasks);
@@ -293,7 +307,10 @@ export function buildFlowModel(projectRoot, {
          FROM escalations ORDER BY created_at DESC LIMIT ?`,
       ).all(escalationLimit);
     } catch { recordedEscalations = []; }
-    const escalations = recordedEscalations.map((row) => {
+    const projectEscalations = recordedEscalations
+      .filter((row) => projectTaskIds.has(row.task_id));
+    const escalations = projectEscalations
+      .map((row) => {
       const block = parseJson(row.packet_json, {});
       return {
         id: row.id,
@@ -327,14 +344,56 @@ export function buildFlowModel(projectRoot, {
       }
     }
 
-    const spend = runtime.spentTotals();
+    // Spend is computed from this project's runs only. `runtime.spentTotals()`
+    // sums every run in the DB, including rows from a foreign/stale project.
+    // A field is null when runs exist but none recorded it — the panel renders
+    // "—" rather than a fabricated zero. No runs at all is a real zero.
+    const spendKnown = {
+      cost: allRuns.length === 0 || allRuns.some((run) => run.cost_usd != null),
+      duration: allRuns.length === 0 || allRuns.some((run) => run.duration_ms != null),
+      tokens: allRuns.length === 0 || allRuns.some((run) => run.tokens_in != null || run.tokens_out != null),
+    };
+    const totals = allRuns.reduce((total, run) => {
+      total.costUsd += Number(run.cost_usd ?? 0);
+      total.durationMs += Number(run.duration_ms ?? 0);
+      total.tokens += Number(run.tokens_in ?? 0) + Number(run.tokens_out ?? 0);
+      return total;
+    }, { costUsd: 0, durationMs: 0, tokens: 0 });
+    const spend = {
+      costUsd: spendKnown.cost ? totals.costUsd : null,
+      durationMs: spendKnown.duration ? totals.durationMs : null,
+      tokens: spendKnown.tokens ? totals.tokens : null,
+    };
     const selected = taskId && byId.has(taskId) ? taskId : null;
+
+    // Effective parallelism (B.10): the same min(cores/2, ram/2, provider,
+    // configured) rule the scheduler uses. The panel shows this number instead
+    // of guessing from the raw "auto" setting; an older host that omits the
+    // field makes the client render "—" rather than invent a cap.
+    const configuredParallel = config.execution?.maxParallelWorkers ?? 'auto';
+    const projectParallel = config.budgets?.perProject?.maxParallelWorkers ?? 'auto';
+    const projectCap = projectParallel === 'auto' ? Infinity : Number(projectParallel);
+    let effectiveParallel = null;
+    try {
+      effectiveParallel = effectiveParallelism({
+        maxParallelWorkers: configuredParallel,
+        cpus: cpus().length,
+        ramGb: totalmem() / (1024 ** 3),
+        configured: Number.isFinite(projectCap) ? projectCap : Infinity,
+      });
+    } catch {
+      effectiveParallel = null;
+    }
+
     return {
       ok: true,
       generatedAt: now(),
       project: project
         ? { available: true, id: project.id, name: project.name ?? project.id, state: project.state, blockedState: project.blocked_state ?? null }
-        : { available: false, reason: 'no projects row' },
+        : {
+          available: false,
+          reason: projectMismatch ? 'project row belongs to another workspace' : 'no projects row',
+        },
       limits: { tasks: taskLimit, runsPerTask, events: eventLimit, escalations: escalationLimit },
       totals: {
         tasks: allTasks.length,
@@ -344,6 +403,14 @@ export function buildFlowModel(projectRoot, {
         byState: nodes.reduce((acc, t) => { acc[t.state] = (acc[t.state] ?? 0) + 1; return acc; }, {}),
         activeTasks: active.length,
         maxParallelWorkers: config.execution?.maxParallelWorkers ?? 'auto',
+        parallelism: {
+          configured: configuredParallel,
+          projectCap: projectParallel,
+          effective: effectiveParallel,
+          active: active.length,
+          saturated: effectiveParallel != null && active.length >= effectiveParallel,
+          source: 'config+host',
+        },
         spend: { ...spend, costIsEstimate: true },
       },
       tasks: nodes,
@@ -357,18 +424,21 @@ export function buildFlowModel(projectRoot, {
         returned: events.length,
         limit: eventLimit,
         hasMore: events.length === eventLimit,
-        nextAfterId: events.at(-1)?.id ?? afterEventId,
+        nextAfterId: eventRows.at(-1)?.id ?? afterEventId,
       },
       locks,
       escalations,
       escalationsMeta: {
-        available: recordedEscalations.length > 0,
-        recorded: recordedEscalations.length,
-        derived: escalations.length - recordedEscalations.length,
+        available: projectEscalations.length > 0,
+        recorded: projectEscalations.length,
+        derived: escalations.length - projectEscalations.length,
       },
       selectedTaskId: selected,
       unavailable: [
-        ...(project ? [] : [{ section: 'project', reason: 'no projects row' }]),
+        ...(project ? [] : [{
+          section: 'project',
+          reason: projectMismatch ? 'project row belongs to another workspace' : 'no projects row',
+        }]),
         ...(Object.keys(config.tiers ?? {}).length === 0 ? [{ section: 'routing', reason: 'no tiers configured' }] : []),
       ],
     };
@@ -385,19 +455,32 @@ export function handleFlow(projectRoot, query = {}) {
       body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot, pluginVersion: pluginVersion() },
     };
   }
+  const model = buildFlowModel(projectRoot, {
+    taskId: query.task ?? null,
+    taskLimit: intParam(query.tasks, FLOW_LIMITS.tasks, 1, 1000),
+    runsPerTask: intParam(query.runs, FLOW_LIMITS.runsPerTask, 1, 10),
+    eventLimit: intParam(query.events, FLOW_LIMITS.events, 1, 500),
+    afterEventId: intParam(query.after, 0, 0, Number.MAX_SAFE_INTEGER),
+    escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
+  });
+  // A DB with no project row for THIS workspace is the same product state as
+  // no DB at all: the panel shows its guided `sdlc init` card instead of an
+  // empty "unavailable" header or a foreign project's DAG.
+  if (!model.project.available) {
+    return {
+      status: 404,
+      body: {
+        ok: false,
+        error: 'NO_PROJECT',
+        detail: model.project.reason ?? 'no project for this workspace — run `sdlc init` first',
+        root: projectRoot,
+        pluginVersion: pluginVersion(),
+      },
+    };
+  }
   return {
     status: 200,
-    body: {
-      ...buildFlowModel(projectRoot, {
-        taskId: query.task ?? null,
-        taskLimit: intParam(query.tasks, FLOW_LIMITS.tasks, 1, 1000),
-        runsPerTask: intParam(query.runs, FLOW_LIMITS.runsPerTask, 1, 10),
-        eventLimit: intParam(query.events, FLOW_LIMITS.events, 1, 500),
-        afterEventId: intParam(query.after, 0, 0, Number.MAX_SAFE_INTEGER),
-        escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
-      }),
-      pluginVersion: pluginVersion(),
-    },
+    body: { ...model, pluginVersion: pluginVersion() },
   };
 }
 

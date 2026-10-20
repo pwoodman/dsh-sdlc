@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, core, clientBundleExports } from '../lib/helpers.mjs';
 
@@ -53,6 +53,35 @@ test('client bundle uses the closure-factory form with react externals', () => {
   assert.deepEqual(tagLikes, [], `uncompiled JSX remnants: ${tagLikes.slice(0, 3).join(' / ')}`);
   // CSS is injected at factory execution (the tsdown-preset pattern).
   assert.match(bundle, /document\.createElement\("style"\)/);
+});
+
+test('the bundle declares every React binding the client sources import', () => {
+  // Regression: the closure bundler strips `import { useRef } from "react"`
+  // and used to re-declare only a hardcoded three hooks, so using a fourth
+  // hook crashed the sidebar slot at runtime (`useRef is not defined`). The
+  // build now derives the list from the sources; this test pins the contract.
+  const dir = join(PKG, 'src', 'client');
+  const used = new Map();
+  for (const file of readdirSync(dir)) {
+    if (!/\.(js|jsx)$/.test(file)) continue;
+    const source = readFileSync(join(dir, file), 'utf8');
+    for (const match of source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]react['"]/g)) {
+      for (const raw of match[1].split(',')) {
+        const entry = raw.trim();
+        if (!entry) continue;
+        const [imported, local = imported] = entry.split(/\s+as\s+/).map((name) => name.trim());
+        used.set(local, imported);
+      }
+    }
+  }
+  assert.ok(used.size > 0, 'the client imports React hooks');
+  const bundle = read('lib/client.js');
+  for (const [local, imported] of used) {
+    assert.ok(
+      bundle.includes(`var ${local} = react.${imported};`),
+      `bundle must declare var ${local} = react.${imported} (missing bindings crash the slot)`,
+    );
+  }
 });
 
 test('host entry re-exports the plugin surface', () => {
@@ -162,7 +191,9 @@ test('the bundle registers a reachable SDLC tab with a guide entry', () => {
   assert.equal(definition.guide[0].title(), 'guide.title');
   assert.deepEqual(injected.sort(), ['sidebar.right.pane.tab', 'sidebar.right.pane.tab.title']);
   assert.ok(exports.default.inject.includes('sidebarRightTabs'));
-  assert.match(read('lib/client.js'), /Task DAG/);
+  assert.match(read('lib/client.js'), /Needs attention/, 'the attention-first Flow panel is in the shipped bundle');
+  assert.match(read('lib/client.js'), /Task detail/, 'task cards expand into a detail surface');
+  assert.doesNotMatch(read('lib/client.js'), /StatusPanel|BoardPanel/, 'the duplicate Status and Board tabs are gone');
   assert.match(read('lib/client.js'), /__SDLC_VERSION__/, 'the panel build version is injected at bundle time');
   assert.match(read('lib/client.js'), /sessionId/, 'the tab body reads the session id for the workspace cwd');
   assert.ok(bodyRegistration, 'the tab body was registered');
@@ -183,8 +214,8 @@ test('the bundle registers a reachable SDLC tab with a guide entry', () => {
 
   // JSX whitespace between two expressions on one line is a single space.
   // The compiler used to drop it, so the state legend rendered "READY8".
-  assert.ok(bundle.includes('(segment.state), " "'), 'a same-line space between expression children survives compilation');
-  // Every tab loads its snapshot on reveal; status/board/config used to sit in
-  // the loading phase forever because only the flow panel had a loader.
-  assert.match(bundle, /stores\.loadPanel\(panel, cwd\)/, 'the tab effect loads the revealed panel with the session cwd');
+  assert.ok(bundle.includes('stateLabel(t, segment.state)), " ", __jsx("b"'), 'a same-line space between expression children survives compilation');
+  // Flow and Tasks share one snapshot; the tab polls it with the session cwd.
+  assert.match(bundle, /stores\.loadFlow\(\{ cwd \}\)/, 'the tab effect loads and polls the flow snapshot with the session cwd');
+  assert.match(bundle, /stores\.loadConfig\(cwd\)/, 'opening Settings loads the config snapshot with the session cwd');
 });

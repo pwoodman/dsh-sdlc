@@ -20,7 +20,7 @@
  *   node scripts/set-scope.mjs --restore                 # back to the original
  *
  * It refuses an invalid npm scope, and it never touches node_modules, .git,
- * package build output, the eval/demo fixtures, or itself.
+ * package build output, the eval fixtures, or itself.
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
@@ -64,7 +64,7 @@ if (from === to) {
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.tools', '.validation', '.sdlc']);
 /** Package build output and run artifacts only. `scripts/lib`, `tests/lib` and
  *  `eval/lib` are SOURCE and do carry package names, so they must be rewritten. */
-const SKIP_PATH = /^(packages\/[^/]+\/lib\/|\.eval-|demo\/data\/|demo\/dist\/)/;
+const SKIP_PATH = /^(packages\/[^/]+\/lib\/|\.eval-)/;
 const TEXT = /\.(json|yml|yaml|mjs|cjs|js|jsx|md|sh)$/;
 
 function walk(dir, out = []) {
