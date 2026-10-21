@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { openDatabase } from './schema.js';
 import { detectStack, detectGateCommands, detectPlaywright } from './gates.js';
 import { DEFAULT_CONFIG, dumpConfigYaml } from './config.js';
+import { hostModelBootstrap } from './host-model.js';
 
 export const SDLC_TREE = [
   '.sdlc',
@@ -69,7 +70,27 @@ export function initProject({
   for (const dir of SDLC_TREE) mkdirSync(join(projectRoot, dir), { recursive: true });
   steps.push({ step: 'tree', status: 'ok' });
 
-  // 2. integration branch from HEAD
+  // 2. gate command detection — BEFORE any repository mutation. A bootstrap
+  // that cannot describe the workspace must leave the user's git repo
+  // untouched (auto-setup runs on reads: the panel's first GET, `sdlc
+  // status`), so no integration branch is created on the failure path.
+  const rootFiles = (() => { try { return readdirSync(projectRoot); } catch { return []; } })();
+  const stack = detectStack(rootFiles);
+  const packageJson = readJson(join(projectRoot, 'package.json'));
+  const playwright = detectPlaywright(packageJson);
+  const detected = detectGateCommands({ stack, packageJson, playwright });
+  if (!detected) {
+    return {
+      ok: false,
+      error: 'UNRECOGNISED_STACK',
+      message: 'no recognised stack marker (pnpm-lock.yaml, package-lock.json, pyproject.toml, go.mod, Cargo.toml); '
+        + 'set verification.detection: manual and author verification.gates explicitly — init never guesses',
+      steps,
+    };
+  }
+  steps.push({ step: 'gate-detection', stack, bootstrap: detected.bootstrap });
+
+  // 3. integration branch from HEAD
   const insideRepo = existsSync(join(projectRoot, '.git'));
   let integration = { created: false, reason: null };
   const headExists = insideRepo
@@ -94,23 +115,6 @@ export function initProject({
     integration = { created: false, reason: insideRepo ? 'disabled' : 'not-a-git-repo' };
   }
   steps.push({ step: 'integration-branch', ...integration });
-
-  // 3. gate command detection
-  const rootFiles = (() => { try { return readdirSync(projectRoot); } catch { return []; } })();
-  const stack = detectStack(rootFiles);
-  const packageJson = readJson(join(projectRoot, 'package.json'));
-  const playwright = detectPlaywright(packageJson);
-  const detected = detectGateCommands({ stack, packageJson, playwright });
-  if (!detected) {
-    return {
-      ok: false,
-      error: 'UNRECOGNISED_STACK',
-      message: 'no recognised stack marker (pnpm-lock.yaml, package-lock.json, pyproject.toml, go.mod, Cargo.toml); '
-        + 'set verification.detection: manual and author verification.gates explicitly — init never guesses',
-      steps,
-    };
-  }
-  steps.push({ step: 'gate-detection', stack, bootstrap: detected.bootstrap });
 
   // 4. database + schema
   const dbPath = join(projectRoot, config.storage?.dbPath ?? '.sdlc/sdlc.db');
@@ -164,6 +168,54 @@ export function initProject({
   };
 }
 
+/**
+ * Auto-bootstrap: materialise `.sdlc/` on first touch (spec v3 F.4).
+ *
+ * `sdlc init` is a convenience, not a ritual. The panel, `sdlc status` and
+ * `sdlc config use-host-model` all call this first, so a user never meets a
+ * "run `sdlc init`" wall on a workspace the Harness can already describe.
+ *
+ * A FRESH bootstrap adopts the Harness's own provider/model (`hostModel`),
+ * so the tiers never name a second account or imply an API key. An EXISTING
+ * config is preserved untouched: adopting the host route into a config the
+ * user already authored is an explicit action (Settings card / CLI), never a
+ * side effect of opening a panel. There is deliberately no force/reconfigure
+ * here — rewriting an authored config is `initProject`'s explicit job.
+ *
+ * The "already complete" marker is config.yml AND the DB — the two halves a
+ * project needs. Either half can go missing on its own: a bare `node:sqlite`
+ * open (an early `sdlc tasks`) creates a DB-only half-project, and a
+ * `git clean -fdx` removes the gitignored DB while keeping config.yml. The
+ * next touch must COMPLETE the missing half — initProject is idempotent and
+ * preserves an existing config — never treat a half state as done.
+ *
+ * Idempotent: when a complete project exists this is a no-op (two
+ * existsSync calls). When bootstrap fails, `initProject`'s fail-closed
+ * contract holds — the tree may be prepared, but no config and no DB are
+ * guessed.
+ *
+ * @param {object} input - as `initProject`, plus:
+ * @param {{provider:string,model:string,reasoningEffort?:string|null}} [input.hostModel]
+ */
+export function ensureProject({
+  projectRoot = process.cwd(),
+  git = defaultGitRunner,
+  hostModel = null,
+  now = () => new Date().toISOString(),
+} = {}) {
+  const sdlcDir = join(projectRoot, '.sdlc');
+  const configPath = join(sdlcDir, 'config.yml');
+  const dbPath = join(sdlcDir, 'sdlc.db');
+  if (existsSync(configPath) && existsSync(dbPath)) {
+    return { ok: true, existed: true, projectRoot, configPath, dbPath };
+  }
+  // A fresh bootstrap names exactly one provider (tiers AND price table); an
+  // authored config is never rewritten here.
+  const config = hostModel ? hostModelBootstrap(hostModel) : DEFAULT_CONFIG;
+  const result = initProject({ projectRoot, git, config, now });
+  return { ...result, existed: false };
+}
+
 /** Print-friendly summary used by the CLI and the installer. */
 export function describeProject(result) {
   if (!result.ok) return `init failed: ${result.message}`;
@@ -181,4 +233,4 @@ export function describeProject(result) {
   return lines.join('\n');
 }
 
-export default { initProject, describeProject, defaultGitRunner, GITIGNORE_ENTRIES, SDLC_TREE };
+export default { initProject, ensureProject, describeProject, defaultGitRunner, GITIGNORE_ENTRIES, SDLC_TREE };

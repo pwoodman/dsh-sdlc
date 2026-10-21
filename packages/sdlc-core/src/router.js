@@ -73,7 +73,7 @@ export class ModelRouter {
 
   estimateCost(modelId, { tokens_in = 0, tokens_out = 0 } = {}) {
     const price = this.pricing[modelId];
-    if (!price) return null;
+    if (!price || !Number.isFinite(price.input) || !Number.isFinite(price.output)) return null;
     return (tokens_in * price.input + tokens_out * price.output) / 1_000_000;
   }
 

@@ -16,12 +16,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Runtime } from '../../sdlc-core/src/runtime.js';
-import { initProject, describeProject } from '../../sdlc-core/src/project.js';
+import { initProject, ensureProject, describeProject } from '../../sdlc-core/src/project.js';
 import { loadConfig, validateConfig, deepMerge, DEFAULT_CONFIG, dumpConfigYaml } from '../../sdlc-core/src/config.js';
 import { readLock, isStale } from '../../sdlc-core/src/instance-lock.js';
 import { runVerification } from '../../sdlc-core/src/gates.js';
 import { compareRuns, renderSideBySide, tracePathFor } from '../../sdlc-core/src/debug.js';
 import { exportMetrics } from '../../sdlc-core/src/metrics.js';
+import { resolveHostModel, hostModelAdoption, hostModelBootstrap } from '../../sdlc-core/src/host-model.js';
 import { parseYaml } from '../../sdlc-core/src/yaml-lite.js';
 
 export const CLI_NAME = 'sdlc';
@@ -53,15 +54,70 @@ export function jsonOut(value) {
 
 // ── commands ───────────────────────────────────────────────────────────────
 
+/**
+ * Resolve the Harness model for bootstrap-flagged commands.
+ *
+ * `--no-host-model` suppresses DISCOVERY only (a spec-defaults init for
+ * deployments that route models some other way); an explicit
+ * `--provider` + `--model` pair always wins. Exactly one of the pair is a
+ * usage error — half a route silently falling back to discovery would write
+ * a config the caller did not describe.
+ */
+export function hostModelFromArgs(args) {
+  const { provider, model } = args.flags;
+  if ((provider !== undefined) !== (model !== undefined)) {
+    return { error: 'usage: --provider and --model must be given together' };
+  }
+  if (provider !== undefined && model !== undefined) {
+    return { host: resolveHostModel({
+      provider,
+      model,
+      reasoningEffort: args.flags['reasoning-effort'],
+    }) };
+  }
+  if (args.flags['no-host-model'] === true) return { host: null };
+  return { host: resolveHostModel({
+    dshHome: args.flags['dsh-home'],
+    profile: args.flags.profile,
+    reasoningEffort: args.flags['reasoning-effort'],
+  }) };
+}
+
+/** One bootstrappable line for the human output of an adopted route. */
+function describeHostModel(host) {
+  const route = `${host.provider}/${host.model}`;
+  const effort = host.reasoningEffort ? ` effort=${host.reasoningEffort}` : '';
+  return `harness model: ${route}${effort} (${host.source}) — tiers use the signed-in route, no API key\n`;
+}
+
 export function cmdInit(root, args) {
+  const resolved = hostModelFromArgs(args);
+  if (resolved.error) { process.stderr.write(`${resolved.error}\n`); return 2; }
+  const host = resolved.host;
   const result = initProject({
     projectRoot: root,
     force: Boolean(args.flags.force),
     reconfigure: Boolean(args.flags.reconfigure),
+    // Fresh (or forced) writes name exactly one provider — tiers and price
+    // table — so the config never implies a second API key.
+    config: host ? hostModelBootstrap(host) : DEFAULT_CONFIG,
   });
-  if (args.flags.json) { jsonOut(result); return result.ok ? 0 : 1; }
+  if (args.flags.json) {
+    jsonOut({ ...result, hostModel: host, hostModelApplied: host ? hostModelApplied(result) : false });
+    return result.ok ? 0 : 1;
+  }
   process.stdout.write(`${describeProject(result)}\n`);
+  // Only claim adoption when this run actually wrote the tiers: a plain
+  // re-run over an existing config preserves it untouched.
+  if (result.ok && host && hostModelApplied(result)) process.stdout.write(describeHostModel(host));
   return result.ok ? 0 : 1;
+}
+
+/** True when this init wrote (or rewrote) the config, i.e. the host route is
+ *  actually in the file — not when an existing config was preserved. */
+function hostModelApplied(result) {
+  const status = result.steps?.find((s) => s.step === 'config')?.status;
+  return status === 'written' || status === 'rewritten';
 }
 
 function openRuntime(root, { useLock = true } = {}) {
@@ -72,12 +128,32 @@ function openRuntime(root, { useLock = true } = {}) {
 }
 
 export function cmdStatus(root, args, { allowNoDb = true } = {}) {
+  // No init ritual (F.4): every touch runs the single completeness authority.
+  // ensureProject is two existsSync calls on a complete project, and repairs
+  // either half of an incomplete one (DB-only from an early `sdlc tasks`,
+  // config-only after a `git clean` removed the gitignored DB).
+  const resolved = hostModelFromArgs(args);
+  if (resolved.error) { process.stderr.write(`${resolved.error}\n`); return 2; }
+  if (resolved.host === null) {
+    process.stderr.write('status bootstraps with the Harness model — use `sdlc init --no-host-model` for spec defaults\n');
+    return 2;
+  }
   const dbPath = join(root, '.sdlc', 'sdlc.db');
-  if (!existsSync(dbPath)) {
-    const report = { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root };
+  let bootstrapped = null;
+  const ensured = ensureProject({ projectRoot: root, hostModel: resolved.host });
+  if (!ensured.ok) {
+    // A workspace we cannot describe fails closed with initProject's
+    // actionable reason, still without writing a config.
+    const report = {
+      ok: false,
+      error: 'BOOTSTRAP_FAILED',
+      detail: ensured.message ?? 'workspace auto-setup failed',
+      root,
+    };
     if (args.flags.json) jsonOut(report); else process.stdout.write(`${report.detail}\n`);
     return allowNoDb ? 0 : 1;
   }
+  if (ensured.existed === false) bootstrapped = true;
   const { runtime } = openRuntime(root, { useLock: false });
   try {
     const projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
@@ -89,6 +165,7 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
     const report = {
       ok: true,
       dbPath,
+      bootstrapped: Boolean(bootstrapped),
       projects: projects.map((p) => ({ id: p.id, name: p.name, state: p.state, blocked_state: p.blocked_state })),
       tasks: { total: taskRows.length, byState },
       workerRuns: { total: runs.length, orphaned: runs.filter((r) => r.orphaned).length },
@@ -104,6 +181,7 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
     if (args.flags.json) jsonOut(report);
     else {
       process.stdout.write(renderStatus(report));
+      if (report.bootstrapped) process.stdout.write('  bootstrap  : .sdlc/ created on first touch (no `sdlc init` needed)\n');
       if (report.metrics) {
         process.stdout.write(report.metrics.enabled
           ? `  metrics    : exported → ${report.metrics.path}\n`
@@ -116,7 +194,7 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
 
 function renderStatus(r) {
   const lines = [`SDLC status — ${r.dbPath}`, ''];
-  if (r.projects.length === 0) lines.push('  (no project initialised — run `sdlc init` then `/sdlc run`)');
+  if (r.projects.length === 0) lines.push('  (no project yet — create one with `/sdlc run` in the lead session)');
   for (const p of r.projects) lines.push(`  project ${p.id}  state=${p.state}${p.blocked_state ? ` (blocked from ${p.blocked_state})` : ''}`);
   lines.push('', `  tasks      : ${r.tasks.total}`);
   for (const [state, n] of Object.entries(r.tasks.byState).sort()) lines.push(`    ${state.padEnd(12)} ${n}`);
@@ -207,6 +285,47 @@ export function cmdConfig(root, args) {
     const [key] = args._.slice(1);
     const { config } = loadConfig(root, { configPath: path });
     jsonOut(getPath(config, key));
+    return 0;
+  }
+  if (sub === 'use-host-model') {
+    // No init ritual: the explicit adoption command materialises .sdlc/ when
+    // missing (adopting the same route at bootstrap), then rewrites the
+    // tiers. A workspace initProject cannot describe still fails closed.
+    const resolved = hostModelFromArgs(args);
+    if (resolved.error) { process.stderr.write(`config: ${resolved.error}\n`); return 2; }
+    const host = resolved.host;
+    if (!host) {
+      process.stderr.write('config: use-host-model needs a Harness model — drop --no-host-model\n');
+      return 2;
+    }
+    const ensured = ensureProject({ projectRoot: root, hostModel: host });
+    if (!ensured.ok) {
+      process.stderr.write(`config: auto-setup failed — ${ensured.message ?? 'unrecognised workspace'}\n`);
+      return 1;
+    }
+    const base = existsSync(path) ? (parseYaml(readFileSync(path, 'utf8')) ?? {}) : {};
+    // Defaults fill missing SECTIONS; the price table comes from the user's
+    // file plus the adopted route — adoption never re-introduces legacy
+    // OpenAI/Anthropic rows that no tier references.
+    const adoption = hostModelAdoption(host);
+    const next = deepMerge(DEFAULT_CONFIG, base);
+    next.tiers = adoption.tiers;
+    next.pricing = {
+      ...(typeof base.pricing === 'object' && base.pricing !== null ? base.pricing : {}),
+      ...adoption.pricing,
+    };
+    const validation = validateConfig(next, { projectRoot: root });
+    if (!validation.ok) {
+      if (args.flags.json) jsonOut({ ok: false, host, validation });
+      else for (const e of validation.errors) process.stderr.write(`  error: ${e}\n`);
+      return 1;
+    }
+    writeFileSync(path, dumpConfigYaml(next));
+    if (args.flags.json) jsonOut({ ok: true, host, validation });
+    else {
+      process.stdout.write(`config: using Harness model ${host.provider}/${host.model} (${host.source})\n`);
+      for (const w of validation.warnings) process.stdout.write(`  warning: ${w}\n`);
+    }
     return 0;
   }
   process.stderr.write(`unknown config subcommand: ${sub}\n`);
@@ -497,9 +616,23 @@ export function cmdLogs(root, args) {
  */
 export function cmdDebug(root, args) {
   const [sub = 'compare', ...rest] = args._;
-  const dbPath = join(root, '.sdlc', 'sdlc.db');
-  if (!existsSync(dbPath)) {
-    const report = { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root };
+  // The same no-init contract as status: ensureProject is the completeness
+  // authority (fast path is two existsSync calls) and repairs either half of
+  // an incomplete project; an undescribable workspace fails closed.
+  const resolved = hostModelFromArgs(args);
+  if (resolved.error) { process.stderr.write(`${resolved.error}\n`); return 2; }
+  if (resolved.host === null) {
+    process.stderr.write('debug bootstraps with the Harness model — use `sdlc init --no-host-model` for spec defaults\n');
+    return 2;
+  }
+  const ensured = ensureProject({ projectRoot: root, hostModel: resolved.host });
+  if (!ensured.ok) {
+    const report = {
+      ok: false,
+      error: 'BOOTSTRAP_FAILED',
+      detail: ensured.message ?? 'workspace auto-setup failed',
+      root,
+    };
     if (args.flags.json) jsonOut(report); else process.stdout.write(`${report.detail}\n`);
     return 1;
   }
@@ -568,13 +701,19 @@ export const COMMANDS = {
 export function usage() {
   return `sdlc — deterministic control plane over .sdlc/ (no model calls)
 
-  sdlc init [--force|--reconfigure]        create .sdlc/, integration branch, gate commands
-  sdlc status [--json] [--metrics]          project + task + spend summary
-  sdlc tasks [--state S] [--json]          task list
+A workspace bootstraps itself on first touch (status, the web panel, or any
+config command): .sdlc/ is created with the Harness's signed-in model as the
+tier route, so no separate init and no provider API key are needed. \`sdlc init\`
+remains as an explicit, idempotent preview of the same setup.
+
+  sdlc init [--force|--reconfigure] [--no-host-model|--provider P --model M]
+                                            create .sdlc/ and adopt the Harness model
+  sdlc status [--json] [--metrics]           project + task + spend summary (auto-bootstraps)
+  sdlc tasks [--state S] [--json]           task list
   sdlc explain <id> [--model|--gates|--events] [--json]
   sdlc debug compare <task> <runA> <runB> [--label-a X] [--label-b Y] [--out FILE] [--json]
   sdlc debug trace <task> [--json]         side-by-side time/tokens/tracepaths for review
-  sdlc config show|validate|get <key>|set <key> <value>
+  sdlc config show|validate|get <key>|set <key> <value>|use-host-model [--provider P --model M]
   sdlc lock status|release [--force]
   sdlc resume [--json]                     reconciliation (B.12)
   sdlc stop [--force]                      kill switch

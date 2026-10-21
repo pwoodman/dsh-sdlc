@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current release: 1.0.0.** Install from this checkout
+> **Current release: 1.1.0.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -127,14 +127,17 @@ All surfaces share one `/api/sdlc.flow` snapshot and one config snapshot. Pollin
 is adaptive — 2.5 s while a task or worker is in flight, 8 s when quiet — and
 each poll sends the newest event id as a cursor, so only new events cross the
 wire and the client merges them into a bounded window. On a failed poll the last
-snapshot is shown as *stale* rather than blanked. A 404 with no project becomes a
-guided “No SDLC project here” state with a copyable `sdlc init` command; a bare
-404 is diagnosed as a host/client version mismatch with restart and reinstall
-guidance (an in-place update does not replace loaded host code). Missing
-cost/tokens/duration stay `—` with a reason, never `0`. Set `autoOpen: false` in
-the UI row config to stop the automatic open. DSH's right sidebar has **no
-surface without a session**, so the Start screen cannot show it — start a session
-first.
+snapshot is shown as *stale* rather than blanked. Opening the panel on a
+workspace that has never been initialised **bootstraps it automatically** (see
+[No init step — use the Harness model](#no-init-step--use-the-harness-model));
+the guided state now appears only when auto-setup genuinely fails (no recognised
+stack marker), with the real reason and a copyable `sdlc init` command that
+prints the same diagnosis. A bare 404 is diagnosed as a host/client version
+mismatch with restart and reinstall guidance (an in-place update does not
+replace loaded host code). Missing cost/tokens/duration stay `—` with a reason,
+never `0`. Set `autoOpen: false` in the UI row config to stop the automatic
+open. DSH's right sidebar has **no surface without a session**, so the Start
+screen cannot show it — start a session first.
 
 ## Install
 
@@ -154,7 +157,7 @@ it upgrades an existing install instead of requiring an uninstall first.
 ```sh
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
-npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 1.0.0
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 1.1.0
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --check --json      # no changes
 ```
 
@@ -254,12 +257,12 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 > the last day can resolve to the *previous* version. Prefer the installer
 > above; it pins the exact version and writes the exemption for you. For a
 > manual install, pin it exactly
-> (`@patwoodman/dsh-sdlc-flow@1.0.0`) and add **one list item per pattern** to
+> (`@patwoodman/dsh-sdlc-flow@1.1.0`) and add **one list item per pattern** to
 > the profile's `pnpm-workspace.yaml`:
 >
 > ```yaml
 > minimumReleaseAgeExclude:
->   - '@patwoodman/dsh-sdlc-flow@1.0.0'
+>   - '@patwoodman/dsh-sdlc-flow@1.1.0'
 > ```
 >
 > A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
@@ -296,7 +299,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v1.0.0 && git push origin v1.0.0
+git tag v1.1.0 && git push origin v1.1.0
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
@@ -407,11 +410,65 @@ uses. A project row belonging to another checkout is never rendered.
 The browser bundle is built offline by `node scripts/build-ui.mjs` (part of
 `npm run build`) with zero dependencies.
 
+### No init step — use the Harness model
+
+Two rituals are gone: there is **no `sdlc init` step** and **no provider API
+key**. DeepSeek Harness already resolves the signed-in provider/account (for
+example `deepseek-account/deepseek-flash`) and its credential, and the
+orchestrator now inherits both.
+
+**Bootstrap on first touch.** The first panel request against a workspace root
+materialises `.sdlc/` (tree, DB, gate detection, integration branch) and writes
+a `config.yml` whose three tiers all name the model the current Harness session
+resolves — the live `agentDefaultModel` selection, then on-disk profile
+discovery, then DSH's own base default. `sdlc status` and
+`sdlc config use-host-model` do the same from the CLI, so no command sequence
+is required at all. The guarantees:
+
+- **No key is ever implied.** A bootstrapped config names exactly one provider
+  in its tiers and its price table — the fresh user is never asked for a
+  second credential. `--no-host-model` (on `sdlc init`) opts out for
+  deployments that route models some other way — read commands never write
+  the spec defaults; exactly one of `--provider`/`--model` is a usage error,
+  never a silent fallback.
+- **Authored configs are never rewritten by a read.** Bootstrap only writes a
+  config that does not exist yet. Changing the route later is an explicit
+  action: **Settings → Harness model → Use this model for all tiers**, or
+  `sdlc config use-host-model` (add `--provider`/`--model` to override, or
+  `--dsh-home`/`--profile` outside the app). Both validate before writing,
+  keep your own price rows without re-introducing legacy ones, and bootstrap
+  an uninitialised workspace in one shot.
+- **Half-projects heal themselves.** "Complete" means config.yml AND the
+  database, and `ensureProject` is the single authority on it. An early
+  `sdlc tasks` opens the DB before any config exists; a `git clean -fdx`
+  removes the gitignored DB and keeps the config — the next touch repairs
+  the missing half without touching the authored one.
+- **Failure is actionable, never a mutation.** A workspace with no recognised
+  stack marker cannot be described, so auto-setup fails closed — the panel
+  explains why and `sdlc init` prints the same diagnosis; nothing is
+  guessed, and the user's git repository is left untouched (no integration
+  branch from a failed read). A failed bootstrap's leftover tree cannot be
+  poisoned: config writes and adoption require a complete project. Even an
+  unwritable workspace resolves into the guided state, never an error. The
+  next request retries, so fixing the workspace recovers without a host
+  restart.
+
+**Workers use the same route and the same credential store.** In-process
+subagents already run on the parent route, so delegation needs no key of its
+own. Process workers receive the adopted provider/model through the
+`agent-default-model` tier overlay and `DSH_HOME`, so `deepseek-account`
+resolves the same account token. No provider key is ever materialized into the
+worker environment.
+
+When DSH exposes no currency metadata, the adopted price entry is explicitly
+`unknown`; cost renders as `—` instead of a guessed number. Configure prices in
+Settings if you want cost estimates.
+
 ## Status
 
-`gate:P` and `gate:M0`…`gate:M8` plus `gate:Q` pass (11/11); 875 offline tests
+`gate:P` and `gate:M0`…`gate:M8` plus `gate:Q` pass (11/11); 902 offline tests
 pass across unit/contract/integration/fault/adversarial, 9/10 e2e (1 skipped
-by design), 86/86 eval harness. The 1.0.0 packed tarballs install, boot the
+by design), 86/86 eval harness. The 1.1.0 packed tarballs install, boot the
 probe, create a lead session and uninstall cleanly; the no-clone tarball also
 installs end-to-end in a fresh `DSH_HOME` and passes M0. `doctor` passes with 0
 errors and 0 warnings on a configured host. See the validation report §1 for the two

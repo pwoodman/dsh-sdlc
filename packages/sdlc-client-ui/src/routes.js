@@ -13,8 +13,9 @@
  *   GET  /api/sdlc.board                       tasks grouped by state + blockers
  *   GET  /api/sdlc.task?id=<id>                one task + events + gates + runs
  *   GET  /api/sdlc.compare?task=<id>&a=<run>&b=<run>   compareRuns() JSON
- *   GET  /api/sdlc.config                      parsed config + validation
+ *   GET  /api/sdlc.config                      parsed config + validation + host model
  *   POST /api/sdlc.config                      { path, value } → validate + write
+ *   POST /api/sdlc.host                        adopt the Harness provider/model
  *   GET  /api/sdlc.metrics                     Prometheus exposition text
  *   GET  /api/sdlc.flow                        bounded visualizer snapshot
  */
@@ -24,6 +25,7 @@ export const SDLC_BOARD_PATH = '/api/sdlc.board';
 export const SDLC_TASK_PATH = '/api/sdlc.task';
 export const SDLC_COMPARE_PATH = '/api/sdlc.compare';
 export const SDLC_CONFIG_PATH = '/api/sdlc.config';
+export const SDLC_HOST_PATH = '/api/sdlc.host';
 export const SDLC_METRICS_PATH = '/api/sdlc.metrics';
 export const SDLC_FLOW_PATH = '/api/sdlc.flow';
 
@@ -33,6 +35,7 @@ export const SDLC_BOARD_ROUTE = SDLC_BOARD_PATH.slice(1);
 export const SDLC_TASK_ROUTE = SDLC_TASK_PATH.slice(1);
 export const SDLC_COMPARE_ROUTE = SDLC_COMPARE_PATH.slice(1);
 export const SDLC_CONFIG_ROUTE = SDLC_CONFIG_PATH.slice(1);
+export const SDLC_HOST_ROUTE = SDLC_HOST_PATH.slice(1);
 export const SDLC_METRICS_ROUTE = SDLC_METRICS_PATH.slice(1);
 export const SDLC_FLOW_ROUTE = SDLC_FLOW_PATH.slice(1);
 
@@ -104,6 +107,6 @@ export function isConfigWrite(value) {
 
 export default {
   SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_COMPARE_PATH,
-  SDLC_CONFIG_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH, sdlcReviewAddress, parseSdlcReviewAddress,
+  SDLC_CONFIG_PATH, SDLC_HOST_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH, sdlcReviewAddress, parseSdlcReviewAddress,
   isStatusPayload, isBoardPayload, isConfigPayload, isConfigWrite, isFlowPayload,
 };

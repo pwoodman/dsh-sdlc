@@ -117,6 +117,7 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
   const loadFlow = () => stores.loadFlow({ cwd });
   const loadConfig = () => stores.loadConfig(cwd);
   const saveConfig = (path, value) => stores.saveConfig(path, value, cwd);
+  const adoptHostModel = () => stores.adoptHostModel(cwd);
   const loadCompare = (task, a, b) => stores.loadCompare(task, a, b, cwd);
   const toggleTask = (taskId) => setSelectedTask((current) => (
     current === taskId ? null : taskId
@@ -222,6 +223,7 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
             cwd={cwd}
             onReload={loadConfig}
             onSave={saveConfig}
+            onAdoptHostModel={adoptHostModel}
           />
         )}
       </div>

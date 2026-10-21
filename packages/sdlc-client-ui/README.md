@@ -8,7 +8,7 @@ sidebar, plus the host routes that feed it.
 | Flow | live animated DAG, attention queue, progress/state distribution, parallel-worker meter, gates/routing/activity, inline task detail |
 | Tasks | searchable tasks grouped by lifecycle state, with Active/Blocked/Done filters and the same task detail |
 | Review | select a task and two runs; signed deltas, changed gates, collapsed trace path |
-| Settings (gear) | a validated `.sdlc/config.yml` editor grouped by section; only changed fields can be saved |
+| Settings (gear) | validated `.sdlc/config.yml` editor plus **Use this Harness model** adoption; only changed fields can be saved |
 
 The **Live map** is a deterministic SVG derived in the browser from the flow
 snapshot — no model call, no generated HTML. Stages are horizontal bands so
@@ -17,6 +17,12 @@ dashed packets, completed paths stay lit, and blocked/failed paths turn red.
 Hovering or selecting a task traces its upstream and downstream path. Reduced
 motion drops the animation but keeps the state colours and labels; every node
 is keyboard-focusable.
+
+**Harness model adoption.** Settings shows the provider/model the current DSH
+session resolves and a button that rewrites all three tiers to it. The host
+plugin reads `agentDefaultModel` opportunistically (it is not a hard inject),
+so an older profile still renders Settings without the card. Cost is recorded
+as explicitly unknown when DSH exposes no currency metadata.
 
 The old **Status** and **Board** tabs were removed: the flow snapshot already
 carries project state, task totals, spend and every task, so those tabs were a
@@ -30,11 +36,15 @@ guess from `auto`.
 
 Host routes: `/api/sdlc.status`, `/api/sdlc.board`, `/api/sdlc.task`,
 `/api/sdlc.compare`, `/api/sdlc.config` (GET + validated POST),
+`/api/sdlc.host` (POST — adopt the Harness provider/model),
 `/api/sdlc.metrics`, `/api/sdlc.flow` (bounded visualizer snapshot). The routes
 remain part of the host contract; the sidebar itself now reads `flow`, `config`
 and `compare`. Every row is scoped to the open session workspace: a project
-row whose `repo_path` belongs to another checkout is ignored, and a workspace
-with no project gets a 404 `NO_PROJECT` (the guided `sdlc init` state).
+row whose `repo_path` belongs to another checkout is ignored. A workspace with
+no project is **auto-bootstrapped on the first request** with the Harness's
+current provider/model as the tier route — no `sdlc init`, no API key; only a
+workspace with no recognised stack marker gets a 404 `NO_PROJECT`, carrying the
+actionable reason (the guided state).
 
 The tab is registered as a right-sidebar page with a guide entry, so a new
 session can open it from the guide's **SDLC Flow** capsule. With

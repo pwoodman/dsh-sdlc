@@ -1279,6 +1279,28 @@ button.sdlc-attention-row:hover { background: color-mix(in srgb, var(--sdlc-tone
   font-size: 10px;
   line-height: 1.5;
 }
+.sdlc-host-model {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--sdlc-accent) 28%, var(--sdlc-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--sdlc-accent) 5%, Canvas);
+}
+.sdlc-host-model-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sdlc-host-model p { margin: 0; }
+.sdlc-host-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .sdlc-config-group { display: flex; flex-direction: column; gap: 4px; }
 .sdlc-config-group-title {
   margin: 0;

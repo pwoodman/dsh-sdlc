@@ -114,6 +114,13 @@ export function createSdlcStores(api) {
     return res;
   }
 
+  /** Adopt the Harness model, then refresh the Settings snapshot. */
+  async function adoptHostModel(cwd) {
+    const res = await api.adoptHostModel(cwd);
+    if (res.available) await loadConfig(cwd);
+    return res;
+  }
+
   async function loadCompare(task, a, b, cwd) {
     review.update({ phase: 'loading', task, a, b });
     const res = await api.fetchCompare(task, a, b, cwd);
@@ -146,7 +153,7 @@ export function createSdlcStores(api) {
 
   return {
     flow, config, review,
-    loadFlow, loadConfig, saveConfig, loadCompare, loadPanel, reset, dispose,
+    loadFlow, loadConfig, saveConfig, adoptHostModel, loadCompare, loadPanel, reset, dispose,
   };
 }
 

@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { core, tempDir, cleanup, makeRepo, git } from '../lib/helpers.mjs';
 
 const project = await core.project();
@@ -97,5 +97,132 @@ test('describeProject prints the stack, gates and next command', () => {
     const text = project.describeProject(result);
     assert.match(text, /stack\s+: go/);
     assert.match(text, /next\s+: sdlc config validate/);
+  } finally { cleanup(repo); }
+});
+
+// ── ensureProject: the no-init-ritual bootstrap (F.4) ────────────────────────
+
+test('ensureProject materialises a fresh workspace with the Harness model route', () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'lockfileVersion: 9\n' });
+  try {
+    const host = { provider: 'deepseek-account', model: 'deepseek-flash', reasoningEffort: 'high' };
+    const result = project.ensureProject({ projectRoot: repo, hostModel: host });
+    assert.equal(result.ok, true);
+    assert.equal(result.existed, false);
+    assert.ok(existsSync(join(repo, '.sdlc', 'sdlc.db')));
+    const config = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    // Every tier names the Harness route; no OpenAI/Anthropic entry remains,
+    // so nothing in the fresh config implies a second API key.
+    assert.match(config, /provider: deepseek-account/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+    assert.match(config, /model: deepseek-flash/);
+    assert.match(config, /reasoningEffort: high/);
+    assert.match(config, /unknown: true/);
+  } finally { cleanup(repo); }
+});
+
+test('ensureProject without a host model writes the spec defaults (explicit opt-out)', () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    const result = project.ensureProject({ projectRoot: repo, hostModel: null });
+    assert.equal(result.ok, true);
+    const config = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: openai/);
+  } finally { cleanup(repo); }
+});
+
+test('ensureProject is a no-op when the DB exists and never rewrites an authored config', () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    project.ensureProject({ projectRoot: repo, hostModel: null });
+    const configPath = join(repo, '.sdlc', 'config.yml');
+    writeFileSync(configPath, 'observability:\n  logLevel: debug\n');
+    const second = project.ensureProject({
+      projectRoot: repo,
+      // A different live route must NOT leak into the user's config.
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    assert.equal(second.ok, true);
+    assert.equal(second.existed, true);
+    assert.equal(second.steps, undefined, 'no init steps run for an existing project');
+    assert.match(readFileSync(configPath, 'utf8'), /logLevel: debug/);
+  } finally { cleanup(repo); }
+});
+
+test('ensureProject fails closed with the initProject reason on an undescribable workspace', () => {
+  const repo = makeRepo({ 'README.md': '# no stack marker\n' });
+  try {
+    const result = project.ensureProject({
+      projectRoot: repo,
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'UNRECOGNISED_STACK');
+    assert.match(result.message, /never guesses/);
+    // Fail-closed: the tree may be prepared, but no config or DB is written.
+    assert.equal(existsSync(join(repo, '.sdlc', 'config.yml')), false);
+    assert.equal(existsSync(join(repo, '.sdlc', 'sdlc.db')), false);
+  } finally { cleanup(repo); }
+});
+
+test('ensureProject completes a db-only half-project instead of treating it as done', async () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    // A read command can create a bare DB before any complete bootstrap
+    // (node:sqlite opens/creates on demand). The marker of "done" must be
+    // the config initProject writes, not the DB file.
+    const schema = await core.schema();
+    mkdirSync(join(repo, '.sdlc'), { recursive: true });
+    const db = schema.openDatabase(join(repo, '.sdlc', 'sdlc.db'), { requireQuickCheck: false });
+    db.close();
+    assert.equal(existsSync(join(repo, '.sdlc', 'config.yml')), false);
+
+    const result = project.ensureProject({
+      projectRoot: repo,
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.existed, false, 'a db-only state is not a complete project');
+    assert.ok(existsSync(join(repo, '.sdlc', 'config.yml')));
+    assert.match(readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8'), /deepseek-account/);
+    assert.ok(existsSync(join(repo, '.gitignore')), 'the full init steps ran');
+  } finally { cleanup(repo); }
+});
+
+test('ensureProject recreates a removed DB while preserving the authored config', () => {
+  // `git clean -fdx` removes the gitignored DB and keeps config.yml. The
+  // next touch must repair the missing half without adopting a new route
+  // into the config the user already has.
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    project.ensureProject({ projectRoot: repo, hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' } });
+    rmSync(join(repo, '.sdlc', 'sdlc.db'));
+    const second = project.ensureProject({
+      projectRoot: repo,
+      hostModel: { provider: 'nvidia', model: 'some-other-route' },
+    });
+    assert.equal(second.ok, true);
+    assert.equal(second.existed, false, 'a project missing its DB is repaired, not treated as done');
+    assert.ok(existsSync(join(repo, '.sdlc', 'sdlc.db')), 'the DB was recreated');
+    const config = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /deepseek-account/, 'the authored config is preserved untouched');
+    assert.doesNotMatch(config, /some-other-route/);
+  } finally { cleanup(repo); }
+});
+
+test('a failed bootstrap never mutates the git repository', () => {
+  // Auto-setup runs on reads (a panel's first GET, `sdlc status`); a
+  // workspace it cannot describe must not gain an integration branch or a
+  // rewritten .gitignore. Only the (gitignored) .sdlc tree is prepared.
+  const repo = makeRepo({ 'README.md': '# no stack marker\n' });
+  try {
+    const result = project.ensureProject({
+      projectRoot: repo,
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'UNRECOGNISED_STACK');
+    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch');
+    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation');
   } finally { cleanup(repo); }
 });

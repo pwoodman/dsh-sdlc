@@ -4,7 +4,7 @@
 **This build:** the `dsh-plugin-sdlc` monorepo — eight packages, three profile
 recipes, seven test layers, eleven gates (P, M0–M8, Q).
 **Platform:** Node ≥ 22.13 (verified v24.21.0), `@deepseek-ai/dsh` 0.2.0-rc.2, Linux x64.
-**Status:** `gate:P` + `gate:M0` … `gate:M8` + `gate:Q` all green; 875 offline
+**Status:** `gate:P` + `gate:M0` … `gate:M8` + `gate:Q` all green; 902 offline
 tests and 9/10 e2e pass (the live-provider e2e is skipped by design).
 
 Read this document together with the validation report
@@ -135,6 +135,59 @@ the property tests use the seeded `mulberry32` PRNG that `scripts/lib/harness.mj
 already ships, satisfying the actual requirement ("a seeded PRNG so a failure is
 reproducible") with **zero** external dependencies. `devDependencies` is
 therefore empty.
+
+### D8 — host-model adoption, no-init bootstrap and explicitly unknown pricing
+The spec's tier examples use OpenAI/Anthropic routes, but the product runs
+inside DeepSeek Harness, which already owns the signed-in provider/account
+(for example `deepseek-account/deepseek-flash`). Requiring a second provider
+key is a product defect, not a deployment choice. `host-model.js` discovers the
+active profile's `agent-default-model`, and Settings / `sdlc config
+use-host-model` rewrite all three tiers to that route. The UI host plugin reads
+`agentDefaultModel` opportunistically (`ctx.get`), so older profiles still mount.
+
+The same route is now the DEFAULT, not an opt-in: `ensureProject` (project.js)
+materialises `.sdlc/` on first touch — the first panel request, `sdlc status`
+and `sdlc config use-host-model` all bootstrap a fresh workspace with the
+harness route in all three tiers, so neither a manual `sdlc init` nor a key is
+ever required. `ensureProject` is the single authority on "complete" —
+config.yml AND the DB — and every bootstrap surface calls it unconditionally
+(its complete-project fast path is two `existsSync` calls); callers must never
+gate it on their own existence checks, because either half can go missing on
+its own (an early `sdlc tasks` opens the DB before any config exists; a
+`git clean -fdx` removes the gitignored DB and keeps the config) and the next
+touch must repair the missing half without touching the authored one. Five
+contracts hold: bootstrap only writes a config that does not exist (an
+authored config is changed only by the explicit Settings/CLI action); a config
+POST and adoption require a COMPLETE project (gating on the `.sdlc` directory
+would let a failed bootstrap's leftover tree be poisoned into a wedged
+OpenAI-default config with no detected gates); a failed bootstrap mutates
+nothing in the user's git repository — `initProject` runs stack detection
+BEFORE creating the integration branch, because auto-setup runs on reads;
+bootstrap errors (EACCES on an unwritable workspace included) resolve into
+the guided state, never a rejected fetch; and nothing is memoised — the next
+request always re-examines the real filesystem. `sdlc init`
+adopts the same route by default (`--no-host-model` opts out, on `init` only —
+reads never write the spec defaults; a lone `--provider` or `--model` is a
+usage error, never a silent fallback; init only claims adoption when the
+config step actually wrote). The
+adopted tier entry carries the harness `reasoningEffort` so
+`buildTierOverlay` reproduces the exact route in the worker `--patch`.
+
+Because DSH exposes token counts but no currency metadata (P20/P28), a tier
+route may carry an explicit `unknown` price entry
+(`{ input: null, output: null, unknown: true }`). Validation accepts it with a
+warning and cost renders as `—`; a missing price entry is still an error, so
+the plugin never guesses. A fresh bootstrap names exactly one provider in
+tiers AND price table (`hostModelBootstrap`); adoption into an existing
+config keeps the user's own price rows without re-introducing legacy ones
+(defaults fill SECTIONS, never the price table). Pinned by
+`tests/unit/host-model.test.mjs`,
+`tests/unit/project.test.mjs` (ensureProject, both half-state repairs, no git
+mutation on failure), the CLI bootstrap tests in
+`tests/unit/cli*.test.mjs` (including the DB-only half state that used to
+leave OpenAI/Anthropic defaults silently in effect), and the plugin
+auto-bootstrap tests in `tests/unit/ui-routes.test.mjs` (write-fence
+poisoning refusal, contained errors, re-bootstrap after deletion).
 
 ---
 

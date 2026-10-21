@@ -114,6 +114,84 @@ test('config show/validate/get/set/unknown behave and persist', () => {
     // Missing operands are usage errors, not crashes.
     assert.equal(cli.cmdConfig(dir, { _: ['set', 'only.key'], flags: {} }), 2);
     assert.equal(cli.cmdConfig(dir, { _: ['nonsense'], flags: {} }), 2);
+
+    // Host-model adoption is a validated write, with the same usage surface.
+    assert.equal(cli.cmdConfig(dir, {
+      _: ['use-host-model'],
+      flags: { provider: 'deepseek-account', model: 'deepseek-flash', json: true },
+    }), 0);
+    const adopted = readFileSync(configPath, 'utf8');
+    assert.match(adopted, /provider: deepseek-account/);
+    assert.match(adopted, /unknown: true/);
+  } finally { cleanup(dir); }
+
+  // The no-init contract: on a describable workspace the adoption command
+  // materialises .sdlc/ itself; on an undescribable one it fails closed with
+  // the real reason.
+  const fresh = scaffold('sdlc-cli-int-fresh-');
+  try {
+    assert.equal(cli.cmdConfig(fresh, {
+      _: ['use-host-model'],
+      flags: { provider: 'deepseek-account', model: 'deepseek-flash', json: true },
+    }), 0);
+    assert.ok(existsSync(join(fresh, '.sdlc', 'sdlc.db')), 'adoption bootstrapped the project');
+    assert.match(readFileSync(join(fresh, '.sdlc', 'config.yml'), 'utf8'), /provider: deepseek-account/);
+
+    // Guard rails: a half route and a self-contradictory opt-out are usage
+    // errors, never a silent discovery fallback or a null-route crash.
+    assert.equal(cli.cmdConfig(fresh, { _: ['use-host-model'], flags: { provider: 'only' } }), 2);
+    assert.equal(cli.cmdConfig(fresh, { _: ['use-host-model'], flags: { 'no-host-model': true } }), 2);
+    assert.equal(cli.cmdConfig(fresh, { _: ['use-host-model'], flags: { model: 'only' } }), 2);
+  } finally { cleanup(fresh); }
+
+  const undescribable = tempDir('sdlc-cli-int-noinit-');
+  try {
+    assert.equal(cli.cmdConfig(undescribable, { _: ['use-host-model'], flags: {} }), 1);
+    assert.equal(existsSync(join(undescribable, '.sdlc', 'config.yml')), false);
+  } finally { cleanup(undescribable); }
+});
+
+test('hostModelFromArgs pairs explicit flags and honours --no-host-model', () => {
+  const { hostModelFromArgs } = cli;
+  // Half a route is a usage error, never a silent fallback to discovery.
+  assert.match(hostModelFromArgs({ flags: { provider: 'only' } }).error, /must be given together/);
+  assert.match(hostModelFromArgs({ flags: { model: 'only' } }).error, /must be given together/);
+  const explicit = hostModelFromArgs({ flags: { provider: 'deepseek-account', model: 'deepseek-flash' } });
+  assert.equal(explicit.host.provider, 'deepseek-account');
+  assert.equal(explicit.host.source, 'explicit');
+  // The effort flag survives the explicit path too (kebab-case flag → camelCase route).
+  const withEffort = hostModelFromArgs({
+    flags: { provider: 'deepseek-account', model: 'deepseek-flash', 'reasoning-effort': 'high' },
+  });
+  assert.equal(withEffort.host.reasoningEffort, 'high');
+  assert.equal(withEffort.host.source, 'explicit');
+  assert.equal(hostModelFromArgs({ flags: { 'no-host-model': true } }).host, null);
+  // Default (no flags): discovery, which always resolves a usable route.
+  const discovered = hostModelFromArgs({ flags: {} });
+  assert.equal(typeof discovered.host?.provider, 'string');
+  assert.equal(typeof discovered.host?.model, 'string');
+});
+
+test('cmdInit/cmdStatus adopt the Harness route on a fresh bootstrap, in-process', () => {
+  const dir = scaffold('sdlc-cli-int-adopt-');
+  try {
+    assert.equal(cli.cmdInit(dir, flags({ provider: 'deepseek-account', model: 'deepseek-flash', json: true })), 0);
+    let config = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.doesNotMatch(config, /provider: openai/);
+
+    // Status on a second fresh workspace bootstraps it with the same policy.
+    const other = scaffold('sdlc-cli-int-adopt2-');
+    try {
+      assert.equal(cli.cmdStatus(other, flags({ provider: 'deepseek-account', model: 'deepseek-flash', json: true })), 0);
+      assert.ok(existsSync(join(other, '.sdlc', 'sdlc.db')));
+      config = readFileSync(join(other, '.sdlc', 'config.yml'), 'utf8');
+      assert.match(config, /provider: deepseek-account/);
+      // An authored config is never rewritten by a later status/ensure.
+      writeFileSync(join(other, '.sdlc', 'config.yml'), 'observability:\n  logLevel: debug\n');
+      assert.equal(cli.cmdStatus(other, flags({ json: true })), 0);
+      assert.match(readFileSync(join(other, '.sdlc', 'config.yml'), 'utf8'), /logLevel: debug/);
+    } finally { cleanup(other); }
   } finally { cleanup(dir); }
 });
 

@@ -2,6 +2,74 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.1.0] — 2026-10-20 — no init step, and the LLM the Harness already has
+
+### Added
+
+- **No init step — bootstrap on first touch.** A workspace materialises
+  `.sdlc/` the moment it is first needed: the first panel request, `sdlc
+  status` and `sdlc config use-host-model` all auto-create the tree, DB, gate
+  detection and integration branch (`ensureProject`, spec v3 F.4).
+  `ensureProject` is the single authority on "complete" — config.yml AND the
+  DB — so either half-state repairs itself on the next touch (an early `sdlc
+  tasks` opens the DB before any config exists; a `git clean -fdx` removes
+  the gitignored DB and keeps the config). The panel's guided state now
+  appears only when auto-setup genuinely fails (no recognised stack marker)
+  and carries the real, actionable reason; the next request retries, so
+  fixing the workspace recovers without a host restart. Three hard
+  guarantees, each pinned by tests: an authored config is never rewritten by
+  a read; a config POST (and adoption) requires a COMPLETE project, so a
+  failed bootstrap's leftover tree can never be poisoned into a wedged
+  OpenAI-default config; and a failed bootstrap mutates nothing in the
+  user's git repository — the integration branch is created only after
+  stack detection succeeds. Bootstrap errors (including an unwritable
+  workspace) resolve into the guided state, never a rejected fetch.
+- **Harness model adoption — no second API key.** A fresh bootstrap writes
+  three tiers and a price table that name exactly the model the current DSH
+  session resolves (`deepseek-account/deepseek-flash` on a signed-in
+  Desktop) — so a new user is never asked for an OpenAI/Anthropic key.
+  Settings shows the live route and can rewrite the tiers of an existing
+  config in one click; `sdlc config use-host-model` does the same from the
+  CLI, and `sdlc init` adopts by default (`--no-host-model` opts out — reads
+  never write the spec defaults; `--provider`/`--model` must be given
+  together, and init only claims adoption when it actually wrote). Adoption
+  keeps the user's own price rows without re-introducing legacy ones, and
+  the adopted tier entry carries the Harness's `reasoningEffort` so the
+  worker overlay reproduces the exact route. The host plugin reads
+  `agentDefaultModel` opportunistically (verified against the runtime's
+  service declaration), so older profiles still mount. In-process subagents
+  already inherit the parent route; process workers use the adopted tier
+  overlay plus the shared `DSH_HOME` credential store — no provider key is
+  ever materialized into a worker environment.
+- **Explicit unknown pricing.** A tier model may declare
+  `pricing.<provider/model>: { input: null, output: null, unknown: true }` when
+  DSH exposes no currency metadata. Validation accepts it with a warning and cost
+  renders as `—`; missing price entries still fail rather than guessing.
+
+### Verification
+
+- **902 offline tests pass**: 661 unit, 121 contract, 64 integration,
+  29 adversarial, 27 fault. New coverage includes host-model profile discovery,
+  tier/price adoption, the Settings adoption route, the CLI command, explicit
+  unknown pricing, `ensureProject` bootstrap semantics (adoption, opt-out,
+  no-op on complete projects, half-state repair in BOTH directions,
+  fail-closed), CLI auto-bootstrap for `status`/`init`/`use-host-model`/`debug`
+  (including the DB-only half state that used to leave OpenAI/Anthropic
+  defaults silently in effect), and plugin-level auto-bootstrap
+  (first-request materialisation, recovery without restart, authored-config
+  preservation, write-fence poisoning refusal, contained errors on an
+  unwritable workspace, re-bootstrap after `.sdlc` deletion); the CLI remains
+  above the K.9 90% line threshold.
+- **All 11 gates pass** (P, M0–M8, Q) — 18/18 platform, coverage 95.60 lines /
+  82.03 branches / 95.80 functions. The packed publish proof installs, boots
+  the probe, creates a lead session and uninstalls cleanly (41/41
+  packed-artifact checks); the 1.1.0 no-clone tarball installs end-to-end in a
+  fresh `DSH_HOME` and passes M0.
+- **Real Chromium verification** (Settings card, earlier in this release):
+  Settings rendered the live `deepseek-account/deepseek-flash` card; one click
+  rewrote all three tiers and showed “Tiers updated”, with `.sdlc/config.yml`
+  validated and no API key.
+
 ## [1.0.0] — 2026-10-20 — first production release
 
 First production release. The sidebar is now an attention-first live flow view

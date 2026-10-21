@@ -452,7 +452,7 @@ export function handleFlow(projectRoot, query = {}) {
   if (!existsSync(join(projectRoot, '.sdlc', 'sdlc.db'))) {
     return {
       status: 404,
-      body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot, pluginVersion: pluginVersion() },
+      body: { ok: false, error: 'NO_PROJECT', detail: 'no complete .sdlc project — auto-setup did not run here; `sdlc init` prints the reason', root: projectRoot, pluginVersion: pluginVersion() },
     };
   }
   const model = buildFlowModel(projectRoot, {
@@ -464,15 +464,16 @@ export function handleFlow(projectRoot, query = {}) {
     escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
   });
   // A DB with no project row for THIS workspace is the same product state as
-  // no DB at all: the panel shows its guided `sdlc init` card instead of an
-  // empty "unavailable" header or a foreign project's DAG.
+  // no DB at all: the panel shows its guided state (create a project with
+  // `/sdlc run`) instead of an empty "unavailable" header or a foreign
+  // project's DAG.
   if (!model.project.available) {
     return {
       status: 404,
       body: {
         ok: false,
         error: 'NO_PROJECT',
-        detail: model.project.reason ?? 'no project for this workspace — run `sdlc init` first',
+        detail: model.project.reason ?? 'no project for this workspace — create one with `/sdlc run`',
         root: projectRoot,
         pluginVersion: pluginVersion(),
       },

@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-mock-llm",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "TEST-ONLY deterministic ctx.llm provider (spec v3 K.4). Never published.",

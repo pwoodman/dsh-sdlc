@@ -18,6 +18,7 @@ function stubApi(overrides = {}) {
     calls,
     fetchConfig: async () => (calls.push('config'), overrides.config ?? { available: true, data: { ok: true, config: {}, validation: { ok: true, errors: [] } } }),
     writeConfig: async (path, value) => (calls.push(`write:${path}=${value}`), overrides.write ?? { available: true, data: { ok: true } }),
+    adoptHostModel: async () => (calls.push('adopt-host'), overrides.adopt ?? { available: true, data: { ok: true } }),
     fetchCompare: async (task, a, b) => (calls.push(`compare:${task}`), overrides.compare ?? { available: true, data: { task: { id: task }, runs: {}, deltas: null, gatesCompared: [], tracePath: [], traceSummary: {} } }),
     fetchFlow: async () => (calls.push('flow'), overrides.flow ?? { available: true, data: { ok: true, tasks: [], events: [] } }),
   };
@@ -53,6 +54,17 @@ test('saveConfig reloads on success and surfaces rejection', async () => {
   await bad.loadConfig();
   await bad.saveConfig('execution.worktreeRetentionDays', 0);
   assert.match(bad.config.getSnapshot().saveError, /VALIDATION_FAILED/);
+});
+
+test('adoptHostModel refreshes the config snapshot', async () => {
+  const api = stubApi();
+  const stores = uiStore.createSdlcStores(api);
+  await stores.loadConfig('/w');
+  const res = await stores.adoptHostModel('/w');
+  assert.equal(res.available, true);
+  assert.ok(api.calls.includes('adopt-host'));
+  assert.deepEqual(api.calls.filter((call) => call === 'config'), ['config', 'config']);
+  stores.dispose();
 });
 
 test('loadCompare tracks the requested runs and resets to idle', async () => {

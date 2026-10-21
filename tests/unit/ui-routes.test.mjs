@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
 
@@ -144,6 +144,32 @@ test('uninitialised projects are 404, never fabricated', () => {
   } finally { cleanup(dir); }
 });
 
+test('host model adoption rewrites tiers and records an explicit unknown price', () => {
+  const dir = scaffold();
+  try {
+    initProject(dir);
+    const { dumpConfigYaml } = cfgMod;
+    const { DEFAULT_CONFIG } = cfgMod;
+    writeFileSync(join(dir, '.sdlc', 'config.yml'), dumpConfigYaml(DEFAULT_CONFIG));
+    const host = { provider: 'deepseek-account', model: 'deepseek-flash', reasoningEffort: 'high' };
+
+    const adopted = handlers.handleHostAdopt(dir, host);
+    assert.equal(adopted.status, 200);
+    assert.equal(adopted.body.ok, true);
+    const { config } = cfgMod.loadConfig(dir);
+    assert.equal(config.tiers.cheap[0].provider, 'deepseek-account');
+    assert.equal(config.tiers.base[0].provider, 'deepseek-account');
+    assert.equal(config.tiers.elevated[0].model, 'deepseek-flash');
+    assert.deepEqual(config.pricing['deepseek-account/deepseek-flash'], { input: null, output: null, unknown: true });
+    assert.equal(handlers.handleConfigGet(dir, host).body.hostModel.provider, 'deepseek-account');
+    assert.equal(handlers.handleConfigGet(dir, host).body.validation.ok, true);
+
+    // No harness model (e.g. an older host or a non-Agent context) is a 409,
+    // not a silent fallback to a different provider that would need a key.
+    assert.equal(handlers.handleHostAdopt(dir, null).status, 409);
+  } finally { cleanup(dir); }
+});
+
 test('config GET reports validation; POST validates before writing', () => {
   const dir = scaffold();
   try {
@@ -273,10 +299,11 @@ test('plugin fetch handlers serve live responses end-to-end (no host)', async ()
     assert.equal(metricsRes.status, 200);
     assert.match(await metricsRes.text(), /sdlc_tasks_total/);
 
-    // The browser's session workspace overrides the fallback root. dirOther has
-    // no .sdlc, so a routed request that honors ?cwd must answer NO_PROJECT and
-    // name that root (proving the host did not read the fallback project).
-    const dirOther = scaffold();
+    // The browser's session workspace overrides the fallback root. dirOther
+    // is UNDESCRIBABLE (no stack marker), so honoring ?cwd answers 404 with
+    // that root — proving the host read the session workspace, not the
+    // fallback project. (A describable dirOther now bootstraps instead.)
+    const dirOther = tempDir('sdlc-ui-other-');
     try {
       const otherStatus = await handlersByKey.get('GET /api/sdlc.status')(
         new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dirOther)}`),
@@ -285,6 +312,7 @@ test('plugin fetch handlers serve live responses end-to-end (no host)', async ()
       const otherBody = await otherStatus.json();
       assert.equal(otherBody.error, 'NO_PROJECT');
       assert.equal(otherBody.root, dirOther);
+      assert.match(otherBody.detail, /auto-setup failed/);
       const otherFlow = await handlersByKey.get('GET /api/sdlc.flow')(
         new Request(`http://localhost/api/sdlc.flow?cwd=${encodeURIComponent(dirOther)}`),
       );
@@ -358,5 +386,212 @@ test('projectRootOf honors config, env, and cwd fallbacks', async () => {
       else process.env.SDLC_PROJECT_ROOT = prev;
     }
     assert.ok(seen.length >= 7);
+  } finally { cleanup(dir); }
+});
+
+// ── the no-init contract at the panel surface (F.4) ──────────────────────────
+
+/** Register the plugin against a fake host, capturing route fetchers. */
+async function registerCaptured(plugin, config = {}) {
+  const handlersByKey = new Map();
+  const ctx = {
+    get: (name) => name === 'agentDefaultModel'
+      ? { currentSelection: () => ({ provider: 'deepseek-account', model: 'deepseek-flash', reasoningEffort: 'high' }) }
+      : undefined,
+    connection: { fetch: { register: (r) => handlersByKey.set(`${r.methods[0]} ${r.path}`, r.fetch) } },
+    logger: { warn() {} },
+  };
+  const report = plugin.registerRoutes(ctx, config);
+  return { handlersByKey, report };
+}
+
+test('the first panel request bootstraps the workspace with the Harness route', async () => {
+  const plugin = await core.uiPlugin();
+  const dir = scaffold(); // markers, but no .sdlc — a workspace never initialised
+  try {
+    const { handlersByKey } = await registerCaptured(plugin, {});
+    assert.equal(existsSync(join(dir, '.sdlc')), false, 'precondition: nothing initialised');
+
+    const res = await handlersByKey.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    assert.equal(res.status, 200, 'opening the panel on a fresh workspace bootstraps it');
+    const body = await res.json();
+    assert.equal(body.ok, true);
+
+    // The materialised config routes every tier at the Harness's signed-in
+    // model (the live service selection), so no provider key is ever needed.
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')));
+    const config = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.match(config, /model: deepseek-flash/);
+    assert.match(config, /reasoningEffort: high/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+    assert.match(config, /unknown: true/);
+
+    // Settings shows the same live route on the bootstrapped project.
+    const cfgRes = await handlersByKey.get('GET /api/sdlc.config')(
+      new Request(`http://localhost/api/sdlc.config?cwd=${encodeURIComponent(dir)}`),
+    );
+    const cfgBody = await cfgRes.json();
+    assert.equal(cfgBody.exists, true);
+    assert.equal(cfgBody.hostModel.provider, 'deepseek-account');
+    assert.equal(cfgBody.validation.ok, true);
+
+    // One click adopts the same route into the (already adopted) config —
+    // idempotent, and the write fence is untouched: POST config never
+    // bootstraps a DIFFERENT workspace by itself.
+    const adoptRes = await handlersByKey.get('POST /api/sdlc.host')(
+      new Request(`http://localhost/api/sdlc.host?cwd=${encodeURIComponent(dir)}`, { method: 'POST', body: '{}' }),
+    );
+    assert.equal(adoptRes.status, 200);
+    assert.equal((await adoptRes.json()).ok, true);
+  } finally { cleanup(dir); }
+});
+
+test('bootstrap failure is actionable and recovers without a host restart', async () => {
+  const plugin = await core.uiPlugin();
+  const dir = tempDir('sdlc-ui-recover-'); // no stack marker: undescribable
+  try {
+    // Hermetic route via the row-config override (no live service, no DSH_HOME).
+    const { handlersByKey } = await registerCaptured(plugin, {
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+
+    const first = await handlersByKey.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    assert.equal(first.status, 404);
+    const firstBody = await first.json();
+    assert.equal(firstBody.error, 'NO_PROJECT', 'the guided state remains for genuine failures');
+    assert.match(firstBody.detail, /auto-setup failed/);
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false, 'no guessed config');
+
+    // The user adds a stack marker; the very next request succeeds —
+    // failures are not memoised, so no host restart is needed.
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+    const second = await handlersByKey.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    assert.equal(second.status, 200);
+    assert.equal((await second.json()).ok, true);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')));
+    assert.match(readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8'), /deepseek-account/);
+  } finally { cleanup(dir); }
+});
+
+test('bootstrap never rewrites a config the user already authored', async () => {
+  const plugin = await core.uiPlugin();
+  const dir = scaffold();
+  try {
+    const { handlersByKey } = await registerCaptured(plugin, {
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    // First touch bootstraps with the route…
+    await handlersByKey.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    const configPath = join(dir, '.sdlc', 'config.yml');
+    // …then the user edits their config (here: their own tier choice).
+    writeFileSync(configPath, 'observability:\n  logLevel: debug\n');
+    // A different live route and a panel reload must not clobber the file.
+    const { handlersByKey: reloaded } = await registerCaptured(plugin, {
+      hostModel: { provider: 'deepseek-official', model: 'deepseek-reasoner' },
+    });
+    await reloaded.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    assert.equal(readFileSync(configPath, 'utf8'), 'observability:\n  logLevel: debug\n');
+    // Changing the route is the explicit Settings action, and it works.
+    const adopt = await reloaded.get('POST /api/sdlc.host')(
+      new Request(`http://localhost/api/sdlc.host?cwd=${encodeURIComponent(dir)}`, { method: 'POST', body: '{}' }),
+    );
+    assert.equal(adopt.status, 200);
+    assert.match(readFileSync(configPath, 'utf8'), /deepseek-reasoner/);
+  } finally { cleanup(dir); }
+});
+
+test('a config write cannot poison a workspace where auto-setup failed', async () => {
+  const plugin = await core.uiPlugin();
+  // No stack marker: the GET leaves the prepared tree behind but no config.
+  const dir = tempDir('sdlc-ui-leftover-');
+  try {
+    const { handlersByKey } = await registerCaptured(plugin, {
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    const get = await handlersByKey.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    assert.equal(get.status, 404);
+    assert.ok(existsSync(join(dir, '.sdlc')), 'precondition: the failed bootstrap left the tree');
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
+
+    // The write fence is the COMPLETED project, not the directory: a POST
+    // here must not wedge the done marker on an OpenAI-default config with
+    // no detected gates.
+    const post = await handlersByKey.get('POST /api/sdlc.config')(
+      new Request(`http://localhost/api/sdlc.config?cwd=${encodeURIComponent(dir)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'observability.logLevel', value: 'debug' }),
+      }),
+    );
+    assert.equal(post.status, 404);
+    assert.equal((await post.json()).error, 'NO_PROJECT');
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false, 'no config was written');
+
+    // And adoption refuses the same leftover (it is a config write too).
+    const adopt = await handlersByKey.get('POST /api/sdlc.host')(
+      new Request(`http://localhost/api/sdlc.host?cwd=${encodeURIComponent(dir)}`, { method: 'POST', body: '{}' }),
+    );
+    assert.equal(adopt.status, 404);
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
+  } finally { cleanup(dir); }
+});
+
+test('an unwritable workspace resolves into a response, never a rejected fetch', async () => {
+  const plugin = await core.uiPlugin();
+  const dir = scaffold();
+  try {
+    const { handlersByKey } = await registerCaptured(plugin, {
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    chmodSync(dir, 0o555); // a describable workspace the process cannot write
+    const res = await handlersByKey.get('GET /api/sdlc.status')(
+      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
+    );
+    assert.equal(res.status, 404, 'bootstrap failure resolves into the guided state');
+    const body = await res.json();
+    assert.equal(body.error, 'NO_PROJECT');
+    assert.match(body.detail, /auto-setup failed: this workspace is not writable/);
+  } finally {
+    chmodSync(dir, 0o755);
+    cleanup(dir);
+  }
+});
+
+test('no memo: a deleted .sdlc is re-bootstrapped by the very next request', async () => {
+  const plugin = await core.uiPlugin();
+  const dir = scaffold();
+  try {
+    const { handlersByKey } = await registerCaptured(plugin, {
+      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
+    });
+    const url = `http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`;
+    assert.equal((await handlersByKey.get('GET /api/sdlc.status')(new Request(url))).status, 200);
+
+    // `rm -rf .sdlc` between polls: the guard must not answer from a stale
+    // memo — the next GET re-bootstraps the real filesystem state.
+    rmSync(join(dir, '.sdlc'), { recursive: true, force: true });
+    const second = await handlersByKey.get('GET /api/sdlc.status')(new Request(url));
+    assert.equal(second.status, 200);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')), 'the deleted project was re-created');
+
+    // The mirror half: only the gitignored DB is removed (a `git clean`) —
+    // the panel heals it instead of 404ing forever behind a stale marker.
+    rmSync(join(dir, '.sdlc', 'sdlc.db'));
+    const third = await handlersByKey.get('GET /api/sdlc.status')(new Request(url));
+    assert.equal(third.status, 200);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')), 'the missing DB was repaired');
   } finally { cleanup(dir); }
 });

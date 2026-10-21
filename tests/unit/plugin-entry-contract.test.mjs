@@ -259,6 +259,7 @@ test('sdlc-ui activates under Cordis when connection is provided, and fails clos
     'GET /api/sdlc.metrics',
     'GET /api/sdlc.flow',
     'POST /api/sdlc.config',
+    'POST /api/sdlc.host',
   ]);
 
   // The regression: default-exporting apply (or forgetting inject) is fatal,

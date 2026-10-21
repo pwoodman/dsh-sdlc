@@ -99,11 +99,19 @@ test('debug trace prints the state path, and --json is parseable', () => {
   } finally { cleanup(dir); }
 });
 
-test('debug without a project reports NO_PROJECT (exit 1)', () => {
+test('debug on an undescribable workspace fails bootstrap (exit 1), never guessing', () => {
   const dir = tempDir('sdlc-cli-debug-empty-');
   try {
+    // The no-init contract: debug bootstraps on first touch like status, and a
+    // workspace with no stack marker fails closed with the actionable reason.
     assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: {} }), 1);
     assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: { json: true } }), 1);
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
+
+    // A describable workspace bootstraps, then reports its natural not-found.
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), 'x\n');
+    assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: {} }), 1);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')), 'debug bootstrapped the project');
   } finally { cleanup(dir); }
 });
 

@@ -17,7 +17,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT, core, tempDir, cleanup, makeRepo, run, git } from '../lib/helpers.mjs';
 
@@ -146,22 +146,240 @@ test('cli: init with no recognised stack marker exits 1 and never guesses', () =
 
 // ── status / tasks / explain ────────────────────────────────────────────────
 
-test('cli: status before init is non-fatal and points at `sdlc init`', () => {
+test('cli: status on a workspace it cannot describe is non-fatal and actionable', () => {
   const dir = tempDir();
   try {
     const json = sdlc(dir, ['status', '--json']);
-    assert.equal(json.status, 0, 'status without a project must still exit 0');
+    assert.equal(json.status, 0, 'status without a describable workspace must still exit 0');
     const report = parseJson(json);
     assert.equal(report.ok, false);
-    assert.equal(report.error, 'NO_PROJECT');
-    assert.match(report.detail, /sdlc init/);
+    assert.equal(report.error, 'BOOTSTRAP_FAILED');
+    assert.match(report.detail, /stack marker|never guesses/);
+    // Fail-closed: auto-setup never guesses a config or a DB.
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
+    assert.equal(existsSync(join(dir, '.sdlc', 'sdlc.db')), false);
 
     const human = sdlc(dir, ['status']);
     assert.equal(human.status, 0);
-    assert.match(human.stdout, /sdlc init/);
+    assert.match(human.stdout, /stack marker|never guesses/);
   } finally {
     cleanup(dir);
   }
+});
+
+test('cli: status bootstraps a fresh workspace — no init step, no API key', () => {
+  const repo = pnpmRepo();
+  try {
+    const json = sdlc(repo, ['status', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(json.status, 0, `${json.stdout}\n${json.stderr}`);
+    const report = parseJson(json);
+    assert.equal(report.ok, true, 'a describable workspace bootstraps itself on first touch');
+    assert.equal(report.bootstrapped, true);
+    assert.equal(report.tasks.total, 0);
+    assert.ok(existsSync(join(repo, '.sdlc', 'sdlc.db')), 'status materialised the DB');
+
+    // The bootstrapped config routes every tier at the Harness model, so a
+    // fresh user is never asked for an OpenAI/Anthropic key.
+    const config = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.match(config, /model: deepseek-flash/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+    assert.match(config, /unknown: true/);
+
+    // Idempotent: a second status is a no-op, not a second bootstrap.
+    const again = parseJson(sdlc(repo, ['status', '--json']));
+    assert.equal(again.ok, true);
+    assert.equal(again.bootstrapped, false);
+  } finally {
+    cleanup(repo);
+  }
+
+  // The spec-defaults escape hatch exists for deployments that route models
+  // some other way — but a READ command never writes the API-key-implying
+  // default; `sdlc init --no-host-model` is the explicit path.
+  const plain = pnpmRepo();
+  try {
+    const res = sdlc(plain, ['status', '--no-host-model', '--json']);
+    assert.equal(res.status, 2);
+    assert.match(res.stderr, /sdlc init --no-host-model/);
+    assert.equal(existsSync(join(plain, '.sdlc', 'config.yml')), false, 'no spec-default config written by a read');
+  } finally {
+    cleanup(plain);
+  }
+});
+
+test('cli: status repairs a DB-only half project instead of leaving spec defaults in effect', () => {
+  // An early `sdlc tasks` on a never-initialised workspace opens the sqlite DB
+  // on demand — a half project with no config.yml. Before the fix, status saw
+  // the DB, skipped bootstrap, and `config show` quietly served the merged
+  // OpenAI/Anthropic defaults: the exact key-implying config this feature
+  // exists to remove.
+  const repo = pnpmRepo();
+  try {
+    const tasks = sdlc(repo, ['tasks', '--json']);
+    assert.equal(tasks.status, 0, `${tasks.stdout}\n${tasks.stderr}`);
+    assert.ok(existsSync(join(repo, '.sdlc', 'sdlc.db')), 'precondition: the DB-only half state');
+    assert.equal(existsSync(join(repo, '.sdlc', 'config.yml')), false, 'precondition: no config yet');
+
+    const status = sdlc(repo, ['status', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(status.status, 0, `${status.stdout}\n${status.stderr}`);
+    const report = parseJson(status);
+    assert.equal(report.ok, true);
+    assert.equal(report.bootstrapped, true, 'the half project was completed, not treated as done');
+    const config = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+
+    // The EFFECTIVE tier route is the harness model — what actually routes
+    // work and could imply a key. (`config show` prints the defaults-merged
+    // view, so inert reference price rows may appear; the file itself has
+    // none, asserted above.)
+    const effective = sdlc(repo, ['config', 'get', 'tiers.cheap[0].provider', '--json']);
+    assert.equal(effective.stdout.trim(), '"deepseek-account"');
+    const elevated = sdlc(repo, ['config', 'get', 'tiers.elevated[0].model', '--json']);
+    assert.equal(elevated.stdout.trim(), '"deepseek-flash"');
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test('cli: status heals a project whose gitignored DB was removed', () => {
+  const repo = pnpmRepo();
+  try {
+    sdlc(repo, ['status', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    const configPath = join(repo, '.sdlc', 'config.yml');
+    const authored = readFileSync(configPath, 'utf8');
+    rmSync(join(repo, '.sdlc', 'sdlc.db')); // what `git clean -fdx` does
+    const healed = sdlc(repo, ['status', '--json']);
+    assert.equal(healed.status, 0, `${healed.stdout}\n${healed.stderr}`);
+    assert.equal(parseJson(healed).ok, true, 'the missing DB is recreated');
+    assert.ok(existsSync(join(repo, '.sdlc', 'sdlc.db')));
+    assert.equal(readFileSync(configPath, 'utf8'), authored, 'the authored config is untouched by the repair');
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test('cli: a failed bootstrap leaves the git repo unmutated', () => {
+  const repo = makeRepo({ 'README.md': '# no stack marker\n' });
+  try {
+    const res = sdlc(repo, ['status', '--json']);
+    assert.equal(res.status, 0, 'undescribable status stays non-fatal');
+    assert.equal(parseJson(res).error, 'BOOTSTRAP_FAILED');
+    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch from a failed read');
+    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation from a failed read');
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test('cli: init adopts the Harness model by default and can be told not to', () => {
+  const emptyHome = tempDir('sdlc-cli-dshhome-');
+  try {
+    const adopting = pnpmRepo();
+    try {
+      const res = sdlc(adopting, ['init', '--dsh-home', emptyHome, '--profile', 'none', '--json']);
+      assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+      const body = parseJson(res);
+      assert.equal(body.ok, true);
+      // No profile exists, so adoption lands on DSH's own base default —
+      // still the signed-in account family, never a second provider key.
+      assert.equal(body.hostModel.provider, 'deepseek-official');
+      assert.equal(body.hostModel.model, 'deepseek-flash');
+      assert.equal(body.hostModelApplied, true);
+      const config = readFileSync(join(adopting, '.sdlc', 'config.yml'), 'utf8');
+      assert.match(config, /provider: deepseek-official/);
+      assert.doesNotMatch(config, /provider: openai/);
+    } finally {
+      cleanup(adopting);
+    }
+
+    const humanRepo = pnpmRepo();
+    try {
+      const human = sdlc(humanRepo, ['init', '--dsh-home', emptyHome, '--profile', 'none']);
+      assert.equal(human.status, 0);
+      assert.match(human.stdout, /harness model: deepseek-official\/deepseek-flash/);
+      assert.match(human.stdout, /no API key/);
+
+      // A re-run preserves the existing config and must NOT claim adoption:
+      // nothing was written, so the banner stays silent (and the JSON reports
+      // hostModelApplied: false).
+      const rerun = sdlc(humanRepo, ['init', '--dsh-home', emptyHome, '--profile', 'none', '--json']);
+      assert.equal(rerun.status, 0);
+      const rerunBody = parseJson(rerun);
+      assert.equal(rerunBody.hostModelApplied, false, 'an existing config was preserved, not adopted');
+      assert.doesNotMatch(rerun.stdout, /no API key/);
+    } finally {
+      cleanup(humanRepo);
+    }
+
+    const spec = pnpmRepo();
+    try {
+      const res = sdlc(spec, ['init', '--no-host-model']);
+      assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+      assert.match(readFileSync(join(spec, '.sdlc', 'config.yml'), 'utf8'), /provider: openai/);
+    } finally {
+      cleanup(spec);
+    }
+
+    // Half a route is a usage error, not a silent discovery fallback.
+    const half = pnpmRepo();
+    try {
+      const res = sdlc(half, ['init', '--provider', 'only']);
+      assert.equal(res.status, 2);
+      assert.match(res.stderr, /--provider and --model must be given together/);
+    } finally {
+      cleanup(half);
+    }
+  } finally {
+    cleanup(emptyHome);
+  }
+});
+
+test('cli: config use-host-model adopts the route without a provider key', () => {
+  const repo = pnpmRepo();
+  try {
+    init(repo);
+    const adopted = sdlc(repo, ['config', 'use-host-model', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(adopted.status, 0, `${adopted.stdout}\n${adopted.stderr}`);
+    const body = parseJson(adopted);
+    assert.equal(body.ok, true);
+    assert.equal(body.host.provider, 'deepseek-account');
+    assert.equal(body.host.model, 'deepseek-flash');
+
+    const validate = sdlc(repo, ['config', 'validate']);
+    assert.equal(validate.status, 0, `${validate.stdout}${validate.stderr}`);
+    assert.match(validate.stdout, /declared unknown/);
+    assert.equal(
+      sdlc(repo, ['config', 'get', 'tiers.elevated[0].provider', '--json']).stdout.trim(),
+      '\"deepseek-account\"',
+    );
+  } finally {
+    cleanup(repo);
+  }
+
+  // The adoption command needs no prior init: on a describable workspace it
+  // materialises .sdlc/ and adopts in one shot.
+  const fresh = pnpmRepo();
+  try {
+    const res = sdlc(fresh, ['config', 'use-host-model', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.equal(parseJson(res).ok, true);
+    assert.ok(existsSync(join(fresh, '.sdlc', 'sdlc.db')), 'adoption bootstrapped the project');
+    const config = readFileSync(join(fresh, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+  } finally { cleanup(fresh); }
+
+  // A workspace nothing can describe still fails closed, now with the real
+  // reason instead of a step the user should not need.
+  const undescribable = tempDir('sdlc-cli-noinit-');
+  try {
+    const res = sdlc(undescribable, ['config', 'use-host-model']);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /auto-setup failed/);
+    assert.match(res.stderr, /stack marker|never guesses/);
+  } finally { cleanup(undescribable); }
 });
 
 test('cli: status, tasks and explain reflect library-created state', async () => {

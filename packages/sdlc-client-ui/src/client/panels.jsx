@@ -1554,10 +1554,13 @@ function ConfigGroup({ group, config, drafts, errors, saving, savedPath, onDraft
   );
 }
 
-export function SettingsPanel({ snapshot, t, cwd, onReload, onSave }) {
+export function SettingsPanel({ snapshot, t, cwd, onReload, onSave, onAdoptHostModel }) {
   const [drafts, setDrafts] = useState({});
   const [errors, setErrors] = useState({});
   const [savedPath, setSavedPath] = useState(null);
+  const [adopting, setAdopting] = useState(false);
+  const [adoptError, setAdoptError] = useState(null);
+  const [adopted, setAdopted] = useState(false);
   if (snapshot.phase === 'loading') return <PanelLoading label={t('config.loading')} />;
   if (snapshot.phase === 'missing') {
     if (snapshot.code === 'NO_PROJECT') return <NoProjectState t={t} cwd={cwd} onRetry={onReload} />;
@@ -1571,7 +1574,15 @@ export function SettingsPanel({ snapshot, t, cwd, onReload, onSave }) {
       </section>
     );
   }
-  const { config, validation } = snapshot.data;
+  const { config, validation, hostModel } = snapshot.data;
+  const adopt = async () => {
+    setAdopting(true);
+    setAdoptError(null);
+    const res = await onAdoptHostModel();
+    if (res?.available === false) setAdoptError(res.reason);
+    else setAdopted(true);
+    setAdopting(false);
+  };
   const setDraft = (path, value) => {
     setDrafts((current) => ({ ...current, [path]: value }));
     setErrors((current) => ({ ...current, [path]: null }));
@@ -1596,6 +1607,22 @@ export function SettingsPanel({ snapshot, t, cwd, onReload, onSave }) {
         <RefreshButton onClick={onReload} t={t} />
       </header>
       <p className="sdlc-settings-intro">{t('config.intro')}</p>
+      {hostModel && (
+        <section className="sdlc-host-model" aria-label={t('config.hostModel')}>
+          <div className="sdlc-host-model-head">
+            <span className="sdlc-overline">{t('config.hostModel')}</span>
+            <span className="sdlc-code">{hostModel.provider}/{hostModel.model}</span>
+          </div>
+          <p className="sdlc-muted">{t('config.hostModelHint')}</p>
+          <div className="sdlc-host-model-actions">
+            <button type="button" className="sdlc-btn sdlc-btn-primary" onClick={adopt} disabled={adopting}>
+              {adopting ? t('action.saving') : t('config.useHostModel')}
+            </button>
+            {adopted && !adopting && <span className="sdlc-config-saved" role="status">{t('config.hostModelApplied')}</span>}
+          </div>
+          {adoptError && <span role="alert" className="sdlc-config-error">{adoptError}</span>}
+        </section>
+      )}
       {!validation.ok && (
         <div role="alert" className="sdlc-warn">
           <b>{fill(t(validation.errors.length === 1 ? 'config.invalidOne' : 'config.invalid'), { count: validation.errors.length })}</b>

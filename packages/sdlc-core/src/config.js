@@ -194,13 +194,20 @@ export function validateConfig(config, { env = process.env, projectRoot = proces
     }
   }
 
-  // 3. price table completeness
+  // 3. price table completeness. A missing entry is still an error (the
+  // plugin must not guess a price); an entry explicitly marked `unknown` is
+  // accepted because DSH exposes tokens but no currency metadata. Cost then
+  // renders as "—" and never as a fabricated zero.
   for (const [tier, list] of Object.entries(tiers)) {
     for (const entry of list ?? []) {
       const key = modelKey(entry);
       const price = config.pricing?.[key];
-      if (!price || typeof price.input !== 'number' || typeof price.output !== 'number') {
+      if (!price) {
         errors.push(`pricing: ${key} (tier ${tier}) has no price entry — init fails rather than guessing`);
+      } else if (price.unknown === true || price.input == null || price.output == null) {
+        warnings.push(`pricing: ${key} (tier ${tier}) is declared unknown — cost estimates render as "—"`);
+      } else if (typeof price.input !== 'number' || typeof price.output !== 'number') {
+        errors.push(`pricing: ${key} (tier ${tier}) has invalid input/output prices`);
       }
     }
   }

@@ -12,7 +12,7 @@
 
 import {
   SDLC_STATUS_ROUTE, SDLC_BOARD_ROUTE, SDLC_TASK_ROUTE, SDLC_COMPARE_ROUTE,
-  SDLC_CONFIG_ROUTE, SDLC_METRICS_ROUTE, SDLC_FLOW_ROUTE,
+  SDLC_CONFIG_ROUTE, SDLC_HOST_ROUTE, SDLC_METRICS_ROUTE, SDLC_FLOW_ROUTE,
   isStatusPayload, isBoardPayload, isConfigPayload, isFlowPayload,
 } from '../routes.js';
 
@@ -135,6 +135,15 @@ export async function writeConfig(path, value, cwd) {
   return postJson(withCwd(SDLC_CONFIG_ROUTE, cwd), { path, value });
 }
 
+/**
+ * Adopt the Harness's current provider/model as the orchestrator tiers.
+ * Explicit user action; no credential or API key is sent.
+ * @param {string} [cwd] - active session workspace.
+ */
+export async function adoptHostModel(cwd) {
+  return postJson(withCwd(SDLC_HOST_ROUTE, cwd), {});
+}
+
 export async function fetchMetrics(cwd) {
   try {
     const res = await fetch(`/${withCwd(SDLC_METRICS_ROUTE, cwd)}`, { headers: { accept: 'text/plain' } });
@@ -151,11 +160,16 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
   if (typeof cwd === 'string' && cwd !== '') params.set('cwd', cwd);
   const res = await getJson(`${SDLC_FLOW_ROUTE}?${params}`);
   if (!res.available) {
-    // A 404 with NO_PROJECT is the expected pre-init state. Any other 404 needs
-    // a probe: "the panel is newer" is only one explanation, and the running
+    // A 404 NO_PROJECT now means auto-setup genuinely failed (the only
+    // remaining cause: no recognised stack marker). Any other 404 needs a
+    // probe: "the panel is newer" is only one explanation, and the running
     // Desktop app is the common case (it keeps the old host loaded).
     if (res.status === 404 && res.code === 'NO_PROJECT') {
-      return { available: false, code: 'NO_PROJECT', reason: 'no SDLC project — run `sdlc init` first' };
+      return {
+        available: false,
+        code: 'NO_PROJECT',
+        reason: 'no SDLC project — auto-setup failed; `sdlc init` prints the reason',
+      };
     }
     if (res.status === 404) {
       const probe = await probeStatus(cwd);
@@ -199,7 +213,7 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
  * default export stays for source-level ergonomics; the bundler strips it.
  */
 export const api = {
-  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, fetchMetrics, fetchFlow,
+  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, adoptHostModel, fetchMetrics, fetchFlow,
   clientVersion,
 };
 

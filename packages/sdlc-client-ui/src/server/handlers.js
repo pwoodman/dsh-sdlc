@@ -15,9 +15,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Runtime } from '../../../sdlc-core/src/runtime.js';
 import { loadConfig, validateConfig, deepMerge, dumpConfigYaml } from '../../../sdlc-core/src/config.js';
+import { parseYaml } from '../../../sdlc-core/src/yaml-lite.js';
 import { setPath } from '../../../sdlc-cli/src/cli.mjs';
 import { compareRuns } from '../../../sdlc-core/src/debug.js';
 import { collectMetricsSnapshot, renderPrometheus } from '../../../sdlc-core/src/metrics.js';
+import { hostModelAdoption } from '../../../sdlc-core/src/host-model.js';
 
 /**
  * The host build serving this payload. The panel compares it with its own
@@ -34,7 +36,9 @@ function pluginVersion() {
 }
 
 function noProject(projectRoot) {
-  return { status: 404, body: { ok: false, error: 'NO_PROJECT', detail: 'run `sdlc init` first', root: projectRoot, pluginVersion: pluginVersion() } };
+  // Pure-handler guard: the plugin layer auto-bootstraps before these run, so
+  // reaching this means setup failed or the project vanished mid-session.
+  return { status: 404, body: { ok: false, error: 'NO_PROJECT', detail: 'no complete .sdlc project — auto-setup did not run here; `sdlc init` prints the reason', root: projectRoot, pluginVersion: pluginVersion() } };
 }
 
 function openRuntime(projectRoot) {
@@ -184,13 +188,67 @@ export function handleCompare(projectRoot, query = {}) {
   } finally { closeRuntime(runtime); }
 }
 
-/** GET /api/sdlc.config — parsed config + validation result. */
-export function handleConfigGet(projectRoot) {
+/** Public projection of the host model (never the local profile path). */
+function publicHostModel(hostModel) {
+  if (!hostModel || typeof hostModel.provider !== 'string' || typeof hostModel.model !== 'string') return null;
+  return {
+    provider: hostModel.provider,
+    model: hostModel.model,
+    reasoningEffort: hostModel.reasoningEffort ?? null,
+  };
+}
+
+/** GET /api/sdlc.config — parsed config + validation result + host model. */
+export function handleConfigGet(projectRoot, hostModel = null) {
   const configPath = join(projectRoot, '.sdlc', 'config.yml');
   const exists = existsSync(configPath);
   const { config } = loadConfig(projectRoot, { configPath });
   const validation = validateConfig(config, { projectRoot });
-  return { status: 200, body: { ok: true, exists, path: configPath, config, validation } };
+  return {
+    status: 200,
+    body: { ok: true, exists, path: configPath, config, validation, hostModel: publicHostModel(hostModel) },
+  };
+}
+
+/**
+ * POST /api/sdlc.host — adopt the Harness's current provider/model.
+ *
+ * Explicit user action (the Settings button): rewrite the three tiers to the
+ * route DSH already resolves and record an explicit "unknown" price. No API
+ * key is introduced; the worker/subagent uses the host's credential store.
+ */
+export function handleHostAdopt(projectRoot, hostModel = null) {
+  // Adoption is a config write: it requires a complete project (config.yml),
+  // so it can never wedge the done marker on a bootstrap-failed leftover.
+  // The plugin guard bootstraps before this runs; direct callers get the
+  // same fail-closed answer.
+  if (!existsSync(join(projectRoot, '.sdlc', 'config.yml'))) return noProject(projectRoot);
+  const host = publicHostModel(hostModel);
+  if (!host) {
+    return {
+      status: 409,
+      body: { ok: false, error: 'HOST_MODEL_UNAVAILABLE', detail: 'the Harness did not report a default provider/model' },
+    };
+  }
+  const configPath = join(projectRoot, '.sdlc', 'config.yml');
+  const { config: current } = loadConfig(projectRoot, { configPath });
+  // Defaults fill missing SECTIONS; the price table comes from the user's FILE
+  // plus the adopted route — adoption never re-introduces legacy rows that no
+  // tier references (the same rule as the CLI's use-host-model).
+  const fileConfig = existsSync(configPath) ? (parseYaml(readFileSync(configPath, 'utf8')) ?? {}) : {};
+  const adoption = hostModelAdoption(host);
+  const candidate = {
+    ...current,
+    tiers: adoption.tiers,
+    pricing: {
+      ...(typeof fileConfig.pricing === 'object' && fileConfig.pricing !== null ? fileConfig.pricing : {}),
+      ...adoption.pricing,
+    },
+  };
+  const validation = validateConfig(candidate, { projectRoot });
+  if (!validation.ok) return { status: 400, body: { ok: false, error: 'VALIDATION_FAILED', validation } };
+  writeFileSync(configPath, dumpConfigYaml(candidate));
+  return { status: 200, body: { ok: true, hostModel: host, config: candidate, validation } };
 }
 
 function coerceBody(value) {
@@ -209,8 +267,11 @@ function coerceBody(value) {
  */
 export function handleConfigPost(projectRoot, body = {}) {
   // The request may name a session workspace (`?cwd=`). Never create `.sdlc`
-  // content in a directory that is not already an SDLC project.
-  if (!existsSync(join(projectRoot, '.sdlc'))) return noProject(projectRoot);
+  // content in a directory that is not already a COMPLETE SDLC project: gate
+  // on config.yml, not the directory — a failed auto-bootstrap leaves the
+  // tree behind, and writing a config there would wedge the done marker on
+  // an OpenAI-default file with no detected gates.
+  if (!existsSync(join(projectRoot, '.sdlc', 'config.yml'))) return noProject(projectRoot);
   const { path, value } = body;
   if (typeof path !== 'string' || !path) {
     return { status: 400, body: { ok: false, error: 'MISSING_PATH', detail: 'body { path, value } is required' } };
@@ -240,7 +301,7 @@ export function handleConfigPost(projectRoot, body = {}) {
 /** GET /api/sdlc.metrics — Prometheus exposition of the live snapshot. */
 export function handleMetrics(projectRoot) {
   const dbPath = join(projectRoot, '.sdlc', 'sdlc.db');
-  if (!existsSync(dbPath)) return { status: 404, body: 'no project — run `sdlc init` first' };
+  if (!existsSync(dbPath)) return { status: 404, body: 'no project — auto-setup did not run here; `sdlc init` prints the reason' };
   const { runtime } = openRuntime(projectRoot);
   try {
     const text = renderPrometheus(collectMetricsSnapshot(runtime));
