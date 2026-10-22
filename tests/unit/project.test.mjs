@@ -149,19 +149,54 @@ test('ensureProject is a no-op when the DB exists and never rewrites an authored
   } finally { cleanup(repo); }
 });
 
-test('ensureProject fails closed with the initProject reason on an undescribable workspace', () => {
-  const repo = makeRepo({ 'README.md': '# no stack marker\n' });
+test('ensureProject sets up a markerless workspace with manual gates instead of failing', async () => {
+  // The user-facing contract: a plain folder (no lockfile marker) must not be
+  // locked out of the product. Auto-setup proceeds with an HONEST config —
+  // detection: manual, empty gates — while explicit `initProject` (below)
+  // still refuses to guess.
+  const repo = makeRepo({ 'README.md': '# nothing here\n' });
   try {
     const result = project.ensureProject({
       projectRoot: repo,
       hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
     });
+    assert.equal(result.ok, true, 'a markerless workspace is still usable');
+    assert.equal(result.existed, false);
+    assert.equal(result.stack, null);
+    assert.equal(result.manual, true);
+    assert.deepEqual(result.gateCommands, {});
+    assert.deepEqual(result.bootstrap, []);
+
+    const configText = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(configText, /detection: manual/);
+    assert.match(configText, /gates: \{\}/);
+    assert.match(configText, /provider: deepseek-account/);
+    assert.doesNotMatch(configText, /openai|anthropic/);
+    // It is a real setup, so the integration machinery is prepared.
+    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), 'sdlc/integration');
+
+    // The vacuous-verification state is VISIBLE, not silent.
+    const cfg = await core.config();
+    const { config } = cfg.loadConfig(repo);
+    const validation = cfg.validateConfig(config, { projectRoot: repo });
+    assert.equal(validation.ok, true);
+    assert.ok(validation.warnings.some((w) => /manual and no gates are authored/.test(w)),
+      'validation warns about empty manual gates');
+  } finally { cleanup(repo); }
+});
+
+test('initProject (the explicit init) still refuses to guess gates on a markerless workspace', () => {
+  const repo = makeRepo({ 'README.md': '# nothing here\n' });
+  try {
+    const result = project.initProject({ projectRoot: repo });
     assert.equal(result.ok, false);
     assert.equal(result.error, 'UNRECOGNISED_STACK');
     assert.match(result.message, /never guesses/);
-    // Fail-closed: the tree may be prepared, but no config or DB is written.
-    assert.equal(existsSync(join(repo, '.sdlc', 'config.yml')), false);
-    assert.equal(existsSync(join(repo, '.sdlc', 'sdlc.db')), false);
+    // The failure path leaves the git repo untouched: no branch, no gitignore.
+    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch from a failed init');
+    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation from a failed init');
+    assert.equal(existsSync(join(repo, '.sdlc', 'config.yml')), false, 'no guessed config');
+    assert.equal(result.steps.some((s) => s.step === 'gate-detection'), false);
   } finally { cleanup(repo); }
 });
 
@@ -210,19 +245,20 @@ test('ensureProject recreates a removed DB while preserving the authored config'
   } finally { cleanup(repo); }
 });
 
-test('a failed bootstrap never mutates the git repository', () => {
-  // Auto-setup runs on reads (a panel's first GET, `sdlc status`); a
-  // workspace it cannot describe must not gain an integration branch or a
-  // rewritten .gitignore. Only the (gitignored) .sdlc tree is prepared.
-  const repo = makeRepo({ 'README.md': '# no stack marker\n' });
+test('initProject (the explicit init) still refuses to guess gates on a markerless workspace', () => {
+  const repo = makeRepo({ 'README.md': '# nothing here\n' });
   try {
-    const result = project.ensureProject({
-      projectRoot: repo,
-      hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
-    });
+    const result = project.initProject({ projectRoot: repo });
     assert.equal(result.ok, false);
     assert.equal(result.error, 'UNRECOGNISED_STACK');
-    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch');
-    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation');
+    assert.match(result.message, /never guesses/);
+    // The failure path leaves the git repo untouched: no branch, no gitignore.
+    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch from a failed init');
+    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation from a failed init');
+    assert.equal(existsSync(join(repo, '.sdlc', 'config.yml')), false, 'no guessed config');
+    assert.equal(result.steps.some((s) => s.step === 'gate-detection'), false);
   } finally { cleanup(repo); }
 });
+// (the former "failed bootstrap never mutates git" case is now the explicit
+// init contract above — auto-setup no longer fails on markers, it succeeds
+// with manual gates, and a successful setup legitimately prepares the branch)

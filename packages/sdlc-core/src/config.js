@@ -212,6 +212,15 @@ export function validateConfig(config, { env = process.env, projectRoot = proces
     }
   }
 
+  // 3b. manual verification with no gates is valid but vacuous — it must stay
+  // visible, because auto-setup writes exactly this for a workspace with no
+  // recognised stack marker (the alternative was locking such workspaces out
+  // of the product entirely).
+  if (config.verification?.detection === 'manual'
+    && Object.keys(config.verification?.gates ?? {}).length === 0) {
+    warnings.push('verification: detection is manual and no gates are authored — task verification passes vacuously until you author verification.gates');
+  }
+
   // 4. provider keys — only relevant for env-key deployments
   const providers = new Set();
   for (const list of Object.values(tiers)) for (const e of list ?? []) providers.add(e.provider);

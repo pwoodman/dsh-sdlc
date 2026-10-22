@@ -463,17 +463,17 @@ export function handleFlow(projectRoot, query = {}) {
     afterEventId: intParam(query.after, 0, 0, Number.MAX_SAFE_INTEGER),
     escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
   });
-  // A DB with no project row for THIS workspace is the same product state as
-  // no DB at all: the panel shows its guided state (create a project with
-  // `/sdlc run`) instead of an empty "unavailable" header or a foreign
-  // project's DAG.
+  // A DB with no project row for THIS workspace is NOT a setup failure — the
+  // workspace is ready, it just has no project yet. The distinct code lets
+  // the panel say so ("create one with `/sdlc run`") instead of showing the
+  // auto-setup-failed card for a healthy, empty workspace.
   if (!model.project.available) {
     return {
       status: 404,
       body: {
         ok: false,
-        error: 'NO_PROJECT',
-        detail: model.project.reason ?? 'no project for this workspace — create one with `/sdlc run`',
+        error: 'NO_PROJECT_ROW',
+        detail: `${model.project.reason ? `${model.project.reason} — ` : ''}create one with \`/sdlc run\` in the lead session`,
         root: projectRoot,
         pluginVersion: pluginVersion(),
       },

@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current release: 1.1.0.** Install from this checkout
+> **Current release: 1.1.1.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -157,7 +157,7 @@ it upgrades an existing install instead of requiring an uninstall first.
 ```sh
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --only all          # lead + worker + probe
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --tag beta          # newest prerelease
-npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 1.1.0
+npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --version 1.1.1
 npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install --check --json      # no changes
 ```
 
@@ -257,12 +257,12 @@ Or fill `@patwoodman/dsh-sdlc-flow` into the **Add plugin** wizard on the Plugin
 > the last day can resolve to the *previous* version. Prefer the installer
 > above; it pins the exact version and writes the exemption for you. For a
 > manual install, pin it exactly
-> (`@patwoodman/dsh-sdlc-flow@1.1.0`) and add **one list item per pattern** to
+> (`@patwoodman/dsh-sdlc-flow@1.1.1`) and add **one list item per pattern** to
 > the profile's `pnpm-workspace.yaml`:
 >
 > ```yaml
 > minimumReleaseAgeExclude:
->   - '@patwoodman/dsh-sdlc-flow@1.1.0'
+>   - '@patwoodman/dsh-sdlc-flow@1.1.1'
 > ```
 >
 > A combined value such as `pkg@a || pkg@b` is not a valid pnpm pattern (it is
@@ -299,7 +299,7 @@ you sign in to npm — `npm login` (GitHub OAuth works) or `npm adduser`. A free
 **org** (`@acme-team`) works too: <https://www.npmjs.com/org/create>. Then:
 
 ```sh
-git tag v1.1.0 && git push origin v1.1.0
+git tag v1.1.1 && git push origin v1.1.1
 ```
 
 The **Release** workflow verifies the tree, builds the tarball, publishes the
@@ -443,15 +443,27 @@ is required at all. The guarantees:
   `sdlc tasks` opens the DB before any config exists; a `git clean -fdx`
   removes the gitignored DB and keeps the config — the next touch repairs
   the missing half without touching the authored one.
-- **Failure is actionable, never a mutation.** A workspace with no recognised
-  stack marker cannot be described, so auto-setup fails closed — the panel
-  explains why and `sdlc init` prints the same diagnosis; nothing is
-  guessed, and the user's git repository is left untouched (no integration
-  branch from a failed read). A failed bootstrap's leftover tree cannot be
-  poisoned: config writes and adoption require a complete project. Even an
-  unwritable workspace resolves into the guided state, never an error. The
-  next request retries, so fixing the workspace recovers without a host
-  restart.
+- **No workspace is a dead end.** A workspace without a recognised stack
+  marker (a plain folder, a Node project with only `package.json`, a
+  `requirements.txt` Python project) still bootstraps — with
+  `verification.detection: manual` and empty gates, the artifact the spec's
+  own failure message prescribes. `sdlc config validate` visibly warns that
+  verification passes vacuously until gates are authored, and the explicit
+  `sdlc init` still refuses to guess. npm detection matches the spec's F.5
+  table: `package-lock.json` is the npm marker — a bare `package.json` no
+  longer produces `npm ci` commands that can never run.
+- **Failure is actionable, never a mutation.** When auto-setup genuinely
+  fails (an unwritable workspace, an unexpected error), the panel explains
+  why with the host's real reason, the CLI prints a clean
+  `BOOTSTRAP_FAILED` report, and nothing is guessed. A failed explicit init
+  leaves the user's git repository untouched (no integration branch, no
+  .gitignore); auto-setup never writes a `.gitignore` outside a git
+  repository. A leftover tree cannot be poisoned: config writes and
+  adoption require a complete project. The next request retries, so fixing
+  the workspace recovers without a host restart.
+- **"No project yet" is not a failure.** A set-up workspace with no project
+  row shows an accurate empty state — "create a project with `/sdlc run`" —
+  not a setup-failure card.
 
 **Workers use the same route and the same credential store.** In-process
 subagents already run on the parent route, so delegation needs no key of its
@@ -466,9 +478,9 @@ Settings if you want cost estimates.
 
 ## Status
 
-`gate:P` and `gate:M0`…`gate:M8` plus `gate:Q` pass (11/11); 902 offline tests
+`gate:P` and `gate:M0`…`gate:M8` plus `gate:Q` pass (11/11); 906 offline tests
 pass across unit/contract/integration/fault/adversarial, 9/10 e2e (1 skipped
-by design), 86/86 eval harness. The 1.1.0 packed tarballs install, boot the
+by design), 86/86 eval harness. The 1.1.1 packed tarballs install, boot the
 probe, create a lead session and uninstall cleanly; the no-clone tarball also
 installs end-to-end in a fresh `DSH_HOME` and passes M0. `doctor` passes with 0
 errors and 0 warnings on a configured host. See the validation report §1 for the two

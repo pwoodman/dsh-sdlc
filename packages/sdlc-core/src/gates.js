@@ -29,7 +29,11 @@ export const STACKS = {
     },
   },
   npm: {
-    markers: ['package-lock.json', 'package.json'],
+    // package-lock.json ONLY: `npm ci` requires the lockfile, so a bare
+    // package.json must not be "detected" as npm — that would write gate
+    // commands that can never run (the guessing F.5 forbids). A
+    // package.json-only project gets manual gates from auto-setup instead.
+    markers: ['package-lock.json'],
     bootstrap: ['npm', 'ci'],
     commands: { unit: ['npm', 'test'], build: ['npm', 'run', 'build'] },
   },
@@ -50,7 +54,8 @@ export const STACKS = {
   },
 };
 
-/** Detection order matters: pnpm before npm (both see package.json). */
+/** Detection order matters: pnpm before npm, so a workspace holding both
+ *  lockfiles resolves to the stricter package manager. */
 export const STACK_ORDER = ['pnpm', 'npm', 'python', 'go', 'cargo'];
 
 export function detectStack(presentFiles = []) {

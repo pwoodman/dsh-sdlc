@@ -23,7 +23,11 @@ const okRunner = () => ({ status: 0, stdout: 'ok', stderr: '' });
 test('detectStack: each stack marker maps to its stack, order pnpm before npm', () => {
   assert.equal(gates.detectStack(['pnpm-lock.yaml']), 'pnpm');
   assert.equal(gates.detectStack(['package-lock.json']), 'npm');
-  assert.equal(gates.detectStack(['package.json']), 'npm');
+  // Spec F.5 table: `package-lock.json` is the npm marker. A bare
+  // package.json is NOT — `npm ci` requires the lockfile, so detecting npm
+  // from package.json alone would write gate commands that can never run.
+  // Such a workspace gets manual gates from auto-setup instead.
+  assert.equal(gates.detectStack(['package.json']), null, 'bare package.json is not an npm marker (spec F.5)');
   assert.equal(gates.detectStack(['pyproject.toml']), 'python');
   assert.equal(gates.detectStack(['setup.py']), 'python');
   assert.equal(gates.detectStack(['go.mod']), 'go');

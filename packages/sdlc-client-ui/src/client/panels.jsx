@@ -957,8 +957,7 @@ function Diagnostics({ snapshot, t }) {
   );
 }
 
-function NoProjectState({ t, cwd, onRetry }) {
-  return (
+function NoProjectState({ t, cwd, onRetry, reason }) {  return (
     <div className="sdlc-flow sdlc-flow-unavailable">
       <EmptyState
         tone="ready"
@@ -966,6 +965,9 @@ function NoProjectState({ t, cwd, onRetry }) {
         title={t('flow.noProjectTitle')}
         body={t('flow.noProjectBody')}
       >
+        {reason && (
+          <p className="sdlc-empty-reason" role="note">{reason}</p>
+        )}
         <div className="sdlc-empty-command">
           <div className="sdlc-empty-label">{t('flow.noProjectHint')}</div>
           <code>{INIT_COMMAND}</code>
@@ -984,10 +986,45 @@ function NoProjectState({ t, cwd, onRetry }) {
   );
 }
 
+/** A workspace that IS set up but has no project row yet — the healthy
+ *  empty state, distinct from an auto-setup failure. */
+function NoProjectRowState({ t, cwd, onRetry, reason }) {
+  return (
+    <div className="sdlc-flow sdlc-flow-unavailable">
+      <EmptyState
+        tone="ready"
+        icon="○"
+        title={t('flow.noProjectRowTitle')}
+        body={t('flow.noProjectRowBody')}
+      >
+        {reason && reason !== t('flow.noProjectRowBody') && (
+          <p className="sdlc-empty-reason" role="note">{reason}</p>
+        )}
+        <div className="sdlc-empty-command">
+          <div className="sdlc-empty-label">{t('flow.noProjectRowHint')}</div>
+          <code>/sdlc run</code>
+        </div>
+        {cwd && (
+          <div className="sdlc-empty-workspace">
+            {t('flow.workspace')} <code title={cwd}>{cwd}</code>
+          </div>
+        )}
+        <div className="sdlc-empty-actions">
+          <CopyButton text="/sdlc run" label={t('action.copyCommand')} copiedLabel={t('action.copied')} />
+          <button type="button" className="sdlc-btn sdlc-btn-primary" onClick={onRetry}>{t('action.retry')}</button>
+        </div>
+      </EmptyState>
+    </div>
+  );
+}
+
 function FlowUnavailable({ snapshot, t, cwd, onRetry }) {
   const code = snapshot.code;
+  if (code === 'NO_PROJECT_ROW') {
+    return <NoProjectRowState t={t} cwd={cwd} onRetry={onRetry} reason={snapshot.reason} />;
+  }
   if (code === 'NO_PROJECT' || /no SDLC project/i.test(snapshot.reason ?? '')) {
-    return <NoProjectState t={t} cwd={cwd} onRetry={onRetry} />;
+    return <NoProjectState t={t} cwd={cwd} onRetry={onRetry} reason={snapshot.reason} />;
   }
   const hostOutdated = code === 'HOST_OUTDATED';
   const hostMissing = code === 'HOST_MISSING';
@@ -1563,7 +1600,7 @@ export function SettingsPanel({ snapshot, t, cwd, onReload, onSave, onAdoptHostM
   const [adopted, setAdopted] = useState(false);
   if (snapshot.phase === 'loading') return <PanelLoading label={t('config.loading')} />;
   if (snapshot.phase === 'missing') {
-    if (snapshot.code === 'NO_PROJECT') return <NoProjectState t={t} cwd={cwd} onRetry={onReload} />;
+    if (snapshot.code === 'NO_PROJECT') return <NoProjectState t={t} cwd={cwd} onRetry={onReload} reason={snapshot.reason} />;
     return (
       <section className="sdlc-panel">
         <header className="sdlc-panel-head">

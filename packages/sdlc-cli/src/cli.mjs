@@ -140,14 +140,18 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
   }
   const dbPath = join(root, '.sdlc', 'sdlc.db');
   let bootstrapped = null;
-  const ensured = ensureProject({ projectRoot: root, hostModel: resolved.host });
-  if (!ensured.ok) {
-    // A workspace we cannot describe fails closed with initProject's
-    // actionable reason, still without writing a config.
+  let ensured;
+  try {
+    ensured = ensureProject({ projectRoot: root, hostModel: resolved.host });
+  } catch (err) {
+    // ensureProject's contract: ok:true, or a throw (e.g. an unwritable
+    // workspace). Resolve it into the report, never a stack trace.
     const report = {
       ok: false,
       error: 'BOOTSTRAP_FAILED',
-      detail: ensured.message ?? 'workspace auto-setup failed',
+      detail: err?.code === 'EACCES' || err?.code === 'EPERM'
+        ? 'this workspace is not writable'
+        : (err?.message ?? 'workspace auto-setup failed'),
       root,
     };
     if (args.flags.json) jsonOut(report); else process.stdout.write(`${report.detail}\n`);
@@ -298,9 +302,10 @@ export function cmdConfig(root, args) {
       process.stderr.write('config: use-host-model needs a Harness model — drop --no-host-model\n');
       return 2;
     }
-    const ensured = ensureProject({ projectRoot: root, hostModel: host });
-    if (!ensured.ok) {
-      process.stderr.write(`config: auto-setup failed — ${ensured.message ?? 'unrecognised workspace'}\n`);
+    try {
+      ensureProject({ projectRoot: root, hostModel: host });
+    } catch (err) {
+      process.stderr.write(`config: auto-setup failed — ${err?.code === 'EACCES' || err?.code === 'EPERM' ? 'this workspace is not writable' : (err?.message ?? 'unexpected error')}\n`);
       return 1;
     }
     const base = existsSync(path) ? (parseYaml(readFileSync(path, 'utf8')) ?? {}) : {};
@@ -625,12 +630,16 @@ export function cmdDebug(root, args) {
     process.stderr.write('debug bootstraps with the Harness model — use `sdlc init --no-host-model` for spec defaults\n');
     return 2;
   }
-  const ensured = ensureProject({ projectRoot: root, hostModel: resolved.host });
-  if (!ensured.ok) {
+  let ensured;
+  try {
+    ensured = ensureProject({ projectRoot: root, hostModel: resolved.host });
+  } catch (err) {
     const report = {
       ok: false,
       error: 'BOOTSTRAP_FAILED',
-      detail: ensured.message ?? 'workspace auto-setup failed',
+      detail: err?.code === 'EACCES' || err?.code === 'EPERM'
+        ? 'this workspace is not writable'
+        : (err?.message ?? 'workspace auto-setup failed'),
       root,
     };
     if (args.flags.json) jsonOut(report); else process.stdout.write(`${report.detail}\n`);
@@ -703,8 +712,11 @@ export function usage() {
 
 A workspace bootstraps itself on first touch (status, the web panel, or any
 config command): .sdlc/ is created with the Harness's signed-in model as the
-tier route, so no separate init and no provider API key are needed. \`sdlc init\`
-remains as an explicit, idempotent preview of the same setup.
+tier route, so no separate init and no provider API key are needed. A
+workspace without a recognised stack marker bootstraps with
+verification.detection: manual and empty gates — author verification.gates
+to get task verification. \`sdlc init\` remains as an explicit, idempotent
+preview of the same setup and still refuses to guess gates.
 
   sdlc init [--force|--reconfigure] [--no-host-model|--provider P --model M]
                                             create .sdlc/ and adopt the Harness model

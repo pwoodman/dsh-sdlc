@@ -53,6 +53,13 @@ export function defaultGitRunner(argv, { cwd } = {}) {
  * @param {boolean} [input.force]
  * @param {boolean} [input.reconfigure]
  * @param {object} [input.config]
+ * @param {'fail'|'manual'} [input.undetected] - what to do when no stack marker
+ *   is recognised. `'fail'` (the default, and always the explicit
+ *   `sdlc init`) refuses to guess gate commands. `'manual'` is the auto-setup
+ *   mode: the project is created anyway with `verification.detection: manual`
+ *   and EMPTY gates — the panel works, the config itself says verification is
+ *   the user's to author, and validation warns until gates are written.
+ *   Nothing is guessed in either mode.
  */
 export function initProject({
   projectRoot = process.cwd(),
@@ -62,6 +69,7 @@ export function initProject({
   config = DEFAULT_CONFIG,
   now = () => new Date().toISOString(),
   createBranch = true,
+  undetected = 'fail',
 } = {}) {
   const steps = [];
   const sdlcDir = join(projectRoot, '.sdlc');
@@ -70,25 +78,27 @@ export function initProject({
   for (const dir of SDLC_TREE) mkdirSync(join(projectRoot, dir), { recursive: true });
   steps.push({ step: 'tree', status: 'ok' });
 
-  // 2. gate command detection — BEFORE any repository mutation. A bootstrap
-  // that cannot describe the workspace must leave the user's git repo
-  // untouched (auto-setup runs on reads: the panel's first GET, `sdlc
-  // status`), so no integration branch is created on the failure path.
+  // 2. gate command detection — before the branch so an explicit `sdlc init`
+  // that cannot describe the workspace leaves the user's git repo untouched.
   const rootFiles = (() => { try { return readdirSync(projectRoot); } catch { return []; } })();
   const stack = detectStack(rootFiles);
   const packageJson = readJson(join(projectRoot, 'package.json'));
   const playwright = detectPlaywright(packageJson);
   const detected = detectGateCommands({ stack, packageJson, playwright });
-  if (!detected) {
+  const manual = !detected && undetected === 'manual';
+  if (!detected && !manual) {
     return {
       ok: false,
       error: 'UNRECOGNISED_STACK',
-      message: 'no recognised stack marker (pnpm-lock.yaml, package-lock.json, pyproject.toml, go.mod, Cargo.toml); '
-        + 'set verification.detection: manual and author verification.gates explicitly — init never guesses',
+      message: 'no recognised stack marker (pnpm-lock.yaml, package-lock.json, pyproject.toml/setup.py/requirements.txt, go.mod, Cargo.toml); '
+        + 'set verification.detection: manual and author verification.gates explicitly — init never guesses '
+        + '(auto-setup via the panel or `sdlc status` does this for you)',
       steps,
     };
   }
-  steps.push({ step: 'gate-detection', stack, bootstrap: detected.bootstrap });
+  steps.push(manual
+    ? { step: 'gate-detection', stack: null, manual: true }
+    : { step: 'gate-detection', stack, bootstrap: detected.bootstrap });
 
   // 3. integration branch from HEAD
   const insideRepo = existsSync(join(projectRoot, '.git'));
@@ -122,16 +132,21 @@ export function initProject({
   db.close();
   steps.push({ step: 'database', path: dbPath });
 
-  // 5. .gitignore
+  // 5. .gitignore — only inside a git repository: auto-setup must not drop a
+  // .gitignore into a plain folder the user merely opened a session in.
   const gitignorePath = join(projectRoot, '.gitignore');
-  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
-  const present = new Set(existing.split('\n').map((l) => l.trim()));
-  const missing = GITIGNORE_ENTRIES.filter((e) => !present.has(e));
-  if (missing.length) {
-    const block = `${existing === '' || existing.endsWith('\n') ? '' : '\n'}\n# SDLC orchestrator\n${missing.join('\n')}\n`;
-    writeFileSync(gitignorePath, existing + block);
+  if (insideRepo) {
+    const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+    const present = new Set(existing.split('\n').map((l) => l.trim()));
+    const missing = GITIGNORE_ENTRIES.filter((e) => !present.has(e));
+    if (missing.length) {
+      const block = `${existing === '' || existing.endsWith('\n') ? '' : '\n'}\n# SDLC orchestrator\n${missing.join('\n')}\n`;
+      writeFileSync(gitignorePath, existing + block);
+    }
+    steps.push({ step: 'gitignore', added: missing.length });
+  } else {
+    steps.push({ step: 'gitignore', added: 0, skipped: 'not-a-git-repo' });
   }
-  steps.push({ step: 'gitignore', added: missing.length });
 
   // 6. config.yml
   const configPath = join(sdlcDir, 'config.yml');
@@ -141,11 +156,13 @@ export function initProject({
       ...config,
       verification: {
         ...config.verification,
-        detection: 'auto',
-        gates: detected.gates,
-        skipWhen: detected.skipWhen,
+        detection: detected ? 'auto' : 'manual',
+        gates: detected ? detected.gates : {},
+        skipWhen: detected ? detected.skipWhen : (config.verification?.skipWhen ?? {}),
       },
-      execution: { ...config.execution, bootstrapCommands: detected.bootstrap },
+      ...(detected
+        ? { execution: { ...config.execution, bootstrapCommands: detected.bootstrap } }
+        : { execution: { ...config.execution } }),
     };
     writeFileSync(configPath, dumpConfigYaml(merged));
     steps.push({ step: 'config', status: configExisted ? 'rewritten' : 'written' });
@@ -157,10 +174,11 @@ export function initProject({
     ok: true,
     projectRoot,
     stack,
+    manual: Boolean(manual),
     playwright,
     integration,
-    gateCommands: detected.gates,
-    bootstrap: detected.bootstrap,
+    gateCommands: detected ? detected.gates : {},
+    bootstrap: detected ? detected.bootstrap : [],
     configPath,
     dbPath,
     steps,
@@ -173,7 +191,11 @@ export function initProject({
  *
  * `sdlc init` is a convenience, not a ritual. The panel, `sdlc status` and
  * `sdlc config use-host-model` all call this first, so a user never meets a
- * "run `sdlc init`" wall on a workspace the Harness can already describe.
+ * "run `sdlc init`" wall — on ANY workspace, not only one with a recognised
+ * stack marker: when detection finds nothing, the project is still created
+ * with `verification.detection: manual` and empty gates. The honest
+ * alternative — a plain folder, a Node project with no lockfile, a
+ * requirements.txt Python project — must not be locked out of the product.
  *
  * A FRESH bootstrap adopts the Harness's own provider/model (`hostModel`),
  * so the tiers never name a second account or imply an API key. An EXISTING
@@ -212,7 +234,7 @@ export function ensureProject({
   // A fresh bootstrap names exactly one provider (tiers AND price table); an
   // authored config is never rewritten here.
   const config = hostModel ? hostModelBootstrap(hostModel) : DEFAULT_CONFIG;
-  const result = initProject({ projectRoot, git, config, now });
+  const result = initProject({ projectRoot, git, config, now, undetected: 'manual' });
   return { ...result, existed: false };
 }
 
@@ -220,11 +242,14 @@ export function ensureProject({
 export function describeProject(result) {
   if (!result.ok) return `init failed: ${result.message}`;
   const lines = [
-    `stack        : ${result.stack}${result.playwright ? ' (+playwright)' : ''}`,
+    `stack        : ${result.stack ?? 'none recognised — verification.detection: manual; author verification.gates'}${result.playwright ? ' (+playwright)' : ''}`,
     `integration  : ${result.integration.created ? 'created' : result.integration.reason}`,
-    `bootstrap    : ${result.bootstrap.join(' ')}`,
+    `bootstrap    : ${result.bootstrap.join(' ') || '(none — no stack detected)'}`,
     'gates        :',
   ];
+  if (!Object.keys(result.gateCommands ?? {}).length) {
+    lines.push('  (none — author verification.gates to get task verification)');
+  }
   for (const [gate, spec] of Object.entries(result.gateCommands)) {
     lines.push(`  ${gate.padEnd(12)} ${spec.command ? spec.command.join(' ') : spec.kind}`);
   }

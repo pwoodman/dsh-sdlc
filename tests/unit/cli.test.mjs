@@ -146,24 +146,53 @@ test('cli: init with no recognised stack marker exits 1 and never guesses', () =
 
 // ── status / tasks / explain ────────────────────────────────────────────────
 
-test('cli: status on a workspace it cannot describe is non-fatal and actionable', () => {
+test('cli: status sets up a markerless workspace with manual gates — never a dead end', () => {
+  // The regression this pins: a plain folder (or a Node project without a
+  // lockfile) used to hit the "auto-setup failed" card. Auto-setup now
+  // proceeds with verification.detection: manual and empty gates; explicit
+  // `sdlc init` still refuses to guess.
   const dir = tempDir();
   try {
-    const json = sdlc(dir, ['status', '--json']);
-    assert.equal(json.status, 0, 'status without a describable workspace must still exit 0');
+    writeFileSync(join(dir, 'README.md'), '# notes, no stack\n');
+    const json = sdlc(dir, ['status', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(json.status, 0, `${json.stdout}\n${json.stderr}`);
     const report = parseJson(json);
-    assert.equal(report.ok, false);
-    assert.equal(report.error, 'BOOTSTRAP_FAILED');
-    assert.match(report.detail, /stack marker|never guesses/);
-    // Fail-closed: auto-setup never guesses a config or a DB.
-    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
-    assert.equal(existsSync(join(dir, '.sdlc', 'sdlc.db')), false);
+    assert.equal(report.ok, true, 'a markerless workspace bootstraps with manual gates');
+    assert.equal(report.bootstrapped, true);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')));
 
-    const human = sdlc(dir, ['status']);
-    assert.equal(human.status, 0);
-    assert.match(human.stdout, /stack marker|never guesses/);
+    const config = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.match(config, /detection: manual/);
+    assert.match(config, /gates: \{\}/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+
+    // The vacuous verification is visible, and no lockfile was guessed.
+    const validate = sdlc(dir, ['config', 'validate']);
+    assert.equal(validate.status, 0, `${validate.stdout}${validate.stderr}`);
+    assert.match(validate.stdout, /manual and no gates are authored/);
+
+    // The explicit init remains the strict, honest preview: it refuses.
+    const init = sdlc(dir, ['init']);
+    assert.equal(init.status, 1, 'explicit init never guesses gates');
+    assert.match(init.stdout + init.stderr, /never guesses/);
   } finally {
     cleanup(dir);
+  }
+});
+
+test('cli: a Node project without a lockfile bootstraps (the common real case)', () => {
+  const repo = pnpmRepo();
+  try {
+    rmSync(join(repo, 'pnpm-lock.yaml'));
+    const res = sdlc(repo, ['status', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.equal(parseJson(res).ok, true, 'package.json without a lockfile is not a dead end');
+    const config = readFileSync(join(repo, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /detection: manual/);
+    assert.match(config, /provider: deepseek-account/);
+  } finally {
+    cleanup(repo);
   }
 });
 
@@ -260,14 +289,17 @@ test('cli: status heals a project whose gitignored DB was removed', () => {
   }
 });
 
-test('cli: a failed bootstrap leaves the git repo unmutated', () => {
+test('cli: a failed explicit init leaves the git repo unmutated', () => {
+  // Auto-setup no longer fails on markerless workspaces (it succeeds with
+  // manual gates), so the no-mutation contract belongs to the one path that
+  // can still fail: the explicit `sdlc init` refusing to guess.
   const repo = makeRepo({ 'README.md': '# no stack marker\n' });
   try {
-    const res = sdlc(repo, ['status', '--json']);
-    assert.equal(res.status, 0, 'undescribable status stays non-fatal');
-    assert.equal(parseJson(res).error, 'BOOTSTRAP_FAILED');
-    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch from a failed read');
-    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation from a failed read');
+    const res = sdlc(repo, ['init', '--json']);
+    assert.equal(res.status, 1, 'init never guesses gates');
+    assert.equal(parseJson(res).error, 'UNRECOGNISED_STACK');
+    assert.equal(git(['branch', '--list', 'sdlc/integration'], repo), '', 'no integration branch from a failed init');
+    assert.equal(existsSync(join(repo, '.gitignore')), false, 'no gitignore mutation from a failed init');
   } finally {
     cleanup(repo);
   }
@@ -371,15 +403,18 @@ test('cli: config use-host-model adopts the route without a provider key', () =>
     assert.doesNotMatch(config, /openai|anthropic/);
   } finally { cleanup(fresh); }
 
-  // A workspace nothing can describe still fails closed, now with the real
-  // reason instead of a step the user should not need.
-  const undescribable = tempDir('sdlc-cli-noinit-');
+  // Even a markerless workspace can adopt: auto-setup gives it manual gates,
+  // then the adoption rewrites the tiers. No dead ends anywhere.
+  const markerless = tempDir('sdlc-cli-noinit-');
   try {
-    const res = sdlc(undescribable, ['config', 'use-host-model']);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /auto-setup failed/);
-    assert.match(res.stderr, /stack marker|never guesses/);
-  } finally { cleanup(undescribable); }
+    const res = sdlc(markerless, ['config', 'use-host-model', '--provider', 'deepseek-account', '--model', 'deepseek-flash', '--json']);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.equal(parseJson(res).ok, true);
+    const config = readFileSync(join(markerless, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.match(config, /detection: manual/);
+    assert.doesNotMatch(config, /openai|anthropic/);
+  } finally { cleanup(markerless); }
 });
 
 test('cli: status, tasks and explain reflect library-created state', async () => {

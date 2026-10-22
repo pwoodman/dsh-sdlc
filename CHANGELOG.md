@@ -2,6 +2,48 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.1.1] — 2026-10-20 — no workspace is a dead end
+
+### Fixed
+
+- **Markerless workspaces bootstrap with manual gates instead of failing.**
+  1.1.0's fail-closed choice turned "never guess gate commands" into "no
+  product at all" for any workspace without a lockfile-type stack marker — a
+  plain folder, a Node project with only `package.json`, a
+  `requirements.txt` Python project. Auto-setup now proceeds with
+  `verification.detection: manual` and empty gates (the artifact 1.1.0's own
+  failure message prescribed); nothing is guessed, `sdlc config validate`
+  visibly warns that verification passes vacuously until gates are authored,
+  and the explicit `sdlc init` still refuses to guess. Auto-setup also no
+  longer writes a `.gitignore` outside a git repository.
+- **"No project yet" is no longer reported as a setup failure.** A
+  bootstrapped workspace with no project row used to render the flow
+  panel's *auto-setup failed* card. The flow route now answers a distinct
+  `NO_PROJECT_ROW` code and the panel renders an accurate empty state:
+  "This workspace is set up — create a project with `/sdlc run`."
+- **The failure card shows the host's real reason.** When auto-setup
+  genuinely fails (e.g. an unwritable workspace), the reason from the host
+  now reaches the card instead of a canned guess — and the CLI prints a
+  clean `BOOTSTRAP_FAILED` report instead of a stack trace.
+- **npm detection matches the spec's F.5 table.** A bare `package.json` was
+  wrongly treated as an npm marker, writing `npm ci`/`npm test` gate
+  commands that can never run on a lockfile-less project — the guessing F.5
+  forbids. `package-lock.json` is the npm marker, as the spec table states;
+  a `package.json`-only project now gets manual gates.
+
+### Verification
+
+- **906 offline tests pass**: 665 unit, 121 contract, 64 integration,
+  29 adversarial, 27 fault. New coverage pins the manual-gates bootstrap
+  (config content, visible vacuous-verification warning, explicit-init
+  strictness, no lockfile guessed), the `NO_PROJECT_ROW` empty state at the
+  route and client layers, reason threading, a Node-project-without-a-
+  lockfile end-to-end bootstrap, and clean failure reports on an unwritable
+  workspace.
+- All 11 gates green (P, M0–M8, Q); 9/10 e2e (1 live opt-in skip); 41/41
+  packed-artifact checks; 7/7 mechanism hazards. Coverage 95.70 lines /
+  82.51 branches / 95.91 functions.
+
 ## [1.1.0] — 2026-10-20 — no init step, and the LLM the Harness already has
 
 ### Added

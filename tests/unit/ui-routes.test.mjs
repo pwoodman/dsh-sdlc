@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync, chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
 
@@ -299,25 +299,27 @@ test('plugin fetch handlers serve live responses end-to-end (no host)', async ()
     assert.equal(metricsRes.status, 200);
     assert.match(await metricsRes.text(), /sdlc_tasks_total/);
 
-    // The browser's session workspace overrides the fallback root. dirOther
-    // is UNDESCRIBABLE (no stack marker), so honoring ?cwd answers 404 with
-    // that root — proving the host read the session workspace, not the
-    // fallback project. (A describable dirOther now bootstraps instead.)
-    const dirOther = tempDir('sdlc-ui-other-');
+    // The browser's session workspace overrides the fallback root. dirOther is
+    // a fresh workspace: honoring ?cwd BOOTSTRAPS IT THERE — proving the host
+    // read the session workspace, not the fallback project (which already
+    // existed before this request and gains nothing).
+    const dirOther = scaffold();
     try {
       const otherStatus = await handlersByKey.get('GET /api/sdlc.status')(
         new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dirOther)}`),
       );
-      assert.equal(otherStatus.status, 404);
-      const otherBody = await otherStatus.json();
-      assert.equal(otherBody.error, 'NO_PROJECT');
-      assert.equal(otherBody.root, dirOther);
-      assert.match(otherBody.detail, /auto-setup failed/);
+      assert.equal(otherStatus.status, 200, 'the session workspace is set up on demand');
+      assert.ok(existsSync(join(dirOther, '.sdlc', 'sdlc.db')), 'the bootstrap landed in dirOther');
+      // Flow on a bootstrapped-but-projectless workspace is the HEALTHY
+      // empty state: 404 NO_PROJECT_ROW (create one with `/sdlc run`),
+      // never the auto-setup-failed card.
       const otherFlow = await handlersByKey.get('GET /api/sdlc.flow')(
         new Request(`http://localhost/api/sdlc.flow?cwd=${encodeURIComponent(dirOther)}`),
       );
       assert.equal(otherFlow.status, 404);
-      assert.equal((await otherFlow.json()).error, 'NO_PROJECT');
+      const otherFlowBody = await otherFlow.json();
+      assert.equal(otherFlowBody.error, 'NO_PROJECT_ROW');
+      assert.match(otherFlowBody.detail, /\/sdlc run/);
     } finally { cleanup(dirOther); }
 
     // GET config.
@@ -449,34 +451,47 @@ test('the first panel request bootstraps the workspace with the Harness route', 
   } finally { cleanup(dir); }
 });
 
-test('bootstrap failure is actionable and recovers without a host restart', async () => {
+test('the panel opens on a markerless workspace — manual gates, no dead end', async () => {
   const plugin = await core.uiPlugin();
-  const dir = tempDir('sdlc-ui-recover-'); // no stack marker: undescribable
+  const dir = tempDir('sdlc-ui-markerless-'); // no stack marker at all
   try {
     // Hermetic route via the row-config override (no live service, no DSH_HOME).
     const { handlersByKey } = await registerCaptured(plugin, {
       hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
     });
 
+    // The user-facing contract: opening the panel on ANY workspace sets it
+    // up. A folder with no lockfile marker gets verification.detection:
+    // manual and empty gates — the honest artifact, not a failure card.
     const first = await handlersByKey.get('GET /api/sdlc.status')(
       new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
     );
-    assert.equal(first.status, 404);
-    const firstBody = await first.json();
-    assert.equal(firstBody.error, 'NO_PROJECT', 'the guided state remains for genuine failures');
-    assert.match(firstBody.detail, /auto-setup failed/);
-    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false, 'no guessed config');
+    assert.equal(first.status, 200, 'a markerless workspace is not a dead end');
+    assert.equal((await first.json()).ok, true);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')));
+    const config = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.match(config, /detection: manual/);
+    assert.match(config, /gates: \{\}/);
+    assert.doesNotMatch(config, /openai|anthropic/);
 
-    // The user adds a stack marker; the very next request succeeds —
-    // failures are not memoised, so no host restart is needed.
+    // Settings reports the same project, with the visible vacuous-verification
+    // warning so the state is never silent.
+    const cfg = await handlersByKey.get('GET /api/sdlc.config')(
+      new Request(`http://localhost/api/sdlc.config?cwd=${encodeURIComponent(dir)}`),
+    );
+    const cfgBody = await cfg.json();
+    assert.equal(cfgBody.exists, true);
+    assert.ok(cfgBody.validation.warnings.some((w) => /manual and no gates are authored/.test(w)));
+
+    // Adding a stack marker later does not silently re-detect: the authored
+    // (manual) config is preserved; re-detection is `sdlc init --reconfigure`.
     writeFileSync(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
     const second = await handlersByKey.get('GET /api/sdlc.status')(
       new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
     );
     assert.equal(second.status, 200);
-    assert.equal((await second.json()).ok, true);
-    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')));
-    assert.match(readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8'), /deepseek-account/);
+    assert.match(readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8'), /detection: manual/);
   } finally { cleanup(dir); }
 });
 
@@ -511,19 +526,16 @@ test('bootstrap never rewrites a config the user already authored', async () => 
   } finally { cleanup(dir); }
 });
 
-test('a config write cannot poison a workspace where auto-setup failed', async () => {
+test('a config write cannot poison an incomplete workspace', async () => {
   const plugin = await core.uiPlugin();
-  // No stack marker: the GET leaves the prepared tree behind but no config.
   const dir = tempDir('sdlc-ui-leftover-');
   try {
     const { handlersByKey } = await registerCaptured(plugin, {
       hostModel: { provider: 'deepseek-account', model: 'deepseek-flash' },
     });
-    const get = await handlersByKey.get('GET /api/sdlc.status')(
-      new Request(`http://localhost/api/sdlc.status?cwd=${encodeURIComponent(dir)}`),
-    );
-    assert.equal(get.status, 404);
-    assert.ok(existsSync(join(dir, '.sdlc')), 'precondition: the failed bootstrap left the tree');
+    // Synthesize the incomplete state (e.g. a bootstrap interrupted mid-run):
+    // the .sdlc tree exists but no config was written.
+    mkdirSync(join(dir, '.sdlc'), { recursive: true });
     assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
 
     // The write fence is the COMPLETED project, not the directory: a POST
@@ -540,12 +552,16 @@ test('a config write cannot poison a workspace where auto-setup failed', async (
     assert.equal((await post.json()).error, 'NO_PROJECT');
     assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false, 'no config was written');
 
-    // And adoption refuses the same leftover (it is a config write too).
+    // A guarded write is different: adoption MAY bootstrap, and what it
+    // writes is the honest artifact — the harness route, never the
+    // OpenAI-default poison the old fence could have wedged.
     const adopt = await handlersByKey.get('POST /api/sdlc.host')(
       new Request(`http://localhost/api/sdlc.host?cwd=${encodeURIComponent(dir)}`, { method: 'POST', body: '{}' }),
     );
-    assert.equal(adopt.status, 404);
-    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
+    assert.equal(adopt.status, 200);
+    const adopted = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(adopted, /provider: deepseek-account/);
+    assert.doesNotMatch(adopted, /provider: openai/);
   } finally { cleanup(dir); }
 });
 

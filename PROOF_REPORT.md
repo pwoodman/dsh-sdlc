@@ -1,6 +1,6 @@
 # Proof report — tested, fixed and measured
 
-> **Current release: 1.1.0.** 902 offline tests pass, all 11 gates (P, M0–M8,
+> **Current release: 1.1.1.** 906 offline tests pass, all 11 gates (P, M0–M8,
 > Q) are green, 9/10 e2e pass (one live test skipped by design), the packed
 > publish artifact installs/uninstalls cleanly, and the sidebar was verified in
 > a real Chromium session against workspace-scoped data. The narrative below
@@ -39,7 +39,7 @@ and the developer-productivity study.
 > longer reads the Harness profile directory), classifies a missing flow route
 > from a status probe (`HOST_OUTDATED` / `HOST_MISSING` / `HOST_UNREACHABLE`),
 > and replaces the reinstall-only hint with full-quit and per-install-channel
-> guidance plus panel/host builds and Copy diagnostics. 902 offline tests pass;
+> guidance plus panel/host builds and Copy diagnostics. 906 offline tests pass;
 > gates P, M0–M8 and Q are green, and the sidebar now renders a live flow map
 > from workspace-scoped data only.
 
@@ -49,19 +49,19 @@ and the developer-productivity study.
 
 | Layer | Before this pass | Now |
 |---|---|---|
-| unit | 560 | **661** |
+| unit | 560 | **665** |
 | contract | 103 | **121** |
 | integration | 47 | **64** |
 | fault | 23 | **27** |
 | adversarial | 23 | **29** |
-| **offline total** | **756** | **902 pass, 0 fail** |
+| **offline total** | **756** | **906 pass, 0 fail** |
 | e2e | 9 pass + 1 skip | **9 pass + 1 skip** (live opt-in) |
 
 Coverage gate (`node scripts/validate-coverage.mjs --json .validation/gate-Q.json`):
 
 ```
-902 tests, 902 pass, 0 fail
-all files            95.60 lines | 82.03 branches | 95.80 functions
+906 tests, 906 pass, 0 fail
+all files            95.70 lines | 82.51 branches | 95.91 functions
 sdlc-core            98.52        | 85.24          | (28 files)
 sdlc-orchestrator    87.44        | 78.22          | (4 files)
 sdlc-client-ui       96.75        | 85.51          | (10 files)

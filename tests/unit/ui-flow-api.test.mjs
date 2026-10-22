@@ -24,16 +24,37 @@ const statusPayload = {
   spend: { costUsd: 0, durationMs: 0, tokens: 0 },
 };
 
-test('a 404 NO_PROJECT is the expected pre-init state', async () => {
+test('a 404 NO_PROJECT carries the host\'s own reason through to the card', async () => {
   const result = await withFetch(
-    async () => new Response(JSON.stringify({ ok: false, error: 'NO_PROJECT', detail: 'run sdlc init' }), {
+    async () => new Response(JSON.stringify({
+      ok: false,
+      error: 'NO_PROJECT',
+      detail: 'auto-setup failed: this workspace is not writable',
+    }), {
       status: 404, headers: { 'content-type': 'application/json' },
     }),
     () => fetchFlow(),
   );
   assert.equal(result.available, false);
   assert.equal(result.code, 'NO_PROJECT');
-  assert.match(result.reason, /sdlc init/);
+  assert.match(result.reason, /not writable/, 'the real host reason reaches the user, not a canned guess');
+});
+
+test('a 404 NO_PROJECT_ROW is the healthy empty state, not a failure', async () => {
+  const result = await withFetch(
+    async () => new Response(JSON.stringify({
+      ok: false,
+      error: 'NO_PROJECT_ROW',
+      detail: 'no project yet — create one with `/sdlc run` in the lead session',
+    }), {
+      status: 404, headers: { 'content-type': 'application/json' },
+    }),
+    () => fetchFlow(),
+  );
+  assert.equal(result.available, false);
+  assert.equal(result.code, 'NO_PROJECT_ROW');
+  assert.match(result.reason, /\/sdlc run/);
+  assert.notEqual(result.code, 'NO_PROJECT', 'must not render the auto-setup-failed card');
 });
 
 test('flow 404 while status answers means the loaded host is an older build', async () => {

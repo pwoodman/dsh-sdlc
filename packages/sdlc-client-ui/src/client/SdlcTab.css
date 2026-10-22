@@ -1420,6 +1420,19 @@ button.sdlc-attention-row:hover { background: color-mix(in srgb, var(--sdlc-tone
   width: 100%;
   text-align: left;
 }
+.sdlc-empty-reason {
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--sdlc-accent) 24%, var(--sdlc-border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--sdlc-accent) 6%, Canvas);
+  color: var(--sdlc-muted);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
 .sdlc-empty-label {
   margin: 2px 0 3px;
   color: var(--sdlc-muted);

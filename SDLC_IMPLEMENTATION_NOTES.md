@@ -4,7 +4,7 @@
 **This build:** the `dsh-plugin-sdlc` monorepo — eight packages, three profile
 recipes, seven test layers, eleven gates (P, M0–M8, Q).
 **Platform:** Node ≥ 22.13 (verified v24.21.0), `@deepseek-ai/dsh` 0.2.0-rc.2, Linux x64.
-**Status:** `gate:P` + `gate:M0` … `gate:M8` + `gate:Q` all green; 902 offline
+**Status:** `gate:P` + `gate:M0` … `gate:M8` + `gate:Q` all green; 906 offline
 tests and 9/10 e2e pass (the live-provider e2e is skipped by design).
 
 Read this document together with the validation report
@@ -165,7 +165,18 @@ nothing in the user's git repository — `initProject` runs stack detection
 BEFORE creating the integration branch, because auto-setup runs on reads;
 bootstrap errors (EACCES on an unwritable workspace included) resolve into
 the guided state, never a rejected fetch; and nothing is memoised — the next
-request always re-examines the real filesystem. `sdlc init`
+request always re-examines the real filesystem. A MARKERLESS workspace (a
+plain folder, `package.json` without a lockfile — note the spec F.5 table
+makes `package-lock.json`, not a bare `package.json`, the npm marker, so a
+lockfile-less Node project is markerless) is NOT a dead end: auto-setup
+proceeds with `verification.detection: manual` and empty gates
+(`initProject`'s `undetected: 'manual'`, used only by `ensureProject`),
+while explicit `sdlc init` keeps failing with the never-guess message, and
+`validateConfig` warns that verification passes vacuously until gates are
+authored. A set-up workspace with no project row answers flow requests
+with the distinct `NO_PROJECT_ROW` code, so the panel's "create a project
+with `/sdlc run`" empty state is never misreported as a setup failure.
+`sdlc init`
 adopts the same route by default (`--no-host-model` opts out, on `init` only —
 reads never write the spec defaults; a lone `--provider` or `--model` is a
 usage error, never a silent fallback; init only claims adoption when the

@@ -82,7 +82,10 @@ export function failRunner({ message = 'gate failure', times = 1 } = {}) {
 /**
  * A minimal but realistic npm project. `package.json` is the shared resource
  * that Tests 2 and 6 collide on; `@playwright/test` makes `init` detect a
- * browser stack so e2e/visual gates exist.
+ * browser stack so e2e/visual gates exist. The lockfile is required: per the
+ * spec F.5 table `package-lock.json` — not a bare `package.json` — is the
+ * npm marker (`npm ci` needs it); without it this fixture is a markerless
+ * workspace and explicit init fails rather than guessing.
  */
 export const DEFAULT_REPO_FILES = {
   'package.json': JSON.stringify({
@@ -91,6 +94,12 @@ export const DEFAULT_REPO_FILES = {
     private: true,
     scripts: { test: 'node --test', build: 'node -e "process.exit(0)"' },
     devDependencies: { '@playwright/test': '^1.44.0' },
+  }, null, 2) + '\n',
+  'package-lock.json': JSON.stringify({
+    name: 'sdlc-e2e-app',
+    version: '1.0.0',
+    lockfileVersion: 3,
+    packages: { '': { name: 'sdlc-e2e-app', version: '1.0.0' } },
   }, null, 2) + '\n',
   'src/app.js': 'export function app() { return 1; }\n',
   'src/app.css': '.btn { color: blue; }\n',

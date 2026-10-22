@@ -99,19 +99,27 @@ test('debug trace prints the state path, and --json is parseable', () => {
   } finally { cleanup(dir); }
 });
 
-test('debug on an undescribable workspace fails bootstrap (exit 1), never guessing', () => {
+test('debug bootstraps any workspace on first touch, then reports its natural not-found', () => {
   const dir = tempDir('sdlc-cli-debug-empty-');
   try {
-    // The no-init contract: debug bootstraps on first touch like status, and a
-    // workspace with no stack marker fails closed with the actionable reason.
+    // The no-init contract: debug bootstraps on first touch like status —
+    // a markerless workspace gets manual gates — and then answers "no such
+    // task" honestly instead of dead-ending.
     assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: {} }), 1);
-    assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: { json: true } }), 1);
-    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false);
+    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')), 'debug bootstrapped the markerless project');
+    const config = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /detection: manual/);
+    // JSON mode reports the (unavailable) runs and exits 0 by contract.
+    assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: { json: true } }), 0);
 
-    // A describable workspace bootstraps, then reports its natural not-found.
-    writeFileSync(join(dir, 'pnpm-lock.yaml'), 'x\n');
-    assert.equal(cli.cmdDebug(dir, { _: ['compare', 'T', 'A', 'B'], flags: {} }), 1);
-    assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')), 'debug bootstrapped the project');
+    // A markered workspace bootstraps with detected gates the same way.
+    const other = tempDir('sdlc-cli-debug-marked-');
+    try {
+      writeFileSync(join(other, 'pnpm-lock.yaml'), 'x\n');
+      assert.equal(cli.cmdDebug(other, { _: ['compare', 'T', 'A', 'B'], flags: {} }), 1);
+      assert.ok(existsSync(join(other, '.sdlc', 'sdlc.db')), 'debug bootstrapped the project');
+      assert.doesNotMatch(readFileSync(join(other, '.sdlc', 'config.yml'), 'utf8'), /detection: manual/);
+    } finally { cleanup(other); }
   } finally { cleanup(dir); }
 });
 

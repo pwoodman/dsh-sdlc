@@ -160,7 +160,7 @@ test('flow and status only expose this workspace project, never a foreign/demo r
   } finally { cleanup(dir); }
 });
 
-test('a DB with only a foreign project answers NO_PROJECT, not foreign rows', () => {
+test('a DB with only a foreign project answers NO_PROJECT_ROW, not foreign rows', () => {
   const dir = scaffold();
   try {
     const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
@@ -172,10 +172,13 @@ test('a DB with only a foreign project answers NO_PROJECT, not foreign rows', ()
       runtime.transition('DEMO-001', 'READY', 'scheduler', { depStates: {} });
     } finally { runtime.close({ releaseLock: false }); }
 
+    // No project row for THIS workspace is the healthy empty state — the
+    // distinct code lets the panel say "create one with /sdlc run" instead of
+    // misreporting it as an auto-setup failure.
     const flow = handleFlow(dir, { events: 10 });
     assert.equal(flow.status, 404);
-    assert.equal(flow.body.error, 'NO_PROJECT');
-    assert.match(flow.body.detail, /another workspace/);
+    assert.equal(flow.body.error, 'NO_PROJECT_ROW');
+    assert.match(flow.body.detail, /another workspace|\/sdlc run/);
 
     const status = handleStatus(dir);
     assert.equal(status.status, 200);

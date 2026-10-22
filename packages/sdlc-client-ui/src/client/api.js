@@ -43,14 +43,18 @@ async function getJson(path) {
   if (!res.ok) {
     let detail = '';
     let code = null;
+    let message = null;
     try {
       const payload = await res.json();
       code = typeof payload?.error === 'string' ? payload.error : null;
+      message = typeof payload?.detail === 'string' ? payload.detail : null;
       detail = payload?.detail ? `${payload.error ?? 'error'}: ${payload.detail}` : JSON.stringify(payload);
     } catch {
       detail = res.statusText;
     }
-    return { available: false, status: res.status, code, reason: `http ${res.status}: ${detail.slice(0, 200)}` };
+    // `message` is the host's own detail string, unmunged, for callers that
+    // render it to the user (e.g. the auto-setup failure card).
+    return { available: false, status: res.status, code, message, reason: `http ${res.status}: ${detail.slice(0, 200)}` };
   }
   try {
     return { available: true, data: await res.json() };
@@ -160,15 +164,27 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
   if (typeof cwd === 'string' && cwd !== '') params.set('cwd', cwd);
   const res = await getJson(`${SDLC_FLOW_ROUTE}?${params}`);
   if (!res.available) {
-    // A 404 NO_PROJECT now means auto-setup genuinely failed (the only
-    // remaining cause: no recognised stack marker). Any other 404 needs a
-    // probe: "the panel is newer" is only one explanation, and the running
-    // Desktop app is the common case (it keeps the old host loaded).
+    // A 404 NO_PROJECT now means auto-setup genuinely failed on the host
+    // (e.g. an unwritable workspace) — workspaces without a stack marker are
+    // set up with manual gates instead. Carry the host's own reason through
+    // so the card shows the real diagnosis; keep a fallback for older hosts
+    // that send no detail. Any other 404 needs a probe: "the panel is newer"
+    // is only one explanation, and the running Desktop app is the common
+    // case (it keeps the old host loaded).
     if (res.status === 404 && res.code === 'NO_PROJECT') {
       return {
         available: false,
         code: 'NO_PROJECT',
-        reason: 'no SDLC project — auto-setup failed; `sdlc init` prints the reason',
+        reason: res.message ?? 'auto-setup could not complete this workspace — `sdlc init` prints the same reason',
+      };
+    }
+    // A bootstrapped workspace with no project row yet is NOT a failure: the
+    // panel shows its "create one with `/sdlc run`" empty state.
+    if (res.status === 404 && res.code === 'NO_PROJECT_ROW') {
+      return {
+        available: false,
+        code: 'NO_PROJECT_ROW',
+        reason: res.message ?? 'no SDLC project yet — create one with `/sdlc run`',
       };
     }
     if (res.status === 404) {

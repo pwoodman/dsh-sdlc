@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, chmodSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { load, tempDir, cleanup, makeRepo } from '../lib/helpers.mjs';
 
@@ -125,9 +125,8 @@ test('config show/validate/get/set/unknown behave and persist', () => {
     assert.match(adopted, /unknown: true/);
   } finally { cleanup(dir); }
 
-  // The no-init contract: on a describable workspace the adoption command
-  // materialises .sdlc/ itself; on an undescribable one it fails closed with
-  // the real reason.
+  // The no-init contract: the adoption command materialises .sdlc/ itself on
+  // any workspace — markerless ones get manual gates — and never dead-ends.
   const fresh = scaffold('sdlc-cli-int-fresh-');
   try {
     assert.equal(cli.cmdConfig(fresh, {
@@ -144,11 +143,16 @@ test('config show/validate/get/set/unknown behave and persist', () => {
     assert.equal(cli.cmdConfig(fresh, { _: ['use-host-model'], flags: { model: 'only' } }), 2);
   } finally { cleanup(fresh); }
 
-  const undescribable = tempDir('sdlc-cli-int-noinit-');
+  const markerless = tempDir('sdlc-cli-int-noinit-');
   try {
-    assert.equal(cli.cmdConfig(undescribable, { _: ['use-host-model'], flags: {} }), 1);
-    assert.equal(existsSync(join(undescribable, '.sdlc', 'config.yml')), false);
-  } finally { cleanup(undescribable); }
+    assert.equal(cli.cmdConfig(markerless, {
+      _: ['use-host-model'],
+      flags: { provider: 'deepseek-account', model: 'deepseek-flash', json: true },
+    }), 0, 'a markerless workspace adopts with manual gates');
+    const config = readFileSync(join(markerless, '.sdlc', 'config.yml'), 'utf8');
+    assert.match(config, /provider: deepseek-account/);
+    assert.match(config, /detection: manual/);
+  } finally { cleanup(markerless); }
 });
 
 test('hostModelFromArgs pairs explicit flags and honours --no-host-model', () => {
@@ -172,8 +176,7 @@ test('hostModelFromArgs pairs explicit flags and honours --no-host-model', () =>
   assert.equal(typeof discovered.host?.model, 'string');
 });
 
-test('cmdInit/cmdStatus adopt the Harness route on a fresh bootstrap, in-process', () => {
-  const dir = scaffold('sdlc-cli-int-adopt-');
+test('cmdInit/cmdStatus adopt the Harness route on a fresh bootstrap, in-process', () => {  const dir = scaffold('sdlc-cli-int-adopt-');
   try {
     assert.equal(cli.cmdInit(dir, flags({ provider: 'deepseek-account', model: 'deepseek-flash', json: true })), 0);
     let config = readFileSync(join(dir, '.sdlc', 'config.yml'), 'utf8');
@@ -259,5 +262,25 @@ test('usage text documents every command the module dispatches', () => {
   const text = cli.usage();
   for (const command of Object.keys(cli.COMMANDS)) {
     assert.match(text, new RegExp(`sdlc ${command}\\b`), `usage does not mention "${command}"`);
+  }
+  // The no-dead-end contract is part of the contract surface too.
+  assert.match(text, /verification\.detection: manual/);
+  assert.match(text, /no provider API key/);
+});
+
+test('bootstrap failures resolve into a BOOTSTRAP_FAILED report, never a stack trace', () => {
+  // An unwritable workspace is the remaining live failure mode (markerless
+  // workspaces now succeed with manual gates). It must print a clean report.
+  const dir = scaffold('sdlc-cli-int-readonly-');
+  try {
+    chmodSync(dir, 0o555);
+    assert.equal(cli.cmdStatus(dir, flags({ provider: 'deepseek-account', model: 'deepseek-flash', json: true })), 0,
+      'status stays non-fatal on a bootstrap failure');
+    assert.equal(cli.cmdDebug(dir, flags({ _: ['compare', 'T', 'A', 'B'], json: true })), 1);
+    assert.equal(cli.cmdConfig(dir, { _: ['use-host-model'], flags: { provider: 'deepseek-account', model: 'deepseek-flash' } }), 1);
+    assert.equal(existsSync(join(dir, '.sdlc', 'config.yml')), false, 'nothing was guessed');
+  } finally {
+    chmodSync(dir, 0o755);
+    cleanup(dir);
   }
 });
