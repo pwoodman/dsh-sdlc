@@ -2,6 +2,20 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.1] — 2026-10-23 — CI-green patch: hermetic installer fake
+
+### Fixed
+
+- **The installer-safety fake no longer resolves `node` via PATH.**
+  Node 22's multi-file test workers run with a PATH that omits the node
+  binary's own directory, so the fake `dsh`'s `node -e` manifest pin died
+  with `node: command not found` — swallowed by `sh` (no `set -e`), so the
+  add "succeeded" with the dependency unpinned and `npm test` failed on CI
+  (Node 22.18) while passing locally (Node 24 workers inherit PATH). The
+  fake now takes the absolute `process.execPath` as `FAKE_NODE` and aborts
+  the add if the pin fails. Verified: full 933-test aggregate green 3/3
+  under Node 22.18 (previously 6/6 red) and green under Node 24.
+
 ## [1.2.0] — 2026-10-23 — lead auto-on, real parallelism, Tier A correctness
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-tools",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "Model-facing propose-only tools (worker + lead) and the /sdlc command surface.",
   "main": "lib/index.js",
@@ -52,7 +52,7 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-core": "1.2.0",
-    "@patwoodman/dsh-sdlc-flow-guard": "1.2.0"
+    "@patwoodman/dsh-sdlc-flow-core": "1.2.1",
+    "@patwoodman/dsh-sdlc-flow-guard": "1.2.1"
   }
 }
