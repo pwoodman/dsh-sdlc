@@ -44,15 +44,15 @@ case "$1" in
     mkdir -p "$dir"
     printf '{"name":"%s","version":"%s"}\\n' "$package" "$version" > "$dir/package.json"
     # Real dsh plugin add pins the dependency in the profile manifest.
-    # Portability (Oct 2026): never resolve `node` via PATH here. Node 22's
-    # multi-file test workers run with a PATH that omits the node binary's own
-    # directory (single-file runs inherit it, so bare `node` worked locally for
-    # years), and `sh` swallows the resulting `node: command not found`
-    # (exit 127) because this script has no `set -e` — the add then "succeeds"
-    # with the dependency unpinned. FAKE_NODE carries the absolute
-    # process.execPath so the fake is hermetic; a failed pin aborts the add
-    # (exit 1) instead of lying about success.
-    if [ -z "${FAKE_NODE:-}" ]; then
+    # Portability (Oct 2026): never resolve the node binary via PATH here.
+    # Node 22 multi-file test workers run with a PATH that omits the node
+    # binary's own directory (single-file runs inherit it, so a bare node
+    # command worked locally for years), and sh swallows the resulting
+    # command-not-found failure (exit 127) because this script has no set -e
+    # flag -- the add then succeeds with the dependency unpinned. FAKE_NODE
+    # carries the absolute process.execPath so the fake is hermetic; a failed
+    # pin aborts the add (exit 1) instead of lying about success.
+    if [ -z "\${FAKE_NODE:-}" ]; then
       printf 'fake dsh: FAKE_NODE is not set (the test must pass process.execPath)\\n' >&2
       exit 1
     fi
