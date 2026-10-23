@@ -20,6 +20,7 @@ import { setPath } from '../../../sdlc-cli/src/cli.mjs';
 import { compareRuns } from '../../../sdlc-core/src/debug.js';
 import { collectMetricsSnapshot, renderPrometheus } from '../../../sdlc-core/src/metrics.js';
 import { hostModelAdoption } from '../../../sdlc-core/src/host-model.js';
+import { readPackageVersion } from '../../../sdlc-guard/src/package-version.js';
 
 /**
  * The host build serving this payload. The panel compares it with its own
@@ -28,11 +29,7 @@ import { hostModelAdoption } from '../../../sdlc-core/src/host-model.js';
  * Resolves beside the source tree and beside the folded `lib/rows/ui/` copy.
  */
 function pluginVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return null;
-  }
+  return readPackageVersion(import.meta.url, 3);
 }
 
 function noProject(projectRoot) {

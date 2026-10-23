@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-guard",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "Worker-side enforcement only: tools/pre-execute + fs/* deciders. Never installed into the lead profile.",
   "main": "lib/index.js",
@@ -8,6 +8,7 @@
     ".": "./lib/index.js",
     "./plugin": "./lib/plugin.js",
     "./glob": "./lib/glob.js",
+    "./package-version": "./lib/package-version.js",
     "./schema.json": "./schema/path-policy.schema.json",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",

@@ -262,3 +262,74 @@ test('initProject (the explicit init) still refuses to guess gates on a markerle
 // (the former "failed bootstrap never mutates git" case is now the explicit
 // init contract above — auto-setup no longer fails on markers, it succeeds
 // with manual gates, and a successful setup legitimately prepares the branch)
+
+// ── ensureDefaultProject: Track 0 AUTO-ON (Lead touch ⇒ project exists) ───
+
+test('ensureDefaultProject creates one default row on an empty DB, then no-ops', async () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    project.ensureProject({ projectRoot: repo, hostModel: null });
+    const schema = await core.schema();
+    const db = schema.openDatabase(join(repo, '.sdlc', 'sdlc.db'), { requireQuickCheck: false });
+    try {
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 0);
+
+      const first = project.ensureDefaultProject(db, { projectRoot: repo });
+      assert.equal(first.ok, true);
+      assert.equal(first.created, true);
+      assert.equal(first.project.id, 'default');
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 1);
+
+      const second = project.ensureDefaultProject(db, { projectRoot: repo });
+      assert.equal(second.ok, true);
+      assert.equal(second.created, false);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 1, 'never duplicates');
+    } finally { db.close(); }
+  } finally { cleanup(repo); }
+});
+
+test('ensureDefaultProject never touches a DB that already has a user project', async () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    project.ensureProject({ projectRoot: repo, hostModel: null });
+    const schema = await core.schema();
+    const db = schema.openDatabase(join(repo, '.sdlc', 'sdlc.db'), { requireQuickCheck: false });
+    try {
+      db.prepare(
+        `INSERT INTO projects(id, name, repo_path, state, complexity_json, budget_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run('P1', 'user project', repo, 'DISCOVERY', null, null, 't', 't');
+      const res = project.ensureDefaultProject(db, { projectRoot: repo });
+      assert.equal(res.ok, true);
+      assert.equal(res.created, false);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 1);
+      assert.equal(db.prepare('SELECT * FROM projects WHERE id = ?').get('P1')?.name, 'user project');
+      assert.equal(db.prepare('SELECT * FROM projects WHERE id = ?').get('default'), undefined, 'no default row added');
+    } finally { db.close(); }
+  } finally { cleanup(repo); }
+});
+
+test('ensureDefaultProject accepts a live runtime target and records provenance, fail-closed otherwise', async () => {
+  const repo = makeRepo({ 'package.json': '{}', 'pnpm-lock.yaml': 'x\n' });
+  try {
+    project.ensureProject({ projectRoot: repo, hostModel: null });
+    const cfg = await core.config();
+    const runtimeMod = await core.runtime();
+    const { Runtime } = runtimeMod;
+    const runtime = new Runtime({ projectRoot: repo, config: cfg.deepMerge(cfg.DEFAULT_CONFIG, {}), useLock: false });
+    runtime.open();
+    try {
+      const res = project.ensureDefaultProject(runtime, { projectRoot: repo });
+      assert.equal(res.ok, true);
+      assert.equal(res.created, true);
+      assert.equal(runtime.getProject('default')?.state, 'DISCOVERY');
+    } finally { runtime.close({ releaseLock: false }); }
+
+    // Fail-closed: no DB handle resolves to a report, never a throw.
+    for (const bad of [null, undefined, {}, { db: null }]) {
+      const res = project.ensureDefaultProject(bad, { projectRoot: repo });
+      assert.equal(res.ok, false);
+      assert.equal(res.created, false);
+    }
+  } finally { cleanup(repo); }
+});

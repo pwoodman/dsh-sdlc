@@ -11,23 +11,21 @@
  * otherwise only visible in logs. It is a VIEW: no writes, no lock, no model.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { Runtime } from '../../../sdlc-core/src/runtime.js';
 import { loadConfig } from '../../../sdlc-core/src/config.js';
+import { ensureDefaultProject } from '../../../sdlc-core/src/project.js';
 import {
   activeTasks, checkNoOverlap, depsBlocking, effectiveParallelism, resourcesOf, topoSort,
 } from '../../../sdlc-core/src/scheduler.js';
+import { readPackageVersion } from '../../../sdlc-guard/src/package-version.js';
 
 /** Host build serving this snapshot (see handlers.js — used for mismatch diagnosis). */
 function pluginVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return null;
-  }
+  return readPackageVersion(import.meta.url, 3);
 }
 
 export const FLOW_LIMITS = {
@@ -114,6 +112,13 @@ export function buildFlowModel(projectRoot, {
 } = {}) {
   const { runtime, config } = openRuntime(projectRoot);
   try {
+    // Track 0 — AUTO-ON: opening/touching the Lead means a project exists,
+    // so the read-only snapshot path auto-creates one default row on an
+    // empty table (idempotent; user rows untouched). Fail-closed: a default
+    // failure resolves into the honest report below, never a throw.
+    try {
+      ensureDefaultProject(runtime, { projectRoot });
+    } catch { /* the project.available=false state below carries the story */ }
     // Only this workspace's project. A stale DB can contain a project row from
     // another checkout (the old demo seed did); rendering it would present
     // foreign data as if it were real. If no row matches this root, the panel
@@ -463,17 +468,18 @@ export function handleFlow(projectRoot, query = {}) {
     afterEventId: intParam(query.after, 0, 0, Number.MAX_SAFE_INTEGER),
     escalationLimit: intParam(query.escalations, FLOW_LIMITS.escalations, 0, 200),
   });
-  // A DB with no project row for THIS workspace is NOT a setup failure — the
-  // workspace is ready, it just has no project yet. The distinct code lets
-  // the panel say so ("create one with `/sdlc run`") instead of showing the
-  // auto-setup-failed card for a healthy, empty workspace.
+  // A DB with a project row for ANOTHER workspace only is not a user
+  // request away from health — the workspace root on screen has no project
+  // row here, so the panel says so honestly and the Lead's first touch
+  // auto-creates it (see the ensureDefaultProject call above, which only
+  // fills a fully EMPTY projects table).
   if (!model.project.available) {
     return {
       status: 404,
       body: {
         ok: false,
         error: 'NO_PROJECT_ROW',
-        detail: `${model.project.reason ? `${model.project.reason} — ` : ''}create one with \`/sdlc run\` in the lead session`,
+        detail: `${model.project.reason ? `${model.project.reason} — ` : ''}workspace is ready and a project is active — describe your goal to the Lead (e.g. /sdlc run <your goal>)`,
         root: projectRoot,
         pluginVersion: pluginVersion(),
       },

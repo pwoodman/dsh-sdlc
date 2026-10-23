@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
 
 const il = await core.instanceLock();
@@ -103,5 +103,27 @@ test('NEGATIVE CONTROL: without the lock file, acquisition always succeeds', () 
       if (i === 0) assert.equal(l.acquire().acquired, true);
       else assert.throws(() => l.acquire(), /INSTANCE_LOCKED/);
     }
+  } finally { cleanup(dir); }
+});
+
+test('a stale takeover leaves no torn lock behind (A3 atomic rename)', () => {
+  const dir = tempDir('sdlc-lock-atomic-');
+  try {
+    const a = new il.InstanceLock(lockPath(dir), { pid: 111, isAlive: () => true, host: 'h1' });
+    a.acquire();
+    const takeovers = [];
+    const b = new il.InstanceLock(lockPath(dir), { pid: 222, isAlive: () => false, host: 'h1', onTakeover: (h, p) => takeovers.push({ h, p }) });
+    const result = b.acquire();
+    assert.equal(result.acquired, true);
+    assert.equal(result.tookOver, true);
+    // The lock file is always whole JSON — never a torn partial write — and
+    // no temp debris is left behind in the directory.
+    const payload = JSON.parse(readFileSync(lockPath(dir), 'utf8'));
+    assert.equal(payload.pid, 222);
+    assert.equal(takeovers.length, 1);
+    assert.equal(takeovers[0].p.pid, 222);
+    assert.deepEqual(result, { acquired: true, tookOver: true, holder: takeovers[0].h });
+    const leftovers = readdirSync(dir).filter((f) => f.endsWith('.tmp'));
+    assert.deepEqual(leftovers, [], 'no temp files left behind after the atomic rename');
   } finally { cleanup(dir); }
 });

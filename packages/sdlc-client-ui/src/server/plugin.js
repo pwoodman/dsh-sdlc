@@ -32,6 +32,7 @@ import {
 import { handleFlow } from './flow.js';
 import { ensureProject } from '../../../sdlc-core/src/project.js';
 import { resolveHostModel } from '../../../sdlc-core/src/host-model.js';
+import { readPackageVersion } from '../../../sdlc-guard/src/package-version.js';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { isAbsolute, resolve } from 'node:path';
@@ -61,7 +62,7 @@ function selftest(ctx = null) {
 }
 
 function pkgVersion() {
-  return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+  return readPackageVersion(import.meta.url, 3);
 }
 
 /**

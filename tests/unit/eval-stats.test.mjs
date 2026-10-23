@@ -51,11 +51,16 @@ test('bootstrap CI is reproducible, bracketed and degenerate-safe', () => {
   const a = bootstrapCI([5, 5, 5, 5], { seed: 7 });
   assert.deepEqual({ lo: a.lo, hi: a.hi, statistic: a.statistic }, { lo: 5, hi: 5, statistic: 5 });
   const diffs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-  const b1 = bootstrapCI(diffs, { seed: 42, B: 2000 });
-  const b2 = bootstrapCI(diffs, { seed: 42, B: 2000 });
+  // B is a TEST-waste lever, not production accuracy: the production default in
+  // eval/report.mjs stays at 10,000 resamples, but the reproducibility +
+  // bracketing assertions need only a smoke-sized B here. 200 resamples keeps
+  // the statistical shape (lo <= statistic <= hi, exact reproducibility) at a
+  // fraction of the PRNG cost.
+  const b1 = bootstrapCI(diffs, { seed: 42, B: 200 });
+  const b2 = bootstrapCI(diffs, { seed: 42, B: 200 });
   assert.deepEqual(b1, b2, 'same seed ⇒ identical CI');
   assert.ok(b1.lo <= b1.statistic && b1.statistic <= b1.hi);
-  assert.equal(b1.B, 2000);
+  assert.equal(b1.B, 200);
 });
 
 test('wilcoxon exact p-value for all-positive differences', () => {

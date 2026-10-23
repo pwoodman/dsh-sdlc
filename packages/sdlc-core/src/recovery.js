@@ -35,6 +35,18 @@ export function findOrphans({ runs = [], isAlive = () => false, worktreeExists =
   return orphans;
 }
 
+/**
+ * Mark a worker run as orphaned. The UPDATE is conditional on the row existing,
+ * so callers can salvage without a prior SELECT (K.5: the run row is evidence).
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {string} runId
+ * @returns {boolean} true when a row was marked
+ */
+export function markOrphaned(db, runId) {
+  const res = db.prepare('UPDATE worker_runs SET orphaned = 1 WHERE id = ?').run(runId);
+  return (res.changes ?? 0) > 0;
+}
+
 /** Snapshot plan for one orphan: preserve work, then FAIL→READY with evidence. */
 export function salvagePlan(orphan, { recoveryRoot = '.sdlc/recovery' } = {}) {
   return {
@@ -105,6 +117,53 @@ export function reconcile({
   return { discrepancies, transitions, ambiguous: discrepancies.filter((d) => d.kind !== 'dead-worker') };
 }
 
+/**
+ * Apply a reconciliation to the store: persist `orphaned=1` for every dead
+ * worker's run (salvage evidence, K.5) and apply each transition through the
+ * state machine. Exactly one transition per task comes out of `reconcile()`,
+ * so the runtime applies exactly one move per task here.
+ *
+ * @param {object} input
+ * @param {import('node:sqlite').DatabaseSync} input.db
+ * @param {{transition(taskId:string,to:string,actor:string,ctx?:object):{ok:boolean,reason?:string}}} input.state
+ *   the TaskStateService (or any object with the same `transition` shape)
+ * @param {Array} [input.tasks] task rows (must carry `id`, `state`,
+ *   `worktree_path`, `branch`)
+ * @param {Array} [input.runs] worker_runs rows
+ * @param {(pid:number)=>boolean} [input.isAlive]
+ * @param {(path:string)=>boolean} [input.worktreeExists]
+ * @param {(branch:string)=>boolean} [input.branchExists]
+ */
+export function applyReconciliation({
+  db, state, tasks = [], runs = [],
+  isAlive = () => false, worktreeExists = () => true, branchExists = () => true,
+} = {}) {
+  if (!db) throw new Error('applyReconciliation: db is required');
+  if (!state || typeof state.transition !== 'function') throw new Error('applyReconciliation: state.transition is required');
+  const recon = reconcile({ tasks, runs, isAlive, worktreeExists, branchExists });
+  const runByTask = new Map();
+  for (const run of runs) {
+    if (!run.finished_at) runByTask.set(run.task_id, run);
+  }
+  const applied = [];
+  for (const t of recon.transitions) {
+    // Dead-worker salvage always marks the run row first: the `orphaned=1`
+    // flag is the durable K.5 evidence that the run's output was salvaged,
+    // not silently dropped. Escalated siblings keep their run row as-is —
+    // the discrepancy (missing worktree/branch) is the evidence there.
+    if (t.evidence === 'ORPHAN_SALVAGE') {
+      const run = runByTask.get(t.taskId);
+      if (run) markOrphaned(db, run.id);
+    }
+    const res = state.transition(t.taskId, t.to, t.actor ?? 'recovery', {
+      hardFailure: t.to === 'FAILED',
+      ...(t.to === 'ESCALATED' ? { payload: { evidence: t.evidence } } : {}),
+    });
+    applied.push({ ...t, ok: res.ok === true, reason: res.ok ? undefined : res.reason ?? res.error });
+  }
+  return { discrepancies: recon.discrepancies, transitions: recon.transitions, applied };
+}
+
 /** Resume is a reconciliation + scheduler re-entry; it never invents state. */
 export function resumePlan(state = {}) {
   const recon = reconcile(state);
@@ -119,4 +178,4 @@ export function resumePlan(state = {}) {
   };
 }
 
-export default { findOrphans, salvagePlan, reconcile, resumePlan, ORPHAN_STATES };
+export default { findOrphans, markOrphaned, salvagePlan, reconcile, resumePlan, applyReconciliation, ORPHAN_STATES };

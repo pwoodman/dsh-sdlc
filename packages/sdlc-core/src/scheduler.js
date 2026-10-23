@@ -12,7 +12,11 @@
 
 import { matchGlob } from './glob-lite.js';
 
-export const DEP_BLOCKING_STATES = ['FAILED', 'BLOCKED', 'ESCALATED', 'CANCELLED'];
+// (vi): the hand-duplicate DEP_FAILED_STATES in state-machine.js is unified
+// here — the scheduler's DEP_BLOCKING_STATES is the single canonical list
+// (same four states; scheduler.js must not import state-machine.js, which
+// pulls node:sqlite, so the constant lives in the dependency-free module).
+export const DEP_BLOCKING_STATES = Object.freeze(['FAILED', 'BLOCKED', 'ESCALATED', 'CANCELLED']);
 
 /** Static (wildcard-free) prefix of a glob, used for overlap detection. */
 export function staticPrefix(pattern) {
@@ -139,6 +143,15 @@ export function effectiveParallelism({ maxParallelWorkers = 'auto', cpus = 1, ra
 /**
  * Pure scheduling step. Returns the transitions the runtime should apply.
  * Deterministic: tasks are processed in stable id order.
+ *
+ * B15 wiring note: the ASSIGNED fan-out below proposes at most the effective
+ * parallelism, but planStep itself is still pure and synchronous — it returns
+ * the capped batch; the CONCURRENT application of that batch (`Promise.all`
+ * over the bounded ASSIGNED set, locks respected) lives in
+ * `Runtime.dispatchBatch` (runtime.js), which computes the cap via
+ * `effectiveParallelism` + `providerLimitFromRegistry` and applies the
+ * returned transitions. Pure helpers are never reimplemented at the call
+ * site; they are imported and wired.
  */
 export function planStep(state, {
   maxParallelWorkers = 4,

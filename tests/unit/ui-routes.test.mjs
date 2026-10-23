@@ -310,16 +310,16 @@ test('plugin fetch handlers serve live responses end-to-end (no host)', async ()
       );
       assert.equal(otherStatus.status, 200, 'the session workspace is set up on demand');
       assert.ok(existsSync(join(dirOther, '.sdlc', 'sdlc.db')), 'the bootstrap landed in dirOther');
-      // Flow on a bootstrapped-but-projectless workspace is the HEALTHY
-      // empty state: 404 NO_PROJECT_ROW (create one with `/sdlc run`),
-      // never the auto-setup-failed card.
+      // A bootstrapped fresh workspace is READY on first touch: the flow
+      // snapshot auto-creates the default project (Track 0 AUTO-ON), so the
+      // panel shows the active state instead of the auto-setup-failed card.
       const otherFlow = await handlersByKey.get('GET /api/sdlc.flow')(
         new Request(`http://localhost/api/sdlc.flow?cwd=${encodeURIComponent(dirOther)}`),
       );
-      assert.equal(otherFlow.status, 404);
+      assert.equal(otherFlow.status, 200);
       const otherFlowBody = await otherFlow.json();
-      assert.equal(otherFlowBody.error, 'NO_PROJECT_ROW');
-      assert.match(otherFlowBody.detail, /\/sdlc run/);
+      assert.equal(otherFlowBody.ok, true);
+      assert.equal(otherFlowBody.project.id, 'default', 'first Lead touch auto-created the default project');
     } finally { cleanup(dirOther); }
 
     // GET config.

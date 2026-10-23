@@ -7,23 +7,15 @@
  * bare npm specifiers so a registry install resolves through node_modules.
  */
 
-const { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
-const { buildMap, rewriteImports } = require('../../scripts/lib/cross-package-imports.cjs');
+// walk + the cross-package src/ -> lib/ import transform are the ONE shared
+// implementation in scripts/lib/cross-package-imports.cjs (C16).
+const { buildMap, rewriteImports, walk } = require('../../scripts/lib/cross-package-imports.cjs');
 
 const DIR = __dirname;
 const SRC = join(DIR, 'src');
 const LIB = join(DIR, 'lib');
-
-function walk(dir, base = dir, out = []) {
-  for (const entry of readdirSync(dir).sort()) {
-    const full = join(dir, entry);
-    const stat = require('node:fs').statSync(full);
-    if (stat.isDirectory()) walk(full, base, out);
-    else out.push(full.slice(base.length + 1));
-  }
-  return out;
-}
 
 const pkg = JSON.parse(readFileSync(join(DIR, 'package.json'), 'utf8'));
 if (!existsSync(SRC)) {

@@ -82,7 +82,7 @@ function collectCoverage(dir) {
   for (const f of testFiles) {
     // --test-reporter=spec: human-readable text with the | table (the
     // default TAP framing is binary under capture and buries it).
-    const res = run('node', ['--experimental-test-coverage', '--test-reporter=spec', f], { cwd: dir, timeout: 300_000, env: childEnv });
+    const res = run(process.execPath, ['--experimental-test-coverage', '--test-reporter=spec', f], { cwd: dir, timeout: 300_000, env: childEnv });
     if (res.status === 0) ran += 1;
     for (const rawLine of `${res.stdout}\n${res.stderr}`.split('\n')) {
       const line = rawLine.replace(/^ℹ\s*/, '');
@@ -152,7 +152,7 @@ function collectLoad(url) {
 }
 
 function collectLoadSmoke(url) {
-  const probe = run('node', ['-e', `
+  const probe = run(process.execPath, ['-e', `
 const t0 = Date.now();
 const lat = [];
 let errors = 0;

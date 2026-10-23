@@ -12,14 +12,18 @@
 
 import { DatabaseSync } from 'node:sqlite';
 import { migrate } from './schema.js';
+import { DEP_BLOCKING_STATES } from './scheduler.js';
+
+// (vi): unified on the scheduler's canonical list — the old local
+// DEP_FAILED_STATES was a hand-duplicate of the same four states that could
+// silently drift (e.g. a fifth blocking state added in one module only).
+const DEP_FAILED_STATES = DEP_BLOCKING_STATES;
 
 export const TERMINAL_STATES = ['DONE', 'CANCELLED'];
 export const TASK_STATES = [
   'BACKLOG', 'READY', 'ASSIGNED', 'IN_PROGRESS', 'VERIFYING',
   'ACCEPTED', 'MERGING', 'DONE', 'FAILED', 'ESCALATED', 'BLOCKED', 'CANCELLED',
 ];
-
-const DEP_FAILED_STATES = ['FAILED', 'BLOCKED', 'ESCALATED', 'CANCELLED'];
 
 /** Guard helpers: the service enforces what it is TOLD, never invented facts. */
 const G = {
@@ -152,8 +156,20 @@ export function findTransition(from, to, actor) {
   return candidates.find((t) => t.actors.includes(actor)) ?? null;
 }
 
-export function isLegalTransition(from, to, actor) {
-  return findTransition(from, to, actor) !== null;
+export function isLegalTransition(from, to, actor, ctx = {}) {
+  const entry = findTransition(from, to, actor);
+  if (!entry) return false;
+  // (iv): the guard parameter used to be dead — legality ignored it, so a
+  // transition whose row exists but whose guard rejects still reported
+  // "legal". Wire the guard table: a transition is legal only when its row
+  // exists AND its guard passes the supplied context (default {} matches the
+  // transition() call shape for always-guards).
+  const guard = GUARDS[entry.guard] ?? GUARDS.always;
+  try {
+    return guard(ctx) === true;
+  } catch {
+    return false;
+  }
 }
 
 export class TaskStateService {
@@ -174,6 +190,11 @@ export class TaskStateService {
    * `BEGIN IMMEDIATE … COMMIT`; because `node:sqlite` statements are
    * synchronous, two in-process writers cannot interleave, and the queue
    * provides ordering for async callers.
+   *
+   * (iii): Runtime.transition routes through this queue — the service owns
+   * the B.2.3 single-writer invariant, not the caller. `transition()` below
+   * is the synchronous in-transaction core; `transitionQueued()` is the
+   * async serialized entry point for concurrent callers.
    */
   enqueue(fn) {
     const run = this._queue.then(fn, fn);
@@ -325,6 +346,16 @@ export class TaskStateService {
       });
       return { ok: true, from, to, row: this._taskRow(taskId) };
     });
+  }
+
+  /**
+   * Async serialized transition: the B.2.3 write queue entry point for
+   * concurrent callers (Runtime.transition routes through here). Chains onto
+   * the queue so two in-flight transitions cannot interleave even when
+   * callers do not await each other.
+   */
+  transitionQueued(taskId, to, actor, ctx = {}) {
+    return this.enqueue(() => this.transition(taskId, to, actor, ctx));
   }
 
   /** Append-only audit rows for a project-level action (no state change). */

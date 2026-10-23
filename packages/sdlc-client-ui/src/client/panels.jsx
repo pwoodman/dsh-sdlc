@@ -1002,7 +1002,7 @@ function NoProjectRowState({ t, cwd, onRetry, reason }) {
         )}
         <div className="sdlc-empty-command">
           <div className="sdlc-empty-label">{t('flow.noProjectRowHint')}</div>
-          <code>/sdlc run</code>
+          <code>/sdlc run &lt;your goal&gt;</code>
         </div>
         {cwd && (
           <div className="sdlc-empty-workspace">
@@ -1010,7 +1010,7 @@ function NoProjectRowState({ t, cwd, onRetry, reason }) {
           </div>
         )}
         <div className="sdlc-empty-actions">
-          <CopyButton text="/sdlc run" label={t('action.copyCommand')} copiedLabel={t('action.copied')} />
+          <CopyButton text="/sdlc run <your goal>" label={t('action.copyCommand')} copiedLabel={t('action.copied')} />
           <button type="button" className="sdlc-btn sdlc-btn-primary" onClick={onRetry}>{t('action.retry')}</button>
         </div>
       </EmptyState>

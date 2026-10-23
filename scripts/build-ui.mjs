@@ -23,7 +23,8 @@
  *   node scripts/build-ui.mjs [--check]
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -603,40 +604,16 @@ if (CHECK) {
 mkdirSync(join(LIB, 'server'), { recursive: true });
 mkdirSync(join(LIB, 'client'), { recursive: true });
 // Mirror the sources (the zero-dependency src/ → lib/ step, like build.mjs)
-// then overwrite the two entry artifacts.
-function walk(dir, base = dir, out = []) {
-  for (const entry of readdirSync(dir).sort()) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) walk(full, base, out);
-    else out.push(full.slice(base.length + 1));
-  }
-  return out;
-}
-
-// Cross-package imports: src/ uses relative paths (tests see one module), lib/
-// must use bare specifiers (published packages resolve via node_modules).
-const DIR_TO_PKG = {};
-for (const d of readdirSync(join(ROOT, 'packages'))) {
-  const pj = join(ROOT, 'packages', d, 'package.json');
-  if (!existsSync(pj)) continue;
-  const m = JSON.parse(readFileSync(pj, 'utf8'));
-  if (m.name) DIR_TO_PKG[d] = m.name;
-}
-function rewriteImports(text) {
-  return text.replace(
-    /from '((?:\.\.\/)+)sdlc-([a-z-]+)\/src\/([^']+?)\.(js|mjs)'/g,
-    (_m, _d, dir, file, _e) => {
-      const pkg = DIR_TO_PKG[`sdlc-${dir}`];
-      if (!pkg) return _m;
-      const stem = file.split('/').pop();
-      const MAIN_STEMS = { '@patwoodman/dsh-sdlc-flow-cli': 'cli' };
-      return (stem === 'index' || stem === MAIN_STEMS[pkg]) ? `from '${pkg}'` : `from '${pkg}/${file}'`;
-    },
-  );
-}
+// then overwrite the two entry artifacts. walk + rewriteImports are the one
+// shared implementation in scripts/lib/cross-package-imports.cjs (C16) — the
+// hard-coded MAIN_STEMS table that lived here is gone; the shared module
+// derives each package's main stem from its manifest instead.
+const require = createRequire(import.meta.url);
+const { buildMap, rewriteImports, walk } = require('./lib/cross-package-imports.cjs');
+const importMap = buildMap(join(ROOT, 'packages'));
 function copyRewrite(from, to) {
   mkdirSync(join(to, '..'), { recursive: true });
-  writeFileSync(to, rewriteImports(readFileSync(from, 'utf8')));
+  writeFileSync(to, rewriteImports(readFileSync(from, 'utf8'), importMap));
 }
 rmSync(join(LIB, 'server'), { recursive: true, force: true });
 rmSync(join(LIB, 'client'), { recursive: true, force: true });

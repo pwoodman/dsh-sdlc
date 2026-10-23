@@ -99,6 +99,15 @@ test('dumpConfigYaml round-trips through the YAML subset (H.1 document order)', 
   assert.ok(text.indexOf('tiers:') < text.indexOf('pricing:'), 'document order follows H.1');
 });
 
+test('H.3 check: unknown workerMode fails validateConfig (C18 honest seam)', () => {
+  const bad = cfg.deepMerge(cfg.DEFAULT_CONFIG, { execution: { workerMode: 'subprocess' } });
+  const result = cfg.validateConfig(bad, { projectRoot: '/tmp', env: {} });
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((e) => e.includes('workerMode')), `expected a workerMode error, got: ${result.errors.join('; ')}`);
+  const good = cfg.validateConfig(cfg.DEFAULT_CONFIG, { projectRoot: tempDir('sdlc-cfg-'), env: {} });
+  assert.deepEqual(good.errors, []);
+});
+
 test('modelKey is provider/model', () => {
   assert.equal(cfg.modelKey({ provider: 'openai', model: 'gpt-4o' }), 'openai/gpt-4o');
 });

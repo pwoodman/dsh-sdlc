@@ -10,14 +10,11 @@
 
 import { readFileSync } from 'node:fs';
 import { ROLES, ROLE_IDS, ROLE_COUNT, PUBLIC_ROLE_IDS, PUBLIC_ROLE_COUNT, presetRows, publicPresetRows, presetIdFor, presetConfigIdFor, rolesForDomains } from './roles.js';
+import { readPackageVersion } from '../../sdlc-guard/src/package-version.js';
 import { contributeSelftest, setSelftestMeta } from './selftest.js';
 
 function pkgVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return null;
-  }
+  return readPackageVersion(import.meta.url, 2);
 }
 
 /** Extract the preset ids actually declared by this bundle's patch file. */

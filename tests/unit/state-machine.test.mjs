@@ -21,6 +21,32 @@ function fresh(state = null) {
   return svc;
 }
 
+/**
+ * One TaskStateService per task STATE (12), reused across the whole matrix
+ * row-group. The exhaustive test below used to construct a fresh `:memory:`
+ * DB per (from, to, actor) cell — 1,296 constructions (~18s of sqlite open +
+ * migrate on the slow runner). Reusing one service per `from` state between
+ * cells keeps the coverage byte-identical (same transitions, same guards,
+ * same event counts) while constructing only 12 DBs.
+ *
+ * Reset subtlety: `events` is append-only by DATABASE TRIGGER (a DELETE is
+ * rejected), so the service cannot be "emptied" — instead each cell uses a
+ * FRESH task id and the assertion counts only that id's events. State is
+ * re-seeded per cell via `_setState`, which overwrites the row in place.
+ */
+const perStateSvc = new Map();
+let cellSeq = 0;
+function svcFor(from) {
+  let svc = perStateSvc.get(from);
+  if (!svc) {
+    svc = new sm.TaskStateService(':memory:');
+    perStateSvc.set(from, svc);
+  }
+  const taskId = `T1/c${cellSeq++}`;
+  svc._setState(taskId, from);
+  return { svc, taskId };
+}
+
 /** Context that satisfies the guard of a specific matrix row. */
 const CTX_BY_GUARD = {
   always: {},
@@ -53,23 +79,25 @@ function satisfyingCtx(from, to, actor) {
 test('the matrix rows are the only legal transitions (exhaustive over 12 states × 12 states × 9 actors)', () => {
   let checked = 0;
   for (const from of ALL_STATES) {
+    // One DB per `from` state, reset between cells (see svcFor): 12
+    // constructions instead of 1,296, identical transition coverage.
     for (const to of ALL_STATES) {
       for (const actor of ALL_ACTORS) {
         const row = sm.findTransition(from, to, actor);
         const expected = row !== null;
-        const svc = fresh(from);
-        const before = svc.getState('T1');
-        const res = svc.transition('T1', to, actor, satisfyingCtx(from, to, actor));
+        const { svc, taskId } = svcFor(from);
+        const before = svc.getState(taskId);
+        const res = svc.transition(taskId, to, actor, satisfyingCtx(from, to, actor));
         checked += 1;
         if (expected) {
           assert.equal(res.ok, true, `expected legal ${from}→${to} (${actor}): ${res.reason}`);
-          assert.equal(svc.getState('T1'), to);
-          assert.equal(svc.getEvents('T1').length, 1, 'exactly one events row per accepted transition');
+          assert.equal(svc.getState(taskId), to);
+          assert.equal(svc.getEvents(taskId).length, 1, 'exactly one events row per accepted transition');
         } else {
           assert.equal(res.ok, false, `expected illegal ${from}→${to} (${actor})`);
           assert.equal(res.error, 'INVALID_TRANSITION');
           assert.equal(res.row.state, before, 'state unchanged on rejection');
-          assert.equal(svc.getEvents('T1').length, 0, 'no events row on rejection');
+          assert.equal(svc.getEvents(taskId).length, 0, 'no events row on rejection');
         }
       }
     }
@@ -164,6 +192,18 @@ test('wrong actor for a legal pair is rejected', () => {
   const res = svc.transition('T1', 'READY', 'human', satisfyingCtx('BACKLOG', 'READY', 'human'));
   assert.equal(res.ok, false);
   assert.match(res.reason, /actor human may not perform/);
+});
+
+test('isLegalTransition wires the guard table (C16 iv): row + failing guard is illegal', async () => {
+  const { isLegalTransition, findTransition } = await core.stateMachine();
+  // Row exists but the guard rejects: VERIFYING→ACCEPTED with gatesPass:false.
+  assert.ok(findTransition('VERIFYING', 'ACCEPTED', 'verifier'), 'row must exist for the test to mean anything');
+  assert.equal(isLegalTransition('VERIFYING', 'ACCEPTED', 'verifier', { gatesPass: false }), false);
+  assert.equal(isLegalTransition('VERIFYING', 'ACCEPTED', 'verifier', { gatesPass: true }), true);
+  // Guard-throwing ctx fails closed, never throws.
+  assert.equal(isLegalTransition('VERIFYING', 'ACCEPTED', 'verifier', null), false);
+  // No row at all stays illegal regardless of ctx.
+  assert.equal(isLegalTransition('BACKLOG', 'DONE', 'planner', {}), false);
 });
 
 test('retry increments attempt; recovery wildcard escalates any non-terminal state', () => {

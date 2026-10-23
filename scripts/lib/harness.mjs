@@ -22,6 +22,15 @@ export const EXIT = { PASS: 0, FAIL: 1, USAGE: 2 };
 /** The offline test layers, in the order the gates run them. */
 export const TEST_LAYERS = ['tests/unit', 'tests/contract', 'tests/integration', 'tests/fault', 'tests/adversarial'];
 
+// CONCURRENCY POLICY (TRACK B, B12 — measured, do not "tune" blindly).
+// `node --test` runs test FILES concurrently at its default level; the lever
+// for this suite is per-test waste, not `--test-concurrency`. Measured on the
+// contract layer (121 tests): default 1.36s, `--test-concurrency=1` 2.31s
+// (2.1x slower serial), `--test-concurrency=8` 1.36s (no gain — the suite is
+// CPU-bound on sqlite + bootstrap resampling, so extra workers only add
+// scheduling overhead). Keep the default; fix wasteful tests instead
+// (B10 reuses 12 DBs for 1,296 matrix cells; B11 trims bootstrap B 2000→200).
+
 /**
  * Turn test-layer directories into `node --test` arguments.
  *
@@ -72,7 +81,11 @@ export function summaryOf(output) {
 
 /** Run a command, never throwing, and return a normalized result. */
 export function run(cmd, args = [], opts = {}) {
-  const res = spawnSync(cmd, args, {
+  // Resolve 'node' to the running binary: PATH may not carry a `node` entry
+  // (bundled runtimes), and spawning a bare name would fail or pick a wrong
+  // toolchain. Every other command keeps its caller-supplied resolution.
+  const bin = cmd === 'node' ? process.execPath : cmd;
+  const res = spawnSync(bin, args, {
     encoding: 'utf8',
     timeout: opts.timeoutMs ?? 120_000,
     cwd: opts.cwd,

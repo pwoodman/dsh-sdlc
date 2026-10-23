@@ -37,9 +37,9 @@
  *   node scripts/validate-m0.mjs [--json <path>] [--fail-fast]
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, accessSync, constants } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { runSuite, run, withTempDir, EXIT } from './lib/harness.mjs';
 import {
   ROOT, loadProfiles, validateProfileStatic, allPatchRows, composeProfile, loadPackages, loadPatchRows, ownBundlePrefix,
@@ -96,22 +96,72 @@ function parseRows(text) {
   return rows;
 }
 
+/** `which` without spawning: true when `name` resolves to an executable on PATH. */
+function canResolveOnPath(name) {
+  const pathEnv = process.env.PATH ?? '';
+  const dirs = pathEnv.split(':').filter(Boolean);
+  const sep = '/';
+  for (const dir of dirs) {
+    try {
+      accessSync(dir + sep + name, constants.X_OK);
+      return true;
+    } catch { /* not here — keep looking */ }
+  }
+  // An absolute/relative path that is directly executable also resolves.
+  if (name.includes(sep)) {
+    try { accessSync(name, constants.X_OK); return true; } catch { /* no */ }
+  }
+  return false;
+}
+
 /** Boot the probe profile and wait for the SDLC_SELFTEST report. */
 function runBootProbe() {
   return withTempDir('sdlc-m0-probe-', (dir) => {
     const reportPath = join(dir, 'selftest.json');
-    const child = spawn('dsh', ['--profile', PROBE_PROFILE], {
-      env: { ...process.env, SDLC_SELFTEST: reportPath },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    // `dsh` is resolved from PATH; when it is absent (bundled offline
+    // runtimes) there is no live profile to boot, so fail fast instead of
+    // polling the deadline with a tight loop. NOTE: spawn 'error' events are
+    // delivered on the event loop, which Atomics.wait blocks — the handler
+    // below cannot fire until the wait yields. So this ALSO probes PATH
+    // up-front with `which`-equivalent resolution: if no `dsh` binary is
+    // visible, there is nothing to boot and we throw immediately.
+    let child;
+    try {
+      child = spawn('dsh', ['--profile', PROBE_PROFILE], {
+        env: { ...process.env, SDLC_SELFTEST: reportPath },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      throw new Error(`cannot boot profile ${PROBE_PROFILE}: ${err.message} (dsh is not on PATH here)`);
+    }
+    // Synchronous PATH check as the fail-fast: `spawn` defers ENOENT to an
+    // async event the Atomics.wait loop below would never observe in time
+    // (an event-loop callback cannot run while the thread is inside the
+    // wait), so without this the function polls the full 60 s deadline.
+    if (!canResolveOnPath('dsh')) {
+      throw new Error(`cannot boot profile ${PROBE_PROFILE}: dsh is not on PATH here`);
+    }
     let stderr = '';
+    let spawnFailed = null;
+    let exited = false;
+    child.on('error', (err) => { spawnFailed = err; });
+    child.on('exit', () => { exited = true; });
     child.stderr.on('data', (d) => (stderr += d.toString()));
+    // Event-driven wait: the poll interval uses Atomics.wait (no child
+    // process, no timer handle), and the loop exits as soon as the report
+    // lands, the child exits, or the spawn itself failed — never a blind
+    // 60 s busy-wait (the old spawnSync('sleep') loop forked ~300 children).
+    const poll = new Int32Array(new SharedArrayBuffer(4));
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
       if (existsSync(reportPath)) break;
-      spawnSync('sleep', ['0.2']);
+      if (spawnFailed || exited) break;
+      Atomics.wait(poll, 0, 0, 200);
     }
     child.kill('SIGTERM');
+    if (spawnFailed) {
+      throw new Error(`cannot boot profile ${PROBE_PROFILE}: ${spawnFailed.message} (dsh is not on PATH here)`);
+    }
     if (!existsSync(reportPath)) {
       throw new Error(`no SDLC_SELFTEST report from profile ${PROBE_PROFILE}: ${stderr.slice(0, 400)}`);
     }
@@ -162,7 +212,7 @@ function runInProcessProbe() {
       runtime?.close?.({ releaseLock: false });
       process.stdout.write(JSON.stringify(report));
     `;
-    const res = run('node', ['--input-type=module', '-e', script], {
+    const res = run(process.execPath, ['--input-type=module', '-e', script], {
       env: { ...process.env, SDLC_SELFTEST: reportPath },
       timeoutMs: 60_000,
     });
@@ -206,7 +256,7 @@ const checks = [
     id: 'M0-00-platform',
     title: 'platform suite passes (validate-platform.mjs)',
     fn() {
-      const res = run('node', [join(import.meta.dirname, 'validate-platform.mjs'), '--json', join(import.meta.dirname, '..', '.validation', 'm0-platform.json')], { timeoutMs: 300_000 });
+      const res = run(process.execPath, [join(import.meta.dirname, 'validate-platform.mjs'), '--json', join(import.meta.dirname, '..', '.validation', 'm0-platform.json')], { timeoutMs: 300_000 });
       if (!res.ok) throw new Error(`platform suite failed:\n${(res.stdout + res.stderr).slice(-2000)}`);
       return { detail: 'platform prerequisites hold' };
     },
@@ -364,7 +414,7 @@ const checks = [
       if (!existsSync(mod)) return { skip: 'packages/sdlc-guard is not built yet — run `node scripts/build.mjs`' };
       // The guard's pure matcher is imported and exercised directly: no LLM, no boot.
       return withTempDir('sdlc-m0-guard-', () => {
-        const res = run('node', ['--input-type=module', '-e', `
+        const res = run(process.execPath, ['--input-type=module', '-e', `
           const g = await import(${JSON.stringify('file://' + mod)});
           const decide = g.checkFsWrite ?? g.default?.checkFsWrite;
           const cases = [
@@ -399,7 +449,7 @@ const checks = [
       if (!existsSync(mod)) return { skip: 'packages/sdlc-core is not built yet — run `node scripts/build.mjs`' };
       return withTempDir('sdlc-m0-db-', (dir) => {
         const dbPath = join(dir, 'sdlc.db');
-        const res = run('node', ['--input-type=module', '-e', `
+        const res = run(process.execPath, ['--input-type=module', '-e', `
           import { DatabaseSync } from 'node:sqlite';
           const s = await import(${JSON.stringify('file://' + mod)});
           const db = new DatabaseSync(${JSON.stringify(dbPath)});
@@ -426,7 +476,7 @@ const checks = [
       const core = join(import.meta.dirname, '..', 'packages', 'sdlc-core', 'lib', 'worker-result.js');
       if (!existsSync(core)) return { skip: 'packages/sdlc-core is not built yet — run `node scripts/build.mjs`' };
       return withTempDir('sdlc-m0-outbox-', (dir) => {
-        const res = run('node', ['--input-type=module', '-e', `
+        const res = run(process.execPath, ['--input-type=module', '-e', `
           const m = await import(${JSON.stringify('file://' + core)});
           const changed = ['src/a.ts', '.sdlc/task-outbox.json'];
           const out = m.excludeOrchestratorPaths(changed);
@@ -450,7 +500,7 @@ const checks = [
     id: 'M0-10-doctor',
     title: 'doctor runs headlessly and returns a machine-readable report',
     fn() {
-      const res = run('node', [join(import.meta.dirname, 'doctor.mjs'), '--json', join(import.meta.dirname, '..', '.validation', 'm0-doctor.json'), '--quiet']);
+      const res = run(process.execPath, [join(import.meta.dirname, 'doctor.mjs'), '--json', join(import.meta.dirname, '..', '.validation', 'm0-doctor.json'), '--quiet']);
       const out = join(import.meta.dirname, '..', '.validation', 'm0-doctor.json');
       if (!existsSync(out)) throw new Error('doctor produced no report');
       const report = JSON.parse(readFileSync(out, 'utf8'));

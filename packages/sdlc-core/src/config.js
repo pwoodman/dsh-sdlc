@@ -32,6 +32,12 @@ export const DEFAULT_CONFIG = Object.freeze({
     'anthropic/claude-opus-4': { input: 15.0, output: 75.0 },
   },
   execution: {
+    // C18/D-series: workerMode is validated ('process' supported, anything
+    // else an explicit unsupported error — Tier D owns the real spawn). The
+    // launch knobs below are spec H.1/H.2 surface (maxParallelE2e,
+    // bootstrapTimeoutMs, dependencyCache, egress) — declared for fidelity,
+    // consumed as worker-launch policy by the Tier D step, not by the current
+    // in-process path.
     workerMode: 'process',
     maxParallelWorkers: 'auto',
     maxParallelE2e: 2,
@@ -219,6 +225,15 @@ export function validateConfig(config, { env = process.env, projectRoot = proces
   if (config.verification?.detection === 'manual'
     && Object.keys(config.verification?.gates ?? {}).length === 0) {
     warnings.push('verification: detection is manual and no gates are authored — task verification passes vacuously until you author verification.gates');
+  }
+
+  // 3c. execution seam (C18): 'process' is the current in-process behaviour.
+  // Any other workerMode is an explicit unsupported error — the honest seam
+  // without building Tier D. Track D owns the real spawn.
+  if (config.execution?.workerMode !== undefined && config.execution.workerMode !== 'process') {
+    errors.push(
+      `execution: workerMode "${config.execution.workerMode}" is unsupported (only "process"); Tier D owns out-of-process spawn`,
+    );
   }
 
   // 4. provider keys — only relevant for env-key deployments

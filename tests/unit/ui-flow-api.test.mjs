@@ -40,12 +40,12 @@ test('a 404 NO_PROJECT carries the host\'s own reason through to the card', asyn
   assert.match(result.reason, /not writable/, 'the real host reason reaches the user, not a canned guess');
 });
 
-test('a 404 NO_PROJECT_ROW is the healthy empty state, not a failure', async () => {
+test('a 404 NO_PROJECT_ROW carries the goal-describing hint, never a kickoff step', async () => {
   const result = await withFetch(
     async () => new Response(JSON.stringify({
       ok: false,
       error: 'NO_PROJECT_ROW',
-      detail: 'no project yet — create one with `/sdlc run` in the lead session',
+      detail: 'workspace is ready and a project is active — describe your goal to the Lead (e.g. /sdlc run <your goal>)',
     }), {
       status: 404, headers: { 'content-type': 'application/json' },
     }),
@@ -53,7 +53,7 @@ test('a 404 NO_PROJECT_ROW is the healthy empty state, not a failure', async () 
   );
   assert.equal(result.available, false);
   assert.equal(result.code, 'NO_PROJECT_ROW');
-  assert.match(result.reason, /\/sdlc run/);
+  assert.match(result.reason, /describe your goal/);
   assert.notEqual(result.code, 'NO_PROJECT', 'must not render the auto-setup-failed card');
 });
 

@@ -99,6 +99,28 @@ test('debug trace prints the state path, and --json is parseable', () => {
   } finally { cleanup(dir); }
 });
 
+test('status auto-creates the default project on first Lead touch', () => {
+  const dir = tempDir('sdlc-cli-debug-autocreate-');
+  try {
+    assert.equal(cli.cmdStatus(dir, flags({ provider: 'deepseek-account', model: 'deepseek-flash', json: true })), 0);
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      const projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
+      assert.equal(projects.length, 1, 'empty workspace → exactly one default project');
+      assert.equal(projects[0].id, 'default');
+    } finally { runtime.close({ releaseLock: false }); }
+    // Second touch: no duplicate.
+    assert.equal(cli.cmdStatus(dir, flags({ json: true })), 0);
+    const runtime2 = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime2.open();
+    try {
+      assert.equal(runtime2.db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 1);
+    } finally { runtime2.close({ releaseLock: false }); }
+  } finally { cleanup(dir); }
+});
+
 test('debug bootstraps any workspace on first touch, then reports its natural not-found', () => {
   const dir = tempDir('sdlc-cli-debug-empty-');
   try {

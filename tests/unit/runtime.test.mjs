@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
 
@@ -636,4 +636,23 @@ test('a stored run nonce makes outbox provenance non-optional', () => {
   } finally {
     rt.close();
   }
+});
+
+test('a failed DB open releases the instance lock instead of leaking it (A2)', () => {
+  const root = tempDir('sdlc-runtime-lock-rollback-');
+  const lockPath = join(root, '.sdlc', 'sdlc.lock');
+  // A directory AS the DB path: openDatabase throws deterministically on
+  // every platform (ERR_SQLITE_ERROR: unable to open database file).
+  const dirAsDb = join(root, '.sdlc', 'is-a-directory');
+  mkdirSync(dirAsDb, { recursive: true });
+  const rt = new Runtime({
+    projectRoot: root,
+    config: baseConfig({ safety: { instanceLock: true } }),
+    dbPath: dirAsDb,
+  });
+  assert.throws(() => rt.open(), /unable to open database file|SQLITE/i);
+  assert.equal(rt.lock, null, 'the half-acquired lock handle is cleared');
+  assert.equal(existsSync(lockPath), false, 'the lock file is rolled back, not leaked');
+  assert.equal(rt.db, null);
+  cleanup(root);
 });

@@ -286,3 +286,42 @@ DSH-hosted lead is proven live via M0's boot probe on a configured host.)
    deliberate (C.2/L.5), asserted by `M4-05`.
 5. **Worktree bootstrap cost** on dependency-heavy repos is unaddressed by
    design; the warm-pool milestone stays post-M7.
+
+---
+
+## 7. Throughput track (TRACK B): concurrency stays at the default (B12)
+
+The suite is CPU-bound (node:sqlite transitions, bootstrap resampling), not
+I/O-bound, so `node --test` file-level concurrency is left at its default and
+the speedups come from removing per-test waste instead. Measured on the
+contract layer (121 tests, Node v24.21.0): default 1.36s wall,
+`--test-concurrency=1` 2.31s wall (2.1x slower serial),
+`--test-concurrency=8` 1.36s wall (no gain — extra workers add scheduling
+overhead without unblocking anything). Concrete waste removed instead: the
+exhaustive state-machine matrix reuses 12 `TaskStateService` instances (one
+per `from` state, fresh task id per cell — the events table is append-only by
+DB trigger so it cannot be emptied) instead of constructing 1,296 `:memory:`
+DBs (5.66s → 0.65s wall); the eval-stats bootstrap test passes an explicit
+`B: 200` instead of the production default `B: 10,000` in `eval/report.mjs`
+(0.60s → 0.27s wall); the `test` script is one `node --test` invocation over
+five globs instead of a five-process `&&` chain (one startup, one reporter);
+`scripts/collect-coverage.mjs` runs the instrumented suite once and
+`gate:Q`/M8 reuse `.validation/coverage.json` when fresh. The single
+documented exception to "no concurrency changes" is B14: `validate-gates.mjs`
+fans M1–M7 out concurrently because gates are separate OS processes with
+disjoint temp dirs, not threads sharing one sqlite file.
+
+---
+
+## 8. Tier D scoping (Track D — decision docs only, no behavior change)
+
+1. **D21 ctx seams** (`docs/decisions/D21-ctx-seams.md`): zero `ctx.subprocess`/`ctx.subagents` call sites; pure halves (`buildWorkerEnv`/`buildSpawnArgv` in `worker-mgr.js`) tested, launcher missing — recommend passthrough seam, first step `launchWorkerRun(ctx,…)` (M).
+2. **D22 authority handlers** (`D22-command-handlers.md`): all `/sdlc` commands return `{deferred:true}` (`tools/plugin.js:78`), 4 lead tools are stubs (`tools/index.js:206–218`) — phased plan: enqueue-only proposals first (S), authority handlers + `ctx.approval` gating second (M).
+3. **D22 mapping**: `approve`→planApproved transition, `reject`→FAILED+replan, `stop`→kill-switch+CANCELLED, `retry`→READY-or-ESCALATED, `elevate`→tier/corrective-plan; lead tools map to proposal kinds drained by the transition service.
+4. **D23 disk-full** (`D23-disk-full.md`): K.5 `DISK_EXHAUSTED` has zero code and zero tests — pre-flight capacity check + `ENOSPC` classifier, same evidence shape, `READY` (pre-flight) vs `FAILED` (mid-task) (S).
+5. **D23 skeleton**: 3 failing-first vectors in `tests/fault/disk-full.test.mjs`, checked in skipped-with-reason (repo precedent: M6-06) so all gates stay green until the implementing track flips the skips.
+6. **D24 gate types** (`D24-gate-types.md`): `types/api/security/perf` are routed by `requiredGates` but never detected; Playwright is a kind-tag, not a driver — detection-table entries first (S), `runPlaywrightGate` driver second (M).
+7. **D24 coordination**: new tests slot into existing layers only (`tests/unit`, `tests/contract`, `tests/e2e`); M8-05 layer list and `test:*` scripts unchanged — coverage-once holds with Track B.
+8. **D25 identity resync** (`D25-identity-resync.md`): fixed 9 stale spec sites — J.1 names (6→`dsh-sdlc-flow-*`, +missing meta-bundle row), J.3 commands, F.1 table + F.2 heading, 11→13 M0 checks (4 sites), M0-06 wording, +`gate:Q` row.
+9. **D25 proposals (not fixed)**: peer-range-vs-exact wording (#7, enforcement decision), version lockstep (#8), report regeneration with 906-test/82-check totals on a pnpm host (#10) — M0-01 currently fails here (profiles uninstallable without pnpm, env-caused).
+10. **Rule honored**: docs + skipped skeleton + markdown identity fixes only; no gate logic, spawn paths, or production behavior changed — all `.js` diffs in the tree belong to other tracks.

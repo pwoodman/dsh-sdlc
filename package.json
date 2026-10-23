@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-sdlc",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Universal SDLC Orchestrator — a DeepSeek Harness plugin suite (spec v3).",
@@ -55,7 +55,7 @@
     "test:fault": "node --test 'tests/fault/**/*.test.mjs'",
     "test:adversarial": "node --test 'tests/adversarial/**/*.test.mjs'",
     "test:e2e": "node --test 'tests/e2e/**/*.test.mjs'",
-    "test": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:adversarial && npm run test:fault",
+    "test": "node --test 'tests/unit/**/*.test.mjs' 'tests/contract/**/*.test.mjs' 'tests/integration/**/*.test.mjs' 'tests/adversarial/**/*.test.mjs' 'tests/fault/**/*.test.mjs'",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=packages/*/src/** 'tests/unit/**/*.test.mjs' 'tests/contract/**/*.test.mjs' 'tests/integration/**/*.test.mjs' 'tests/fault/**/*.test.mjs' 'tests/adversarial/**/*.test.mjs'",
     "test:e2e-live": "node --test 'tests/e2e/**/*.test.mjs' --test-name-pattern=live"
   },

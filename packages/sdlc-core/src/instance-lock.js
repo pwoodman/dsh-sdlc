@@ -13,7 +13,9 @@
  *   4. release on clean exit; a hard kill leaves a stale lock that (2) reclaims
  */
 
-import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
 
@@ -121,10 +123,35 @@ export class InstanceLock {
     if (!stale) throw new InstanceLockedError(holder);
 
     // Dead pid or different host: take over, recording the takeover.
-    writeFileSync(this.path, JSON.stringify(payload, null, 2) + '\n');
+    // The write is ATOMIC: the payload goes to a temp file in the SAME
+    // directory, then renameSync() swaps it onto the lock path in one POSIX
+    // rename. A direct writeFileSync would leave a torn half-written lock if
+    // two reclaimers (or a heartbeat) raced — each would read the other's
+    // partial JSON and disagree about the holder. rename() is atomic on
+    // POSIX: readers see either the old or the new payload, never a mix.
+    // A caller-supplied onTakeover fires after the swap (same as before).
+    this._atomicWrite(this.path, JSON.stringify(payload, null, 2) + '\n');
     this.held = true;
     if (this.onTakeover) this.onTakeover(holder, payload);
     return { acquired: true, tookOver: true, holder };
+  }
+
+  /**
+   * Write `text` to `target` atomically: temp file in the same directory
+   * (same filesystem, so rename never crosses devices) + renameSync. The
+   * temp name carries pid + bootId so concurrent reclaimers never share it;
+   * a leftover temp from a crashed writer is harmless inert clutter.
+   */
+  _atomicWrite(target, text) {
+    const dir = dirname(target);
+    const tmp = join(dir, `.sdlc.lock.${this.pid}.${this.bootId}.tmp`);
+    writeFileSync(tmp, text);
+    try {
+      renameSync(tmp, target);
+    } catch (err) {
+      try { unlinkSync(tmp); } catch { /* already gone */ }
+      throw err;
+    }
   }
 
   heartbeat() {

@@ -20,12 +20,21 @@
  *     --check   verify lib/ is up to date without writing (exit 1 if stale)
  */
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 
 const ROOT = join(import.meta.dirname, '..');
 const PKG_ROOT = join(ROOT, 'packages');
 const CHECK = process.argv.includes('--check');
+
+// The one shared implementation (scripts/lib/cross-package-imports.cjs):
+// walk + the cross-package src/ → lib/ import transform. build-ui.mjs and
+// every packages/<name>/build.cjs use the same module, so the three
+// previously divergent copies cannot drift again.
+const require = createRequire(import.meta.url);
+const { buildMap, rewriteImports, walk } = require('./lib/cross-package-imports.cjs');
+const importMap = buildMap(join(ROOT, 'packages'));
 
 /** Every package directory that declares a `dsh` bundle or a `src/` tree. */
 function packageDirs() {
@@ -33,48 +42,6 @@ function packageDirs() {
   return readdirSync(PKG_ROOT)
     .map((name) => join(PKG_ROOT, name))
     .filter((p) => statSync(p).isDirectory() && existsSync(join(p, 'package.json')));
-}
-
-function walk(dir, base = dir, out = []) {
-  for (const entry of readdirSync(dir).sort()) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) walk(full, base, out);
-    else out.push(full.slice(base.length + 1));
-  }
-  return out;
-}
-
-
-/**
- * Rewrite cross-package relative imports to bare npm specifiers.
- *
- * `src/` uses relative imports (`../../sdlc-guard/src/index.js`) so the monorepo
- * tests see one module instance. `lib/` must use bare specifiers
- * (`@patwoodman/dsh-sdlc-flow-guard`) so a published package resolves through
- * `node_modules`. This transform bridges the two.
- */
-const DIR_TO_PKG = {};
-const PKG_MAIN_STEMS = {};
-for (const d of readdirSync(join(ROOT, 'packages'))) {
-  const pj = join(ROOT, 'packages', d, 'package.json');
-  if (!existsSync(pj)) continue;
-  const m = JSON.parse(readFileSync(pj, 'utf8'));
-  if (!m.name) continue;
-  DIR_TO_PKG[d] = m.name;
-  PKG_MAIN_STEMS[m.name] = (m.main ?? 'lib/index.js').split('/').pop().replace(/\.\w+$/, '');
-}
-
-function rewriteImports(text) {
-  return text.replace(
-    /from '((?:\.\.\/)+)sdlc-([a-z-]+)\/src\/([^']+?)\.(js|mjs)'/g,
-    (_match, _dots, dir, file, _ext) => {
-      const pkg = DIR_TO_PKG[`sdlc-${dir}`];
-      if (!pkg) return _match;
-      const stem = file.split('/').pop();
-      if (stem === 'index' || stem === PKG_MAIN_STEMS[pkg]) return `from '${pkg}'`;
-      return `from '${pkg}/${file}'`;
-    },
-  );
 }
 
 /**
@@ -149,7 +116,7 @@ for (const dir of packageDirs()) {
   for (const rel of files) {
     const from = join(src, rel);
     const to = join(lib, rel);
-    const srcText = rewriteImports(readFileSync(from, 'utf8'));
+    const srcText = rewriteImports(readFileSync(from, 'utf8'), importMap);
     if (!existsSync(to) || srcText !== readFileSync(to, 'utf8')) stale.push(rel);
   }
 
@@ -177,7 +144,7 @@ for (const dir of packageDirs()) {
   rmSync(lib, { recursive: true, force: true });
   mkdirSync(lib, { recursive: true });
   for (const rel of files) {
-    const srcText = rewriteImports(readFileSync(join(src, rel), 'utf8'));
+    const srcText = rewriteImports(readFileSync(join(src, rel), 'utf8'), importMap);
     const dest = join(lib, rel);
     mkdirSync(join(dest, '..'), { recursive: true });
     writeFileSync(dest, srcText);

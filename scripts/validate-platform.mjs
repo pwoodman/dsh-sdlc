@@ -382,7 +382,7 @@ const checks = [
     fn() {
       return withTempDir('sdlc-test-', (dir) => {
         writeFileSync(join(dir, 'a.test.mjs'), "import {test} from 'node:test';import assert from 'node:assert/strict';test('x',()=>assert.equal(1,1));\n");
-        const res = run('node', ['--test', '--experimental-test-coverage', 'a.test.mjs'], { cwd: dir, timeoutMs: 60_000 });
+        const res = run(process.execPath, ['--test', '--experimental-test-coverage', 'a.test.mjs'], { cwd: dir, timeoutMs: 60_000 });
         if (!res.ok) throw new Error(`node --test failed: ${(res.stderr || res.stdout).slice(0, 400)}`);
         if (!/# tests 1|tests 1/.test(res.stdout)) throw new Error('runner did not report the test');
         return { detail: 'node --test + --experimental-test-coverage ok' };

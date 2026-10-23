@@ -21,17 +21,16 @@ import {
   PROTECTED_ORCHESTRATOR_PATHS, ORCHESTRATOR_PATHS,
 } from './index.js';
 import { contributeSelftest, setSelftestMeta } from './selftest.js';
+import { readPackageVersion } from './package-version.js';
 
 export const CONTRACT_PATH = '.sdlc/task-contract.json';
 
 const BASH_TOOLS = new Set(['bash', 'shell', 'run_command', 'terminal']);
 
+// (v): the shared helper owns the read now — same behaviour (version or
+// null), one implementation instead of eight hand-duplicates.
 function pkgVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return null;
-  }
+  return readPackageVersion(import.meta.url, 2);
 }
 
 /** Read the task contract materialized by the orchestrator before worker launch. */

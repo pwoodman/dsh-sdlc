@@ -192,13 +192,13 @@ function syntax(ctx) {
   const failures = [];
   for (const f of targets) {
     const abs = join(ctx.dir, f);
-    let res = ctx.spawn('node', ['--check', abs]);
+    let res = ctx.spawn(process.execPath, ['--check', abs]);
     const text = ctx.read(f) ?? '';
     const looksEsm = /^\s*(import|export)\b/m.test(text);
     if (res.status !== 0 && looksEsm && !extname(f).endsWith('mjs')) {
       // A .js file with ESM syntax but no `type: module` nearby: re-check as ESM
       // via stdin so this is a syntax test, not a module-system test.
-      res = ctx.spawn('node', ['--input-type=module', '--check'], { input: text });
+      res = ctx.spawn(process.execPath, ['--input-type=module', '--check'], { input: text });
     }
     if (res.status !== 0) failures.push({ file: f, error: String(res.stderr ?? '').split('\n').slice(0, 2).join(' ') });
   }

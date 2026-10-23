@@ -34,7 +34,7 @@ const NEUTRAL_ENV = {
 };
 
 function sdlc(cwd, args) {
-  return run('node', [CLI, ...args], { cwd, env: NEUTRAL_ENV });
+  return run(process.execPath, [CLI, ...args], { cwd, env: NEUTRAL_ENV });
 }
 
 /** A real git repo with the pnpm markers `sdlc init` recognises. */
@@ -424,7 +424,8 @@ test('cli: status, tasks and explain reflect library-created state', async () =>
 
     const empty = parseJson(sdlc(repo, ['status', '--json']));
     assert.equal(empty.ok, true);
-    assert.deepEqual(empty.projects, []);
+    assert.equal(empty.projects.length, 1, 'first Lead touch auto-creates the default project');
+    assert.equal(empty.projects[0].id, 'default');
     assert.equal(empty.tasks.total, 0);
     assert.ok(empty.spend && typeof empty.spend.costUsd === 'number');
 
@@ -444,8 +445,9 @@ test('cli: status, tasks and explain reflect library-created state', async () =>
 
     const status = parseJson(sdlc(repo, ['status', '--json']));
     assert.equal(status.ok, true);
-    assert.equal(status.projects.length, 1);
-    assert.equal(status.projects[0].id, 'P1');
+    assert.equal(status.projects.length, 2, 'auto-created default plus the fixture project');
+    assert.ok(status.projects.some((p) => p.id === 'default'));
+    assert.ok(status.projects.some((p) => p.id === 'P1'));
     assert.equal(status.tasks.total, 1);
 
     const tasksJson = sdlc(repo, ['tasks', '--json']);

@@ -16,9 +16,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Runtime } from '../../sdlc-core/src/runtime.js';
-import { initProject, ensureProject, describeProject } from '../../sdlc-core/src/project.js';
+import { initProject, ensureProject, ensureDefaultProject, describeProject } from '../../sdlc-core/src/project.js';
 import { loadConfig, validateConfig, deepMerge, DEFAULT_CONFIG, dumpConfigYaml } from '../../sdlc-core/src/config.js';
 import { readLock, isStale } from '../../sdlc-core/src/instance-lock.js';
+import { reconcile, markOrphaned, findOrphans, salvagePlan } from '../../sdlc-core/src/recovery.js';
 import { runVerification } from '../../sdlc-core/src/gates.js';
 import { compareRuns, renderSideBySide, tracePathFor } from '../../sdlc-core/src/debug.js';
 import { exportMetrics } from '../../sdlc-core/src/metrics.js';
@@ -160,6 +161,15 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
   if (ensured.existed === false) bootstrapped = true;
   const { runtime } = openRuntime(root, { useLock: false });
   try {
+    // Track 0 — AUTO-ON: first Lead touch auto-creates one default project
+    // row on an empty table (idempotent; user rows untouched). Fail-closed:
+    // a default failure is a report detail, never a throw from status.
+    let defaultProject = null;
+    try {
+      defaultProject = ensureDefaultProject(runtime, { projectRoot: root });
+    } catch (err) {
+      defaultProject = { ok: false, created: false, reason: err?.message ?? 'default-project failed' };
+    }
     const projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
     const taskRows = runtime.listTasks();
     const byState = {};
@@ -170,6 +180,7 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
       ok: true,
       dbPath,
       bootstrapped: Boolean(bootstrapped),
+      autoCreated: defaultProject?.created === true,
       projects: projects.map((p) => ({ id: p.id, name: p.name, state: p.state, blocked_state: p.blocked_state })),
       tasks: { total: taskRows.length, byState },
       workerRuns: { total: runs.length, orphaned: runs.filter((r) => r.orphaned).length },
@@ -198,7 +209,7 @@ export function cmdStatus(root, args, { allowNoDb = true } = {}) {
 
 function renderStatus(r) {
   const lines = [`SDLC status — ${r.dbPath}`, ''];
-  if (r.projects.length === 0) lines.push('  (no project yet — create one with `/sdlc run` in the lead session)');
+  if (r.projects.length === 0) lines.push('  (workspace is ready and a project is active — describe your goal to the Lead (e.g. /sdlc run <your goal>))');
   for (const p of r.projects) lines.push(`  project ${p.id}  state=${p.state}${p.blocked_state ? ` (blocked from ${p.blocked_state})` : ''}`);
   lines.push('', `  tasks      : ${r.tasks.total}`);
   for (const [state, n] of Object.entries(r.tasks.byState).sort()) lines.push(`    ${state.padEnd(12)} ${n}`);
@@ -450,24 +461,57 @@ export function cmdLock(root, args) {
 export function cmdResume(root, args) {
   const { runtime } = openRuntime(root);
   try {
+    // Resume IS reconciliation (B.12): one reconcile() call decides every
+    // move, the run row of each salvaged orphan is persisted (orphaned=1,
+    // K.5 salvage evidence), and exactly one transition per task is applied
+    // through the state machine — never an invented local reimplementation.
     const tasks = runtime.listTasks();
     const runs = runtime.listWorkerRuns();
-    const transitions = [];
-    for (const task of tasks) {
-      if (!['ASSIGNED', 'IN_PROGRESS', 'VERIFYING'].includes(task.state)) continue;
-      const run = runs.find((r) => r.task_id === task.id && !r.finished_at);
-      const alive = run?.pid ? isPidAlive(run.pid) : false;
-      if (!alive) transitions.push({ taskId: task.id, to: 'FAILED', actor: 'recovery', evidence: 'ORPHAN_SALVAGE' });
-      else transitions.push({ taskId: task.id, to: task.state, actor: 'recovery', evidence: 'kept-alive' });
-    }
-    const orphaned = transitions.filter((t) => t.evidence === 'ORPHAN_SALVAGE');
-    for (const t of orphaned) {
-      runtime.state.transition(t.taskId, t.to, 'recovery', { hardFailure: true });
-    }
-    const report = { reconciled: transitions.length, transitions };
-    if (args.flags.json) jsonOut(report); else process.stdout.write(`resume: reconciled ${transitions.length} task(s)\n`);
+    const { discrepancies, transitions, applied } = applyReconcileToRuntime(runtime, tasks, runs);
+    const report = { reconciled: applied.length, discrepancies, transitions: applied };
+    if (args.flags.json) jsonOut(report); else process.stdout.write(`resume: reconciled ${applied.length} task(s)\n`);
     return 0;
   } finally { runtime.close(); }
+}
+
+/**
+ * Apply `reconcile()` to a live runtime: persist `orphaned=1` for each dead
+ * worker's open run, then apply the single transition per task. A `pid` of
+ * null is an orphan ('no-pid'): like findOrphans, reconcile treats a null pid
+ * as dead, because in-process/API runs record no pid and a crash would
+ * otherwise strand them unfinished forever.
+ */
+export function applyReconcileToRuntime(runtime, tasks, runs) {
+  const { discrepancies, transitions } = reconcile({
+    tasks,
+    runs,
+    isAlive: isPidAlive,
+    worktreeExists: (p) => { try { return existsSync(p); } catch { return false; } },
+    branchExists: () => true,
+  });
+  const runByTask = new Map();
+  for (const run of runs) {
+    if (!run.finished_at) runByTask.set(run.task_id, run);
+  }
+  const applied = [];
+  for (const t of transitions) {
+    if (t.evidence === 'ORPHAN_SALVAGE') {
+      const run = runByTask.get(t.taskId);
+      if (run) {
+        // Persist the salvage evidence on the run row (K.5); the snapshot
+        // plan itself is a no-op here — the worktree diff is preserved by the
+        // FAIL→READY re-entry, not by copying files.
+        markOrphaned(runtime.db, run.id);
+        void salvagePlan({ runId: run.id, taskId: t.taskId, attempt: run.attempt });
+      }
+    }
+    const res = runtime.state.transition(t.taskId, t.to, 'recovery', {
+      hardFailure: t.to === 'FAILED',
+      ...(t.to === 'ESCALATED' ? { payload: { evidence: t.evidence } } : {}),
+    });
+    applied.push({ ...t, ok: res.ok === true, reason: res.ok ? undefined : res.reason ?? res.error });
+  }
+  return { discrepancies, transitions, applied };
 }
 
 function isPidAlive(pid) {

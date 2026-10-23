@@ -49,7 +49,7 @@ test('client bundle uses the closure-factory form with react externals', () => {
   // `<Tag` text.)
   assert.match(bundle, /__jsx\(/);
   const tagLikes = (bundle.match(/<[A-Za-z][A-Za-z0-9_.]*(\s[^<>]*|\s*)(\/>|>)/g) ?? [])
-    .filter((m) => !m.includes('<id>') && !m.includes('<run>'));
+    .filter((m) => !m.includes('<id>') && !m.includes('<run>') && !m.includes('<your goal>'));
   assert.deepEqual(tagLikes, [], `uncompiled JSX remnants: ${tagLikes.slice(0, 3).join(' / ')}`);
   // CSS is injected at factory execution (the tsdown-preset pattern).
   assert.match(bundle, /document\.createElement\("style"\)/);

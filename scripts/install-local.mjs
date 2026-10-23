@@ -497,7 +497,7 @@ step('verify: lead profile composes the full lead without unexpected duplicate r
   return `${counts.size} unique ids incl. ${presets} selectable preset(s) (sdlc-ui + meta-bundle present)`;
 });
 step('verify: M0 gate', () => {
-  const res = run('node', [join(ROOT, 'scripts', 'validate-m0.mjs')], { timeoutMs: 900_000 });
+  const res = run(process.execPath, [join(ROOT, 'scripts', 'validate-m0.mjs')], { timeoutMs: 900_000 });
   if (!res.ok) throw new Error((res.stdout + res.stderr).slice(-1500));
   return 'M0 green';
 });

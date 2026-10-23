@@ -8,26 +8,94 @@ name: CI
 #   - gate:P and gate:M0 need no model and no network; M1..M8 are deterministic
 #     and use the mock provider (never a real API call).
 
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.sdlc/TEST_SUITE_ANALYSIS_REPORT.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.sdlc/TEST_SUITE_ANALYSIS_REPORT.md'
 
 env:
   DSH_VERSION: 0.2.0-rc.2
 
 jobs:
-  unit:
+  # TRACK B, B13: ONE build job. Before B13 every job re-ran checkout +
+  # build (5 identical src/→lib/ rebuilds per push); now `build` compiles once
+  # and uploads lib/ + the workspace links as an artifact that the gate jobs
+  # download. pnpm's store and the pinned DSH install are cached so repeated
+  # pushes only pay for changed work. Job NAMES are unchanged (release.yml
+  # gates on this workflow's success for the same commit — see the commit-status
+  # poll there — so renaming would silently break the release gate).
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
+      # No `version:` here: the version lives in package.json's `packageManager`
+      # field, and specifying both makes pnpm/action-setup fail with
+      # "Multiple versions of pnpm specified".
+      - uses: pnpm/action-setup@v4
+      - name: cache the pnpm store (offline-safe: keyed on the lockfile)
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs
+      - name: install the pinned DSH runtime
+        run: |
+          set -euo pipefail
+          npm install -g @deepseek-ai/dsh@$DSH_VERSION
+          runtime="$(npm root -g)/@deepseek-ai/dsh"
+          test -f "$runtime/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
+          echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
+      - name: cache the DSH runtime install
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: dsh-runtime-${{ runner.os }}-${{ env.DSH_VERSION }}
+      - name: build (zero-dependency src → lib, incl. UI bundle)
+        run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+      - name: upload the built tree (lib/ + workspace links manifest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-tree
+          path: |
+            packages/*/lib/
+            scripts/lib/
+            tests/lib/
+            eval/lib/
+            node_modules/
+            !node_modules/.cache/
+  unit:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+      - uses: pnpm/action-setup@v4
+      - name: download the built tree
+        uses: actions/download-artifact@v4
+        with:
+          name: built-tree
       # lib/ uses bare cross-package imports (@patwoodman/dsh-sdlc-flow-core, …),
       # which need node_modules to resolve. A fresh checkout has none, so every
       # suite importing such a lib/ file failed on CI while passing locally.
+      # The artifact carries the linked tree; re-run the linker as a
+      # fail-closed check that the links resolve on this runner.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs
-      - name: build (zero-dependency src → lib, incl. UI bundle)
-        run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+        run: node scripts/link-workspace.mjs --check
       - name: presets are in sync with roles.js
         run: node scripts/gen-presets.mjs --check
       - name: the meta-bundle patch is in sync with its members
@@ -44,16 +112,21 @@ jobs:
         run: npm run test:contract
 
   gate-platform:
-    needs: unit
+    needs: [build, unit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      - name: install the pinned DSH runtime (v2 omitted this)
-        run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+      - name: download the built tree
+        uses: actions/download-artifact@v4
+        with:
+          name: built-tree
+      # DSH was installed + cached by the build job; the artifact restores the
+      # same node_modules links, so no rebuild and no reinstall here.
+      - name: link the workspace packages into node_modules
+        run: node scripts/link-workspace.mjs --check
       - name: gate:P — deterministic platform facts (no model, no network)
         run: node scripts/validate-platform.mjs --json .validation/gate-P.json
       - uses: actions/upload-artifact@v4
@@ -74,14 +147,17 @@ jobs:
       # field, and specifying both makes pnpm/action-setup fail with
       # "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v4
-      - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - name: download the built tree
+        uses: actions/download-artifact@v4
+        with:
+          name: built-tree
       # lib/ resolves cross-package imports through node_modules; a fresh
       # checkout has none. Without this the linked member deps have no
       # node_modules entries and the live boot probe fails its imports
       # (M0-03/M0-04/M0-12), even though every offline test passes.
+      # The artifact carries the linked tree; re-check rather than rebuild.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+        run: node scripts/link-workspace.mjs --check
       - name: install profiles + bundles
         run: node scripts/install-local.mjs --yes --skip-build
       - name: gate:M0 — composition + boot hook + guard + schema
@@ -100,6 +176,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
+      - name: download the built tree
+        uses: actions/download-artifact@v4
+        with:
+          name: built-tree
       - name: install the real host for mandatory runtime verification
         run: |
           set -euo pipefail
@@ -109,9 +189,9 @@ jobs:
           echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
       # Same workspace-link requirement as gate-m0: M1..M8 resolve
       # cross-package lib/ imports through node_modules.
+      # The artifact carries the linked tree; re-check rather than rebuild.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+        run: node scripts/link-workspace.mjs --check
       - name: verify all shipped presets and scoped tool execution on the real host
         run: node scripts/verify-tool-runtime.mjs "${SDLC_VERIFY_RUNTIME:?}"
       - name: integration + fault + adversarial layers (L4–L6)
@@ -136,11 +216,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
+      - name: download the built tree
+        uses: actions/download-artifact@v4
+        with:
+          name: built-tree
       # e2e imports lib/ cross-package modules (mock LLM, core) through
       # node_modules, same as every other job.
+      # The artifact carries the linked tree; re-check rather than rebuild.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs
-      - run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
+        run: node scripts/link-workspace.mjs --check
       - name: the eight §53 acceptance tests (mock provider, no cost)
         run: npm run test:e2e
       - uses: actions/upload-artifact@v4
@@ -169,9 +253,15 @@ jobs:
         with:
           node-version: '22.18'
       - uses: pnpm/action-setup@v4
-      - run: npm install -g @deepseek-ai/dsh@$DSH_VERSION
+      - name: download the built tree
+        uses: actions/download-artifact@v4
+        with:
+          name: built-tree
+      # install-smoke rebuilds the tarball from source by design (it ships
+      # build-release.mjs output), so it keeps its own build; the downloaded
+      # tree only skips the redundant workspace link step's rebuild.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs
+        run: node scripts/link-workspace.mjs --check
       - name: build the no-clone tarball
         run: node scripts/build-release.mjs
       - name: smoke 1/2 — tarball install from scratch

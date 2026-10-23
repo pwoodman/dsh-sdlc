@@ -131,6 +131,38 @@ test('the model is pure over an explicit limit and rejects malformed payloads', 
   } finally { cleanup(dir); }
 });
 
+test('first flow touch auto-creates the default project (Lead use ⇒ project exists)', () => {
+  // Unseeded workspace: .sdlc/sdlc.db may not even exist yet — the snapshot
+  // path first materialises .sdlc/ (via the same ensureProject the plugin
+  // guard runs on real requests: no DB ⇒ NO_PROJECT). Direct handleFlow
+  // entry carries the Lead-touch auto-create for an EXISTING but empty DB.
+  const dir = scaffold();
+  try {
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      assert.equal(runtime.db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 0);
+    } finally { runtime.close({ releaseLock: false }); }
+
+    const res = handleFlow(dir, { events: 10 });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.project.id, 'default', 'auto-created on first Lead touch');
+    assert.equal(res.body.project.available, true);
+
+    const check = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    check.open();
+    try {
+      assert.equal(check.db.prepare('SELECT COUNT(*) AS n FROM projects').get().n, 1, 'idempotent: exactly one');
+    } finally { check.close({ releaseLock: false }); }
+
+    // Second touch: still exactly one row, same id.
+    const again = handleFlow(dir, { events: 10 });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.project.id, 'default');
+  } finally { cleanup(dir); }
+});
+
 test('flow and status only expose this workspace project, never a foreign/demo row', () => {
   const dir = scaffold();
   try {
@@ -143,10 +175,14 @@ test('flow and status only expose this workspace project, never a foreign/demo r
       // must never appear in this workspace's flow or status payload.
       runtime.createProject({ id: 'FOREIGN', name: 'demo fullstack (task tracker)', repoPath: '/tmp/some-other-repo' });
       runtime.addTask({ id: 'DEMO-001', project_id: 'FOREIGN', title: 'Task-tracker API + frontend', role: 'fullstack-engineer' });
+      runtime.createProject({ id: 'P2', name: 'second workspace project', repoPath: dir });
     } finally { runtime.close({ releaseLock: false }); }
 
     const flow = handleFlow(dir, { events: 10 });
     assert.equal(flow.status, 200);
+    // The buildFlowModel snapshot auto-creates only on a fully EMPTY table;
+    // this DB already holds P1, so the first matching workspace row wins and
+    // no default row is added.
     assert.equal(flow.body.project.id, 'P1');
     assert.deepEqual(flow.body.tasks.map((task) => task.id).sort(), ['T-1', 'T-2']);
     assert.equal(flow.body.totals.tasks, 2);
@@ -154,7 +190,7 @@ test('flow and status only expose this workspace project, never a foreign/demo r
 
     const status = handleStatus(dir);
     assert.equal(status.status, 200);
-    assert.deepEqual(status.body.projects.map((project) => project.id), ['P1']);
+    assert.deepEqual(status.body.projects.map((project) => project.id), ['P1', 'P2']);
     assert.deepEqual(status.body.tasks.items.map((task) => task.id).sort(), ['T-1', 'T-2']);
     assert.equal(status.body.tasks.total, 2);
   } finally { cleanup(dir); }
@@ -172,13 +208,16 @@ test('a DB with only a foreign project answers NO_PROJECT_ROW, not foreign rows'
       runtime.transition('DEMO-001', 'READY', 'scheduler', { depStates: {} });
     } finally { runtime.close({ releaseLock: false }); }
 
-    // No project row for THIS workspace is the healthy empty state — the
-    // distinct code lets the panel say "create one with /sdlc run" instead of
-    // misreporting it as an auto-setup failure.
+    // The auto-create path only fills a fully EMPTY projects table: a DB
+    // with only a foreign row is the honest ready state — the workspace root
+    // on screen has no project row here — with goal-describing copy, never a
+    // kickoff-step dead end.
     const flow = handleFlow(dir, { events: 10 });
     assert.equal(flow.status, 404);
     assert.equal(flow.body.error, 'NO_PROJECT_ROW');
-    assert.match(flow.body.detail, /another workspace|\/sdlc run/);
+    assert.match(flow.body.detail, /another workspace/);
+    assert.match(flow.body.detail, /describe your goal/);
+    assert.doesNotMatch(flow.body.detail, /create one with `\/sdlc run` in the lead session/);
 
     const status = handleStatus(dir);
     assert.equal(status.status, 200);

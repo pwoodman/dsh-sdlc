@@ -108,14 +108,33 @@ const checks = [
         if (res.error !== 'INVALID_TRANSITION') throw new Error(`wrong error for ${from}→${to}: ${res.error}`);
         if (from !== null && svc.getState('T1') !== from) throw new Error('state changed on rejection');
       }
-      // Exhaustive cross-check of every (from, to, actor) cell.
+      // Exhaustive cross-check of every (from, to, actor) cell. isLegalTransition
+      // now wires the guard table (C16 iv), so the cross-check passes each
+      // legal row's own fixture ctx — a bare {} would fail guards like
+      // gatesPass/retryBudgetRemaining and falsely disagree with findTransition.
+      // Rows sharing one (from, to) pair but needing different actor ctx (the
+      // IN_PROGRESS→FAILED worker-mgr/recovery pair: worker-mgr asserts
+      // hardFailure, recovery's orphan salvage hard-fails by construction) map
+      // to the ctx of the fixture row with the same actor, or {} when no
+      // fixture row names that actor. The one exception: recovery's
+      // IN_PROGRESS→FAILED carries hardFailure:true at apply time
+      // (recovery.js applyReconciliation), so look it up with that ctx —
+      // findTransition sees the row while isLegalTransition sees the guard.
+      // Rows absent from the fixture LEGAL list have no ctx at all (the D4
+      // VERIFYING→BLOCKED skipped-gate row): look those up with the guard's
+      // own passing ctx so the cell compares row-existence, not guard state.
+      const legalCtx = new Map(legal.map(([from, to, actor, ctx]) => [`${from}→${to}@${actor}`, ctx ?? {}]));
+      legalCtx.set('IN_PROGRESS→FAILED@recovery', { hardFailure: true });
+      legalCtx.set('VERIFYING→BLOCKED@verifier', { blockedBySkippedGate: true });
       let cells = 0;
       for (const from of sm.TASK_STATES) {
         for (const to of sm.TASK_STATES) {
           for (const actor of ['planner', 'scheduler', 'worker-mgr', 'verifier', 'integration-mgr', 'loop-detector', 'escalation-mgr', 'human', 'recovery']) {
-            const legalByMatrix = sm.findTransition(from, to, actor) !== null;
-            const byApi = sm.isLegalTransition(from, to, actor);
-            if (legalByMatrix !== byApi) throw new Error('isLegalTransition disagrees with findTransition');
+            const entry = sm.findTransition(from, to, actor);
+            const legalByMatrix = entry !== null;
+            const ctx = legalCtx.get(`${from}→${to}@${actor}`) ?? {};
+            const byApi = sm.isLegalTransition(from, to, actor, ctx);
+            if (legalByMatrix !== byApi) throw new Error(`isLegalTransition disagrees with findTransition for ${from}→${to}@${actor}`);
             cells += 1;
           }
         }

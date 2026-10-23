@@ -6,19 +6,15 @@
  * the package imports cleanly without a DSH host.
  */
 
-import { readFileSync } from 'node:fs';
 import { COMMANDS, TOOL_DEFS, WORKER_TOOLS, LEAD_TOOLS, ALL_TOOLS, DEBUG_COMMANDS, createHandlers, validateToolArgs } from './index.js';
+import { readPackageVersion } from '../../sdlc-guard/src/package-version.js';
 import { contributeSelftest, setSelftestMeta } from './selftest.js';
 
 // Keep this metadata on every loader entry, including the preset slices.
 export const inject = ['tools'];
 
 function pkgVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return null;
-  }
+  return readPackageVersion(import.meta.url, 2);
 }
 
 /**

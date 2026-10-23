@@ -165,12 +165,11 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
   const res = await getJson(`${SDLC_FLOW_ROUTE}?${params}`);
   if (!res.available) {
     // A 404 NO_PROJECT now means auto-setup genuinely failed on the host
-    // (e.g. an unwritable workspace) — workspaces without a stack marker are
-    // set up with manual gates instead. Carry the host's own reason through
-    // so the card shows the real diagnosis; keep a fallback for older hosts
-    // that send no detail. Any other 404 needs a probe: "the panel is newer"
-    // is only one explanation, and the running Desktop app is the common
-    // case (it keeps the old host loaded).
+    // (e.g. an unwritable workspace) — the panel card carries the real
+    // reason; every other workspace is ready and active instead. Keep a
+    // fallback for older hosts that send no detail. Any other 404 needs a
+    // probe: "the panel is newer" is only one explanation, and the running
+    // Desktop app is the common case (it keeps the old host loaded).
     if (res.status === 404 && res.code === 'NO_PROJECT') {
       return {
         available: false,
@@ -178,13 +177,14 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
         reason: res.message ?? 'auto-setup could not complete this workspace — `sdlc init` prints the same reason',
       };
     }
-    // A bootstrapped workspace with no project row yet is NOT a failure: the
-    // panel shows its "create one with `/sdlc run`" empty state.
+    // A workspace whose projects table has no row for THIS root is set up
+    // and ready — a project is active as soon as the Lead is touched. The
+    // panel shows the ready state with the goal-describing hint below.
     if (res.status === 404 && res.code === 'NO_PROJECT_ROW') {
       return {
         available: false,
         code: 'NO_PROJECT_ROW',
-        reason: res.message ?? 'no SDLC project yet — create one with `/sdlc run`',
+        reason: res.message ?? 'workspace is ready and a project is active — describe your goal to the Lead',
       };
     }
     if (res.status === 404) {

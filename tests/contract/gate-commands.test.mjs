@@ -275,11 +275,11 @@ test('runVerification default selection follows GATE_ORDER, not config key order
 });
 
 test('defaultRunner executes argv without a shell (real, offline)', () => {
-  const passing = gates.defaultRunner(['node', '-e', 'process.stdout.write("hi")']);
+  const passing = gates.defaultRunner([process.execPath, '-e', 'process.stdout.write("hi")']);
   assert.equal(passing.status, 0);
   assert.equal(passing.stdout, 'hi');
 
-  const failing = gates.defaultRunner(['node', '-e', 'process.exit(3)']);
+  const failing = gates.defaultRunner([process.execPath, '-e', 'process.exit(3)']);
   assert.equal(failing.status, 3);
 });
 

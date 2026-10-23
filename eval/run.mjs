@@ -442,7 +442,7 @@ export function collectWorkspaceArtifacts(workspace, { task = null, spawn = spaw
         for (const f of testFiles) {
           // --test-reporter=spec: human-readable text with the | table (the
           // default TAP framing is binary under capture and buries it).
-          const res = spawn('node', ['--experimental-test-coverage', '--test-reporter=spec', f], { cwd: workspace, encoding: 'utf8', timeout: 300_000, maxBuffer: 64 * 1024 * 1024, env: childEnv });
+          const res = spawn(process.execPath, ['--experimental-test-coverage', '--test-reporter=spec', f], { cwd: workspace, encoding: 'utf8', timeout: 300_000, maxBuffer: 64 * 1024 * 1024, env: childEnv });
           if (res.status === 0) ran += 1;
           const text = `${res.stdout ?? ''}\n${res.stderr ?? ''}`;
           for (const rawLine of text.split('\n')) {

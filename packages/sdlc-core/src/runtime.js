@@ -15,6 +15,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { openDatabase, migrate, quickCheck } from './schema.js';
 import { TaskStateService } from './state-machine.js';
 import { ModelRouter } from './router.js';
+import { planStep, effectiveParallelism } from './scheduler.js';
+import { providerLimitFromRegistry } from './worker-mgr.js';
 import { budgetsForRisk, normalizeTaskBudget, PROJECT_BUDGET_DEFAULTS, checkDispatch, checkProjectBudget, evaluateRun } from './budget.js';
 import { riskClass } from './risk.js';
 import { InstanceLock, InstanceLockedError } from './instance-lock.js';
@@ -68,9 +70,20 @@ export class Runtime {
         throw err;
       }
     }
-    this.db = openDatabase(this.dbPath, {
-      requireQuickCheck: this.config.storage?.requireQuickCheckOnOpen ?? true,
-    });
+    this.db = null;
+    try {
+      this.db = openDatabase(this.dbPath, {
+        requireQuickCheck: this.config.storage?.requireQuickCheckOnOpen ?? true,
+      });
+    } catch (err) {
+      // The lock was acquired before the DB opened: a failed open must not
+      // leak a held lock, or every later `open()` in this process (and a
+      // stale lock file for other processes) blocks forever. Roll back the
+      // half-open state before rethrowing.
+      this.db = null;
+      if (this.lock) { try { this.lock.release(); } catch { /* already released */ } this.lock = null; }
+      throw err;
+    }
     this.state = new TaskStateService(this.db, { now: this.now });
     this.router = this.buildRouter();
     return this;
@@ -83,7 +96,6 @@ export class Runtime {
 
   buildRouter() {
     const cfg = this.config;
-    const noisy = console;
     try {
       const history = {};
       for (const row of this.db.prepare('SELECT model_id, task_type, outcome FROM model_runs').all()) {
@@ -101,7 +113,10 @@ export class Runtime {
         config: cfg.router ?? {},
       });
     } catch (err) {
-      noisy.error?.(`runtime: router unavailable: ${err.message}`);
+      // (i): a router that cannot read its history must not take the whole
+      // boot down — but it must not fail silently either. Warn with the
+      // cause, keep the return shape (an empty router) compatible.
+      console.warn(`runtime: router unavailable, continuing with empty history: ${err?.message ?? err}`);
       return new ModelRouter({});
     }
   }
@@ -168,11 +183,11 @@ export class Runtime {
     if (!row) return null;
     return {
       ...row,
-      acceptance_criteria: safeJson(row.acceptance_criteria_json, []),
-      allowed_paths: safeJson(row.allowed_paths_json, []),
-      forbidden_paths: safeJson(row.forbidden_paths_json, []),
-      verification: safeJson(row.verification_json, []),
-      estimate: safeJson(row.estimate_json, {}),
+      acceptance_criteria: safeJson(row.acceptance_criteria_json, [], 'tasks.acceptance_criteria_json'),
+      allowed_paths: safeJson(row.allowed_paths_json, [], 'tasks.allowed_paths_json'),
+      forbidden_paths: safeJson(row.forbidden_paths_json, [], 'tasks.forbidden_paths_json'),
+      verification: safeJson(row.verification_json, [], 'tasks.verification_json'),
+      estimate: safeJson(row.estimate_json, {}, 'tasks.estimate_json'),
       depends_on: this.db.prepare('SELECT depends_on FROM task_dependencies WHERE task_id = ?').all(id).map((r) => r.depends_on),
       resources: this.db.prepare('SELECT resource FROM task_resources WHERE task_id = ?').all(id).map((r) => r.resource),
     };
@@ -200,8 +215,15 @@ export class Runtime {
 
   // ── transitions ──────────────────────────────────────────────────────────
 
+  // (iii): the single-writer queue lives in the service (B.2.3). The
+  // synchronous core stays available for tests and single-threaded callers;
+  // concurrent callers (workers, recovery) use transitionQueued.
   transition(taskId, to, actor, ctx = {}) {
     return this.state.transition(taskId, to, actor, ctx);
+  }
+
+  transitionQueued(taskId, to, actor, ctx = {}) {
+    return this.state.transitionQueued(taskId, to, actor, ctx);
   }
 
   /** Illegal proposals return INVALID_TRANSITION with the current row (L.1). */
@@ -240,7 +262,7 @@ export class Runtime {
 
   getWorkerRun(runId) {
     const row = this.db.prepare('SELECT * FROM worker_runs WHERE id = ?').get(runId);
-    return row ? { ...row, result: safeJson(row.result_json, null), context_manifest: safeJson(row.context_manifest_json, null) } : null;
+    return row ? { ...row, result: safeJson(row.result_json, null, 'worker_runs.result_json'), context_manifest: safeJson(row.context_manifest_json, null, 'worker_runs.context_manifest_json') } : null;
   }
 
   listWorkerRuns({ taskId = null } = {}) {
@@ -381,6 +403,75 @@ export class Runtime {
     });
   }
 
+  /**
+   * Effective dispatch parallelism (TRACK B, B15 — the product throughput fix).
+   *
+   * Wires the pure helpers, never reimplements them: `effectiveParallelism`
+   * (scheduler.js: min(cores/2, ram/2, provider_limit, configured)) over the
+   * configured `execution.maxParallelWorkers`, the project-level
+   * `budgets.perProject.maxParallelWorkers` cap, and the provider's
+   * `providerLimitFromRegistry` (worker-mgr.js). Dynamic host facts (cpu/ram)
+   * are injectable so unit tests stay deterministic and offline.
+   *
+   * BOUNDARY (Tier D stays out of scope): this computes the CAP and applies
+   * the fanned-out batch. Real worker subprocess spawn (`ctx.subprocess`)
+   * remains Tier D — dispatchBatch transitions tasks to ASSIGNED (locks
+   * respected via planStep); launching the process for each ASSIGNED task is
+   * the caller's Tier D step, not this method's.
+   */
+  async dispatchParallelism({ cpus = null, ramGb = null } = {}) {
+    // node:os is host-only; tests inject cpus/ramGb explicitly. Dynamic import
+    // keeps the module ESM-pure (no require() in this codebase).
+    const os = await import('node:os');
+    const configured = this.config.execution?.maxParallelWorkers ?? 'auto';
+    const projectRaw = this.config.budgets?.perProject?.maxParallelWorkers ?? 'auto';
+    const projectCap = projectRaw === 'auto' ? Infinity : Number(projectRaw);
+    const registry = this.config.registry ?? this.router?.registry ?? [];
+    const provider = this.config.execution?.provider ?? null;
+    return effectiveParallelism({
+      maxParallelWorkers: configured,
+      cpus: cpus ?? os.cpus().length,
+      ramGb: ramGb ?? os.totalmem() / (1024 ** 3),
+      providerLimit: provider ? providerLimitFromRegistry(registry, provider) : Infinity,
+      configured: Number.isFinite(projectCap) ? projectCap : Infinity,
+    });
+  }
+
+  /**
+   * Compute the capped ASSIGNED batch and apply it concurrently (B15).
+   *
+   * Each READY task whose locks grant is applied as READY→ASSIGNED via the
+   * runtime's own transition path (single-writer invariant preserved: the
+   * state machine serializes the writes; the concurrency here is over the
+   * bounded batch of transition APPLICATIONS, not over unsynchronized DB
+   * access). Returns the applied transitions in stable task-id order.
+   *
+   * @param {object} opts
+   * @param {Array} [opts.tasks] snapshot rows (defaults to projectTasks)
+   * @param {number} [opts.cap] explicit cap (defaults to dispatchParallelism())
+   * @param {object} [opts.scheduleOpts] forwarded to planStep
+   */
+  async dispatchBatch({ tasks = null, cap = null, scheduleOpts = {}, projectId = null } = {}) {
+    const rows = tasks ?? (projectId ? this.projectTasks(projectId) : this.listTasks());
+    const limit = cap ?? (await this.dispatchParallelism());
+    const step = planStep(
+      { tasks: rows.map((t) => ({ id: t.id, state: t.state, allowed_paths: t.allowed_paths ?? [], resources: t.resources ?? [], depends_on: t.depends_on ?? [] })) },
+      { maxParallelWorkers: limit, maxSharedResourceTasks: this.config.scheduling?.maxSharedResourceTasks ?? 1, ...scheduleOpts },
+    );
+    const batch = step.filter((t) => t.to === 'ASSIGNED');
+    // B15: the FIRST sanctioned Promise.all in the production dispatch path
+    // (validate-gates.mjs holds the other sanctioned one, for gate processes).
+    // Bounded by the cap: at most `limit` ASSIGNED transitions are even
+    // proposed, and planStep already serialized lock acquisition in stable id
+    // order, so the concurrent application cannot double-grant a lock.
+    const applied = await Promise.all(batch.map(async (t) => {
+      const res = this.state.transition(t.taskId, 'ASSIGNED', 'scheduler', { locks: t.ctx?.locks ?? [], available: true });
+      if (!res.ok) throw new Error(`dispatchBatch: ASSIGNED rejected for ${t.taskId}: ${res.reason}`);
+      return { taskId: t.taskId, to: 'ASSIGNED', actor: 'scheduler' };
+    }));
+    return applied.sort((a, b) => String(a.taskId).localeCompare(String(b.taskId)));
+  }
+
   // ── decisions / requirements ─────────────────────────────────────────────
 
   recordDecision(decision) {
@@ -400,9 +491,9 @@ export class Runtime {
       : this.db.prepare('SELECT * FROM decisions ORDER BY created_at').all();
     return rows.map((r) => ({
       ...r,
-      alternatives: safeJson(r.alternatives_json, []),
-      consequences: safeJson(r.consequences_json, []),
-      tags: safeJson(r.tags_json, []),
+      alternatives: safeJson(r.alternatives_json, [], 'decisions.alternatives_json'),
+      consequences: safeJson(r.consequences_json, [], 'decisions.consequences_json'),
+      tags: safeJson(r.tags_json, [], 'decisions.tags_json'),
     }));
   }
 
@@ -441,14 +532,14 @@ export class Runtime {
   getEscalation(id) {
     const row = this.db.prepare('SELECT * FROM escalations WHERE id = ?').get(id);
     if (!row) return null;
-    return { ...row, packet: safeJson(row.packet_json, {}) };
+    return { ...row, packet: safeJson(row.packet_json, {}, 'escalations.packet_json') };
   }
 
   getEscalations({ taskId = null } = {}) {
     const rows = taskId
       ? this.db.prepare('SELECT * FROM escalations WHERE task_id = ? ORDER BY created_at').all(taskId)
       : this.db.prepare('SELECT * FROM escalations ORDER BY created_at').all();
-    return rows.map((row) => ({ ...row, packet: safeJson(row.packet_json, {}) }));
+    return rows.map((row) => ({ ...row, packet: safeJson(row.packet_json, {}, 'escalations.packet_json') }));
   }
 
   /**
@@ -511,9 +602,16 @@ export class Runtime {
   }
 }
 
-function safeJson(text, fallback) {
+function safeJson(text, fallback, context = '') {
   if (text == null) return fallback;
-  try { return JSON.parse(text); } catch { return fallback; }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    // (i): the old silent swallow hid which row/column failed to parse.
+    // Warn with the key context, keep the return shape (fallback) compatible.
+    console.warn(`runtime: safeJson parse failed${context ? ` (${context})` : ''}: ${err?.message ?? err}`);
+    return fallback;
+  }
 }
 
 export default { Runtime, RuntimeLockedError };

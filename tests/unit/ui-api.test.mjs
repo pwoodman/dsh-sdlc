@@ -110,7 +110,7 @@ test('flow: success, NO_PROJECT 404, missing host, malformed', async () => {
   await withFetch(async () => json({ ok: false, error: 'NO_PROJECT' }, 404), async () => {
     const res = await fetchFlow();
     assert.equal(res.code, 'NO_PROJECT');
-    assert.match(res.reason, /sdlc init/);
+    assert.match(res.reason, /auto-setup|workspace/);
   });
   await withFetch(async () => new Response('Not Found', { status: 404 }), async () => {
     const res = await fetchFlow();

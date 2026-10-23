@@ -278,4 +278,40 @@ function isFolded() {
   return !pkg.dependencies && Boolean(pkg.exports?.['./services']);
 }
 
-module.exports = { FOLD, ROOT, META_DIR, fold, isFolded, rewritePatch, rewriteCode, aliasExports, memberNames, memberName, foldedFile, expectedSiblings, assertFoldedSiblings };
+/**
+ * Folded rows that would change if fold() ran now (C20 --check support).
+ * Compares each member's built lib/ against its folded copy after the CODE
+ * rewrite; returns short names like ['core', 'ui']. Never writes.
+ */
+function foldedStale() {
+  const stale = [];
+  if (!isFolded()) return FOLD.map((f) => f.short);
+  for (const member of FOLD) {
+    const src = join(ROOT, 'packages', member.dir, 'lib');
+    if (!existsSync(src)) { stale.push(member.short); continue; }
+    const files = [];
+    (function collect(d) {
+      for (const e of readdirSync(d).sort()) {
+        const full = join(d, e);
+        if (statSync(full).isDirectory()) collect(full);
+        else files.push(full);
+      }
+    })(src);
+    let dirty = false;
+    for (const file of files) {
+      const rel = relative(src, file);
+      const dest = join(META_DIR, 'lib', 'rows', member.short, 'lib', rel);
+      if (!existsSync(dest)) { dirty = true; break; }
+      let want = rewriteCode(readFileSync(file, 'utf8'), join(dest, '..'));
+      if (member.short === 'ui' && dest.endsWith(join('lib', 'client.js'))) {
+        const metaName = JSON.parse(readFileSync(join(META_DIR, 'package.json'), 'utf8')).name;
+        want = want.split(memberName(member.dir)).join('@@META@@').split('@@META@@').join(metaName);
+      }
+      if (want !== readFileSync(dest, 'utf8')) { dirty = true; break; }
+    }
+    if (dirty) stale.push(member.short);
+  }
+  return stale;
+}
+
+module.exports = { FOLD, ROOT, META_DIR, fold, isFolded, foldedStale, rewritePatch, rewriteCode, aliasExports, memberNames, memberName, foldedFile, expectedSiblings, assertFoldedSiblings };

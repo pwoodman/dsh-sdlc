@@ -238,6 +238,66 @@ export function ensureProject({
   return { ...result, existed: false };
 }
 
+export function ensureDefaultProject(target, {
+  id = 'default',
+  name = 'default',
+  state = 'DISCOVERY',
+  projectRoot = null,
+  now = () => new Date().toISOString(),
+} = {}) {
+  // TRACK 0 — AUTO-ON: the Lead IS the product entry point, so the first
+  // Lead touch on an empty workspace materialises one default project row.
+  // Idempotent: exactly one row is ever created (fixed id, INSERT OR IGNORE),
+  // and a DB that already holds ANY project row — user, foreign/stale,
+  // demo seed — is returned untouched. Fail-closed by contract: read-only
+  // callers (status, panel snapshot) must never throw, so every failure mode
+  // resolves into a report object.
+  try {
+    const db = target?.db?.prepare ? target.db
+      : (typeof target?.prepare === 'function' ? target : null);
+    if (!db) return { ok: false, created: false, reason: 'no-db' };
+    let count = null;
+    try {
+      const row = db.prepare('SELECT COUNT(*) AS n FROM projects').get();
+      count = Number(row?.n ?? row?.['COUNT(*)'] ?? NaN);
+    } catch (err) {
+      return { ok: false, created: false, reason: err?.message ?? 'count-failed' };
+    }
+    if (Number.isFinite(count) && count > 0) {
+      return { ok: true, created: false, count };
+    }
+    const root = projectRoot ?? target?.projectRoot ?? null;
+    const ts = now();
+    try {
+      db.prepare(
+        `INSERT OR IGNORE INTO projects(id, name, repo_path, state, complexity_json, budget_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, name ?? id, root, state, null, null, ts, ts);
+    } catch (err) {
+      return { ok: false, created: false, reason: err?.message ?? 'insert-failed' };
+    }
+    let project = null;
+    try {
+      project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) ?? null;
+    } catch { project = null; }
+    // Best-effort provenance event when a live runtime (with its state
+    // service) is the caller. A bare DB handle has no recorder — the row
+    // itself is the contract, the event is a nicety. Never throws.
+    try {
+      const record = target?.state?.record;
+      if (typeof record === 'function') {
+        record.call(target.state, {
+          projectId: id, actor: 'lead', action: 'project-created',
+          payload: { name: name ?? id, default: true },
+        });
+      }
+    } catch { /* provenance is best-effort */ }
+    return { ok: true, created: true, project: project ?? { id, name: name ?? id } };
+  } catch (err) {
+    return { ok: false, created: false, reason: err?.message ?? 'unexpected' };
+  }
+}
+
 /** Print-friendly summary used by the CLI and the installer. */
 export function describeProject(result) {
   if (!result.ok) return `init failed: ${result.message}`;
@@ -258,4 +318,4 @@ export function describeProject(result) {
   return lines.join('\n');
 }
 
-export default { initProject, ensureProject, describeProject, defaultGitRunner, GITIGNORE_ENTRIES, SDLC_TREE };
+export default { initProject, ensureProject, ensureDefaultProject, describeProject, defaultGitRunner, GITIGNORE_ENTRIES, SDLC_TREE };

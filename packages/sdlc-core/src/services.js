@@ -10,8 +10,9 @@
  * single writer to sdlc.db (P23).
  */
 
-import { readFileSync } from 'node:fs';
 import { Runtime } from './runtime.js';
+import { ensureDefaultProject } from './project.js';
+import { readPackageVersion } from '../../sdlc-guard/src/package-version.js';
 import { contributeSelftest, setSelftestMeta } from './selftest.js';
 
 export const SERVICE_NAMES = [
@@ -30,7 +31,10 @@ export const SERVICE_NAMES = [
  */
 export const SERVICE_METHODS = {
   tasks: ['getTask', 'listTasks', 'addTask', 'projectTasks', 'transition', 'proposeTransition'],
-  scheduler: ['canDispatch', 'guardFor', 'spentTotals'],
+  // B15 wires the dispatch path through the scheduler facade: the ASSIGNED
+  // fan-out (dispatchBatch) and its cap (dispatchParallelism) are scheduler
+  // operations, so both are exposed here alongside the existing budget guard.
+  scheduler: ['canDispatch', 'guardFor', 'spentTotals', 'dispatchBatch', 'dispatchParallelism'],
   router: ['route', 'recordModelRun'],
   verifier: ['ingestResult', 'recordTestResults'],
   integration: ['listTasks'],
@@ -43,11 +47,7 @@ export const SERVICE_METHODS = {
 const RUNTIME_KEY = '__SDLC_RUNTIME__';
 
 function pkgVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return null;
-  }
+  return readPackageVersion(import.meta.url, 2);
 }
 
 function dshVersion() {
@@ -116,6 +116,18 @@ export function apply(ctx, config = {}) {
       else process.stderr.write(`sdlc-core: ${err?.message ?? err}\n`);
       throw err;
     }
+  }
+
+  // Track 0 — AUTO-ON: the Lead IS the product entry point, so touching it
+  // with a service row means a project exists. First touch auto-creates one
+  // default project row on an empty projects table (idempotent; never
+  // rewrites user rows). Fail-closed: a default-project failure resolves to
+  // a report, never a throw — the service still mounts.
+  try {
+    ensureDefaultProject(runtime, { projectRoot });
+  } catch (err) {
+    if (ctx?.logger?.warn) ctx.logger.warn('sdlc-core: default project: %s', err?.message ?? err);
+    else process.stderr.write(`sdlc-core: default project: ${err?.message ?? err}\n`);
   }
 
   if (service && typeof ctx?.provide === 'function') {

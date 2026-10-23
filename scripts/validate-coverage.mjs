@@ -27,6 +27,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { runSuite, testGlobs, summaryOf, stripAnsi, EXIT } from './lib/harness.mjs';
+import { readArtifact } from './collect-coverage.mjs';
 import { DSH_PEER_RANGE } from './lib/semver-lite.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -65,8 +66,33 @@ export const FLOOR_EXCEPTIONS = {
 
 export const LAYERS = ['tests/unit', 'tests/contract', 'tests/integration', 'tests/fault', 'tests/adversarial'];
 
-/** Run the suites with coverage and parse Node's summary table. */
+/** Run the suites with coverage and parse Node's summary table.
+ *
+ * B8 (run-once coverage): when `scripts/collect-coverage.mjs` has left a
+ * FRESH `.validation/coverage.json` (same HEAD, no source/test file newer),
+ * reuse it instead of re-spawning the suite — one instrumented run serves
+ * gate Q, the M8 consumer and ad-hoc inspection. Absent or stale artifact ⇒
+ * fall back to the historical behaviour (run the suite here). The artifact is
+ * advisory: a stale file is ignored, never trusted.
+ */
 export function measureCoverage({ layers = LAYERS, cwd = ROOT, timeoutMs = 900_000 } = {}) {
+  const cached = readArtifact(join(ROOT, '.validation', 'coverage.json'), { root: ROOT });
+  if (cached && layers.length === LAYERS.length && layers.every((l) => LAYERS.includes(l))) {
+    const summary = new Map();
+    for (const [name, pkg] of Object.entries(cached.packages ?? {})) {
+      if (!pkg.files?.length) continue;
+      const mean = (key) => pkg.files.reduce((sum, f) => sum + f[key], 0) / pkg.files.length;
+      summary.set(name, { ...pkg, lines: mean('lines'), branches: mean('branches'), functions: mean('functions') });
+    }
+    return {
+      tests: { tests: cached.counts?.tests ?? null, pass: cached.counts?.pass ?? null, fail: cached.counts?.fail ?? null, skipped: null },
+      overall: cached.overall,
+      packages: summary,
+      exitCode: cached.exitCode ?? 0,
+      output: `(reused .validation/coverage.json produced at ${cached.producedAt}, HEAD ${cached.headSha?.slice(0, 8) ?? 'unknown'})`,
+      fromCache: true,
+    };
+  }
   const args = [
     '--test', '--experimental-test-coverage',
     '--test-coverage-include=packages/*/src/**',
@@ -74,7 +100,7 @@ export function measureCoverage({ layers = LAYERS, cwd = ROOT, timeoutMs = 900_0
     // script and dies with `Cannot find module '<dir>'`.
     ...testGlobs(layers),
   ];
-  const res = spawnSync('node', args, { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+  const res = spawnSync(process.execPath, args, { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   const output = `${res.stdout ?? ''}\n${res.stderr ?? ''}`;
 
   const packages = new Map();
@@ -223,7 +249,8 @@ const checks = [
       if (!measurement.overall) throw new Error('no "all files" row was produced');
       if (measurement.packages.size === 0) throw new Error('no per-package rows were produced');
       cached = measurement;
-      return { detail: `${measurement.tests.pass ?? '?'} tests; overall ${measurement.overall.lines}% lines across ${measurement.packages.size} packages` };
+      const via = measurement.fromCache ? ' (reused .validation/coverage.json, no re-run)' : '';
+      return { detail: `${measurement.tests.pass ?? '?'} tests; overall ${measurement.overall.lines}% lines across ${measurement.packages.size} packages${via}` };
     },
   },
   {

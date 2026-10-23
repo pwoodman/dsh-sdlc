@@ -54,6 +54,29 @@ test('apply(service=tasks) opens the db, provides sdlc.tasks and exposes the run
   }
 });
 
+test('apply(service=tasks) auto-creates one default project on first Lead touch', () => {
+  const dir = tempDir('sdlc-services-default-');
+  try {
+    const ctx = fakeCtx();
+    assert.equal(services.apply(ctx, CFG(dir, { service: 'tasks' })), undefined);
+    const runtime = services.getRuntime(CFG(dir, { service: 'tasks' }), { projectRoot: dir });
+    const projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
+    assert.equal(projects.length, 1, 'first Lead touch means a project exists');
+    assert.equal(projects[0].id, 'default');
+    assert.equal(projects[0].name, 'default');
+
+    // A second apply (same runtime) never duplicates, and a user project is
+    // never rewritten by the auto-create path.
+    runtime.createProject({ id: 'P1', name: 'user' });
+    services.apply(ctx, CFG(dir, { service: 'tasks' }));
+    const again = runtime.db.prepare('SELECT id FROM projects ORDER BY created_at').all().map((r) => r.id).sort();
+    assert.deepEqual(again, ['P1', 'default']);
+    assert.equal(runtime.getProject('P1')?.name, 'user');
+  } finally {
+    services.closeRuntime(dir);
+    cleanup(dir);
+  }
+});
 test('a second apply for the same project root reuses the runtime (single writer)', () => {
   const dir = tempDir('sdlc-services-once-');
   try {
@@ -84,7 +107,7 @@ test('makeService exposes exactly the documented methods, bound to the runtime',
     const runtime = services.getRuntime({}, { projectRoot: dir });
     const expected = {
       tasks: ['addTask', 'getTask', 'listTasks', 'projectTasks', 'proposeTransition', 'transition'],
-      scheduler: ['canDispatch', 'guardFor', 'spentTotals'],
+      scheduler: ['canDispatch', 'dispatchBatch', 'dispatchParallelism', 'guardFor', 'spentTotals'],
       router: ['recordModelRun', 'route'],
       verifier: ['ingestResult', 'recordTestResults'],
       integration: ['listTasks'],

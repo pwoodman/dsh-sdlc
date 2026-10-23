@@ -2,6 +2,56 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.0] — 2026-10-23 — lead auto-on, real parallelism, Tier A correctness
+
+### Added
+
+- **Lead auto-on: using the Lead means a project exists.** First Lead touch
+  auto-creates exactly one `default` project row (idempotent, fail-closed,
+  never touches user projects). Every "no project yet — run `/sdlc run`"
+  dead end is reworded: the workspace is ready and a project is active —
+  describe your goal to the Lead (e.g. `/sdlc run <your goal>`).
+- **Real dispatch parallelism (B.10 finally wired).**
+  `Runtime.dispatchParallelism()` computes the cap from
+  `effectiveParallelism` × `providerLimitFromRegistry` over configured,
+  project and provider ceilings; `Runtime.dispatchBatch()` applies the
+  capped ASSIGNED batch concurrently. M1–M7 gates fan out via `Promise.all`
+  behind a P → M0 serial prefix (first sanctioned `Promise.all` in
+  production-adjacent code).
+- **Run-once coverage.** `scripts/collect-coverage.mjs` persists
+  `.validation/coverage.json`; gate Q and the M8 consumer reuse it when
+  fresh instead of re-spawning the suite.
+- **Tier D decision docs.** `docs/decisions/D21–D25` scope the execution
+  seams, authority handlers, DISK_EXHAUSTED, missing gate types + Playwright
+  driver, and spec identity re-sync — each with options, recommendation,
+  cost and first step. Includes a 3-vector skipped disk-full skeleton.
+
+### Fixed
+
+- **Orphan salvage persisted.** `worker_runs.orphaned=1` is now written for
+  dead workers and `sdlc resume` routes through `recovery.reconcile()`
+  (single transition per task, K.5 `ORPHAN_SALVAGE` evidence kept).
+- **Runtime lock rollback** on failed DB open; **atomic O_EXCL-safe** lock
+  takeover via temp + rename.
+- **M8-05 layers corrected** (contract/integration in, e2e out — e2e is the
+  L7 browser layer); **M0 sleep-spawn removed** (60 s → ~10 ms fail-fast);
+  **`process.execPath`** for every node spawn.
+- **Spec config fidelity restored.** The H.1 keys are all present with spec
+  values (`visualViewports`, `visualFullMatrix`, `a11yFloor`,
+  `retryFailedGate`, `visualFailureThreshold`, `maxParallelE2e`,
+  `bootstrapTimeoutMs`, `dependencyCache`, `egress`, `fallbackChain`,
+  router tunables, `eventLog`); `workerMode` validates (`process`
+  supported, anything else an explicit unsupported error — Tier D owns the
+  spawn).
+
+### Verification
+
+- **943 offline tests pass, 0 fail**: 685 unit, 125 contract, 64
+  integration, 27 fault (+3 intentional Tier D skips), 29 adversarial,
+  9 e2e (§53 acceptance suite, mock provider). Gates M1–M8 + Q green;
+  gate P/M0 environment checks require the `dsh`/`pnpm` binaries CI
+  installs (absent in this sandbox, pre-existing).
+
 ## [1.1.1] — 2026-10-20 — no workspace is a dead end
 
 ### Fixed

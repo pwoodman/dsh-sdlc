@@ -38,9 +38,13 @@ function readEntries(path) {
   try {
     const doc = parseYaml(readFileSync(path, 'utf8'));
     return Array.isArray(doc) ? doc : [];
-  } catch {
-    // A patch containing `!!js` expressions or a hand-edited file is not a
-    // discovery failure the user should see; try the next profile layer.
+  } catch (err) {
+    // (ii): the old silent swallow hid WHICH profile patch was unparseable.
+    // Warn with the file (and line when the YAML error carries one), then try
+    // the next profile layer — a `!!js` patch is a skip, not a discovery
+    // failure, but the user should see which layer was skipped.
+    const where = err?.line != null ? `${path}:${err.line}` : path;
+    console.warn(`host-model: skipping unparseable profile patch ${where}: ${err?.message ?? err}`);
     return [];
   }
 }

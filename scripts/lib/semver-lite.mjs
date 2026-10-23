@@ -13,9 +13,12 @@
  *     line may change the plugin contract, so it is out of range by design.
  */
 
-const RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+(?:\.[0-9A-Za-z.-]+)*))?$/;
+const RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 
-/** Parse a version or return null. */
+/** Parse a version or return null. Accepts an optional leading `v` and ignores
+ *  build metadata (+…) for precedence (semver §10) — install-lib (the
+ *  authority) does the same; parity is pinned by
+ *  tests/unit/semver-parity.test.mjs. */
 export function parse(version) {
   if (typeof version !== 'string') return null;
   const m = RE.exec(version.trim());
@@ -24,7 +27,7 @@ export function parse(version) {
     major: Number(m[1]),
     minor: Number(m[2]),
     patch: Number(m[3]),
-    pre: m[4] === undefined ? null : m[4].split('.').map((p) => (/^\d+$/.test(p) ? Number(p) : p)),
+    pre: m[4] === undefined ? null : m[4].split('.'),
   };
 }
 
@@ -34,9 +37,9 @@ function cmpNum(a, b) {
 
 /** Identifier precedence per semver §11: numeric < alphanumeric, numeric numerically, alpha ASCII. */
 function cmpPreId(a, b) {
-  const aNum = typeof a === 'number';
-  const bNum = typeof b === 'number';
-  if (aNum && bNum) return cmpNum(a, b);
+  const aNum = /^\d+$/.test(a);
+  const bNum = /^\d+$/.test(b);
+  if (aNum && bNum) return cmpNum(Number(a), Number(b));
   if (aNum) return -1; // numeric identifiers have lower precedence
   if (bNum) return 1;
   return a < b ? -1 : a > b ? 1 : 0;

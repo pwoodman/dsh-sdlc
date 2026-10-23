@@ -844,7 +844,7 @@ The suite now ships as **two runnable scripts**, both present in this repository
 | Script | Scope | Requires an LLM? | Runs today? |
 |---|---|---|---|
 | `scripts/validate-platform.mjs` | 18 deterministic DSH platform facts (P1–P36 subset) | no | yes — 17 pass, 1 skip (pnpm absent) |
-| `scripts/validate-m0.mjs` | 11 composition + boot + contract checks for the plugin itself | no (boot hook instead) | yes — passes, skipping checks whose packages are unbuilt |
+| `scripts/validate-m0.mjs` | 13 composition + boot + contract checks for the plugin itself | no (boot hook instead) | yes — passes, skipping checks whose packages are unbuilt |
 
 `pnpm run validate:platform` → `node scripts/validate-platform.mjs`; `pnpm run validate:m0` → `node scripts/validate-m0.mjs`. Both exit 0 on success, 1 on failure, write an evidence bundle with `--json <path>`, and accept a check-id filter and `--fail-fast`.
 
@@ -860,7 +860,7 @@ The suite now ships as **two runnable scripts**, both present in this repository
 | `M0-03-tools` | worker/lead tools registered (boot hook) |
 | `M0-04-commands` | the interactive `/sdlc` surface registered (boot hook) |
 | `M0-05-tier-overlay` | `--patch` replaces `agent-default-model` in a single row (P35) |
-| `M0-06-presets` | exactly 26 unique `preset-sdlc-*` rows |
+| `M0-06-presets` | selectable `preset-sdlc-*` row(s) in the lead; 26 role compositions ship |
 | `M0-07-guard` | `allowed_paths`/`forbidden_paths`/traversal decisions are correct |
 | `M0-08-schema` | the DB initialises and `events` rejects UPDATE/DELETE |
 | `M0-09-worker-outbox` | orchestrator paths are excluded and `SCOPE_VIOLATION` is detected |
@@ -920,7 +920,7 @@ Each milestone has a **gate** — an automated check that must pass before the n
 | Gate | Script | What it validates |
 |---|---|---|
 | `gate:P` (prerequisite) | `scripts/validate-platform.mjs` | 18 deterministic DSH platform facts; **no LLM, no network**; runs on any machine today |
-| `gate:M0` | `scripts/validate-m0.mjs` | 11 checks (C.8.1): platform suite, profile composition, no duplicate rows, tool/command registration via `SDLC_SELFTEST`, tier overlay, 26 presets, guard decisions, schema + append-only trigger, outbox/scope derivation, doctor |
+| `gate:M0` | `scripts/validate-m0.mjs` | 13 checks (C.8.1): platform suite, profile composition, no duplicate rows, tool/command registration via `SDLC_SELFTEST`, tier overlay, 26 presets, guard decisions, schema + append-only trigger, outbox/scope derivation, doctor, patch integrity, selftest contract |
 | `gate:M1` | `scripts/validate-m1.mjs` | Complexity engine determinism (same input → same score across 10 runs); DAG persisted to `sdlc.db`; state transitions match the B.2.1 matrix; `events` append-only; mock-LLM pipeline runs end to end |
 | `gate:M2` | `scripts/validate-m2.mjs` | Worktree lifecycle (create → bootstrap → dispose); parallel independent tasks complete; resource-locked tasks serialize; out-of-scope write auto-fails; orphan salvage on restart; **two orchestrator processes cannot share one `.sdlc/`** (B.2.4) |
 | `gate:M3` | `scripts/validate-m3.mjs` | Each gate type (syntax/lint/unit/integration/api) runs and produces evidence; false DONE claim rejected by runtime evidence; acceptance-criteria mapping is complete; independent review verdict recorded; skipped gates carry `skipped:<reason>` |
@@ -929,6 +929,7 @@ Each milestone has a **gate** — an automated check that must pass before the n
 | `gate:M6` | `scripts/validate-m6.mjs` | Playwright runs at the 3 viewports; AI visual rubric returns a structured verdict; 2 consecutive visual failures trigger ESCALATED; a11y floor checks (contrast, alt text, labels) pass on clean UI |
 | `gate:M7` | `scripts/validate-m7.mjs` | Integration merge is `--no-ff`; a conflict triggers replan (not silent resolution); a post-merge gate failure reverts the merge; resume after kill recovers state; `events` integrity holds |
 | `gate:M8` | `scripts/validate-m8.mjs` | All 8 spec §53 acceptance tests pass; collaborative mode produces one ADR; full §58 DoD green; **cost bookkeeping is exact** (recomputed cost equals persisted cost; token accounting is complete) — never a comparison to a provider invoice (E9) |
+| `gate:Q` | `scripts/validate-coverage.mjs` | K.9 coverage & quality: per-package line thresholds, 3 negative controls, no `console.log` without `debug` prefix, DSH peer-range check |
 
 **Gate CI integration:** every PR runs `gate:P`, then `gate:M0` through `gate:M<current>`. A PR that breaks a lower gate is blocked. Nightly builds run the full `gate:M8` suite. Every gate writes an evidence bundle (`.validation/<gate>.json`: tool versions, git SHA, per-check result, duration) which CI uploads as an artifact.
 
@@ -936,7 +937,7 @@ Each milestone has a **gate** — an automated check that must pass before the n
 
 | Milestone | Delivers | Acceptance (deeper than "runs") | Validation Gate |
 |---|---|---|---|
-| M0 spike | profiles + bundles boot; tools/commands register; tier overlay works | `dsh --profile sdlc-web --dump-config` shows the composed rows; `SDLC_SELFTEST` reports the registered surface | `gate:M0` — 11 checks pass (C.8.1) |
+| M0 spike | profiles + bundles boot; tools/commands register; tier overlay works | `dsh --profile sdlc-web --dump-config` shows the composed rows; `SDLC_SELFTEST` reports the registered surface | `gate:M0` — 13 checks pass (C.8.1) |
 | M1 plan | discovery, complexity (B.1), task contracts, DAG, states (B.2), events | `/sdlc run "…"` yields persisted DAG; rerun determinism of score | `gate:M1` — determinism + schema + transition matrix |
 | M2 execute | worktrees (B.10), worker dispatch, WorkerResult (B.3), ownership enforcement | spec Test 6 (package.json collision ⇒ serialized) + parallel independent tasks land clean | `gate:M2` — worktree lifecycle + serialization + guard |
 | M3 verify | gates (B.4), evidence, independent review, accept/reject | spec Test 7 (DONE claim rejected on mobile overflow evidence) | `gate:M3` — gate execution + evidence + false-claim rejection |
@@ -982,12 +983,12 @@ Part L holds the operational detail; this part is the normative procedure. **Eve
 | Surface | Command | Requires a live model? | Deterministic? |
 |---|---|---|---|
 | Source-checkout installer | `node scripts/install-local.mjs` | no | yes |
-| Published bootstrap | `npx @patwoodman/orchestrator init` | no | yes |
-| Environment doctor | `node scripts/doctor.mjs` / `npx @patwoodman/orchestrator doctor` | no | yes |
+| Published bootstrap | `npx @patwoodman/dsh-sdlc-flow init` | no | yes |
+| Environment doctor | `node scripts/doctor.mjs` / `npx @patwoodman/dsh-sdlc-flow doctor` | no | yes |
 
 `/sdlc doctor`, `/sdlc config`, `/sdlc init` exist as **interactive conveniences** that call the same code paths. They are **not** available in one-shot profiles (E3), and v2's `dsh --profile X --headless "/sdlc doctor"` cannot work.
 
-## F.2 `sdlc init` / `npx @patwoodman/orchestrator init` — machine setup
+## F.2 `sdlc init` / `npx @patwoodman/dsh-sdlc-flow init` — machine setup
 
 Steps, in order. Every step is idempotent; the installer is safe to re-run.
 
@@ -1912,12 +1913,13 @@ All of these run without DSH booting and without a model call, so they work even
 
 | Package | npm name | Ships a bundle patch? | Installed into |
 |---|---|---|---|
-| `sdlc-core` | `@patwoodman/orchestrator-core` | yes (2 patch files) | `sdlc-web`, `sdlc-probe` |
-| `sdlc-guard` | `@patwoodman/orchestrator-guard` | yes | `sdlc-worker`, `sdlc-web` |
-| `sdlc-tools` | `@patwoodman/orchestrator-tools` | yes | all three |
-| `sdlc-presets` | `@patwoodman/orchestrator-presets` | yes | `sdlc-web`, `sdlc-probe` |
-| `sdlc-cli` | `@patwoodman/orchestrator` | **no** (plain CLI + `bin`) | global / `npx` |
-| `sdlc-client-ui` | `@patwoodman/orchestrator-ui` | yes (`dsh.client`) | `sdlc-web` only |
+| `sdlc-orchestrator` | `@patwoodman/dsh-sdlc-flow` | yes (1 meta-bundle patch file) | `sdlc-web` (lead composite) |
+| `sdlc-core` | `@patwoodman/dsh-sdlc-flow-core` | yes (1 patch file) | `sdlc-web`, `sdlc-probe` |
+| `sdlc-guard` | `@patwoodman/dsh-sdlc-flow-guard` | yes | `sdlc-worker`, `sdlc-web` |
+| `sdlc-tools` | `@patwoodman/dsh-sdlc-flow-tools` | yes | all three |
+| `sdlc-presets` | `@patwoodman/dsh-sdlc-flow-presets` | yes | `sdlc-web`, `sdlc-probe` |
+| `sdlc-cli` | `@patwoodman/dsh-sdlc-flow-cli` | **no** (plain CLI + `bin`) | global / `npx` |
+| `sdlc-client-ui` | `@patwoodman/dsh-sdlc-flow-ui` | yes (`dsh.client`) | `sdlc-web` only |
 | `sdlc-mock-llm` | *(not published)* | yes | test profiles only |
 
 Each bundle package:
@@ -1943,9 +1945,9 @@ Each bundle package:
 sdlc version --check
 
 # Upgrade the bundles in each profile (pnpm passthrough)
-dsh plugin --profile sdlc-web    add @patwoodman/orchestrator-core@<v> @patwoodman/orchestrator-tools@<v> @patwoodman/orchestrator-presets@<v>
-dsh plugin --profile sdlc-worker add @patwoodman/orchestrator-guard@<v>  @patwoodman/orchestrator-tools@<v>
-dsh plugin --profile sdlc-probe  add @patwoodman/orchestrator-core@<v> @patwoodman/orchestrator-tools@<v> @patwoodman/orchestrator-presets@<v>
+dsh plugin --profile sdlc-web    add @patwoodman/dsh-sdlc-flow-core@<v> @patwoodman/dsh-sdlc-flow-tools@<v> @patwoodman/dsh-sdlc-flow-presets@<v>
+dsh plugin --profile sdlc-worker add @patwoodman/dsh-sdlc-flow-guard@<v>  @patwoodman/dsh-sdlc-flow-tools@<v>
+dsh plugin --profile sdlc-probe  add @patwoodman/dsh-sdlc-flow-core@<v> @patwoodman/dsh-sdlc-flow-tools@<v> @patwoodman/dsh-sdlc-flow-presets@<v>
 
 # Dependency changes require a restart (HMR covers patch/manifest/source edits only)
 sdlc doctor && sdlc resume
@@ -2054,7 +2056,7 @@ This part answers one question: **how do we know the orchestrator does what the 
 | Script | Checks | Result | Cost |
 |---|---|---|---|
 | `scripts/validate-platform.mjs` | 18 deterministic DSH platform facts, no plugin needed | 17 pass / 1 skip (pnpm genuinely absent) | free, ~6 s |
-| `scripts/validate-m0.mjs` | 11 composition/boot/contract checks | passes; skips checks whose packages are unbuilt | free, ~5 s |
+| `scripts/validate-m0.mjs` | 13 composition/boot/contract checks | passes; skips checks whose packages are unbuilt | free, ~5 s |
 | `scripts/doctor.mjs` | platform, home, credentials, profiles, project, models | reports 3 errors on the reference host, every one a real environment fact | free, <1 s |
 
 Every script writes a JSON evidence bundle (`--json <path>`) containing Node/platform/arch, git SHA, per-check status, message and duration. CI uploads these as artifacts; a gate failure is diagnosable without re-running.
