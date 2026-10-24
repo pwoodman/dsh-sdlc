@@ -42,8 +42,34 @@ function readJson(path) {
 }
 
 export function defaultGitRunner(argv, { cwd } = {}) {
-  const res = spawnSync(argv[0], argv.slice(1), { cwd, encoding: 'utf8' });
+  const res = spawnSync(argv[0], argv.slice(1), {
+    cwd,
+    encoding: 'utf8',
+    // Production twin of the tests/lib/helpers.mjs widening (Oct 2026):
+    // `sdlc init` shells out to `git`, and headless/worker environments
+    // (Node 22 multi-file test workers, minimal containers) may not carry
+    // the binary's directory on PATH. Widen once here so init never becomes
+    // ENOENT flakiness. Injected runners (tests) bypass this entirely.
+    env: widenedEnv(),
+  });
   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '' };
+}
+
+/** Search path for shell-outs (`git` today): binary dir + inherited + standard. */
+export function widenedEnv(extra = {}) {
+  if (extra.PATH !== undefined) return { ...process.env, ...extra };
+  const execDir = typeof process.execPath === 'string' && process.execPath.includes('/')
+    ? process.execPath.slice(0, process.execPath.lastIndexOf('/'))
+    : null;
+  const parts = [
+    execDir,
+    process.env.PATH,
+    '/usr/bin',
+    '/bin',
+    '/usr/local/bin',
+    '/app/bin',
+  ].filter(Boolean);
+  return { ...process.env, ...extra, PATH: [...new Set(parts)].join(':') };
 }
 
 /**

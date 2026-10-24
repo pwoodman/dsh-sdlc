@@ -2,6 +2,28 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.3] — 2026-10-24 — CI green under Node 22 workers
+
+### Fixed
+
+- **PATH-hardened every `git`/`node` shell-out (the actual CI killer).**
+  Node 22 multi-file test workers run with a PATH that omits the node
+  binary's own directory, and sandboxed runners keep `git` outside
+  `/usr/bin:/bin`. Three swallows became loud, deterministic passes:
+  the installer fake takes absolute `FAKE_NODE` and aborts the add when
+  the pin fails (was: exit-127 swallowed by `sh`, unpinned "success");
+  `tests/lib/helpers.mjs run()` widens PATH for bare `git`/`node`
+  (explicit `opts.env.PATH` still wins); production `defaultGitRunner`
+  (`sdlc init`) and `defaultRunner` (gates) widen the same way, and the
+  salvage-plan test executes through `run()`. The `git` failure message
+  now carries status, PATH and stderr instead of a bare `failed:`.
+  Verified: harshest simulation (empty HOME, `CI=true`, 2 CPUs, Node
+  22.18, via `npm`) green 3/3 at 914 pass / 0 fail / 19 skip; Node 24
+  green at 930 / 0 / 3.
+- **1.2.1 postscript:** shipped a JS template-literal break (backticks in
+  the fake's `sh` comment) — file failed to parse at all. All backticks
+  removed from the embedded comment in 1.2.2.
+
 ## [1.2.2] — 2026-10-23 — CI-green patch: hermetic installer fake (re-release)
 
 ### Fixed

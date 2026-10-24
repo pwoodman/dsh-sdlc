@@ -92,12 +92,35 @@ export function cleanup(dir) {
   rmSync(dir, { recursive: true, force: true });
 }
 
-/** Run a process, never throwing. */
+/**
+ * Run a process, never throwing.
+ *
+ * CI-hardening (Oct 2026): Node 22 multi-file test workers run with a PATH
+ * that omits the node binary's own directory, and sandboxed/minimal CI
+ * images may keep `git` outside /usr/bin:/bin (a Flatpak-style /app/bin
+ * shim here, an Xcode-select path on macOS). For the two bare commands the
+ * tree shells out to (`git`, `node`) the search path is widened with the
+ * running binary's directory, the current PATH, and the standard locations,
+ * so neither ever becomes ENOENT / exit-127 flakiness under workers. An
+ * explicit opts.env.PATH still wins when the caller sets one. Failing fast
+ * with the resolved PATH in the message beats a bare `git init failed: `.
+ */
 export function run(cmd, args = [], opts = {}) {
+  const widened
+    = opts.env?.PATH !== undefined || (cmd !== 'git' && cmd !== 'node')
+      ? { ...process.env, ...(opts.env ?? {}) }
+      : {
+          ...process.env,
+          ...(opts.env ?? {}),
+          PATH: [process.execPath ? dirname(process.execPath) : null, process.env.PATH, '/usr/bin', '/bin', '/usr/local/bin', '/app/bin']
+            .filter(Boolean)
+            .filter((p, i, all) => all.indexOf(p) === i)
+            .join(':'),
+        };
   const res = spawnSync(cmd, args, {
     encoding: 'utf8',
     cwd: opts.cwd,
-    env: { ...process.env, ...(opts.env ?? {}) },
+    env: widened,
     timeout: opts.timeoutMs ?? 60_000,
   });
   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '', ok: res.status === 0 };
@@ -105,7 +128,11 @@ export function run(cmd, args = [], opts = {}) {
 
 export function git(args, cwd) {
   const res = run('git', args, { cwd });
-  if (!res.ok) throw new Error(`git ${args.join(' ')} failed: ${res.stderr || res.stdout}`);
+  if (!res.ok) {
+    throw new Error(
+      `git ${args.join(' ')} failed (status ${res.status}, PATH=${process.env.PATH ?? '(unset)'}): ${res.error ?? ''} ${res.stderr || res.stdout}`,
+    );
+  }
   return res.stdout.trim();
 }
 

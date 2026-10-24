@@ -212,10 +212,21 @@ export function defaultRunner(argv, { cwd, timeoutMs = 300000, env = process.env
     cwd,
     timeout: timeoutMs,
     encoding: 'utf8',
-    env,
+    // Same widening as project.js (Oct 2026): gate commands (`node --check`,
+    // `pnpm test`, …) must resolve when workers/containers carry a thin PATH.
+    // An explicit env.PATH from the caller still wins.
+    env: env?.PATH !== undefined ? env : widenedEnvLike(env),
     maxBuffer: 32 * 1024 * 1024,
   });
   return { status: res.status ?? (res.error ? 127 : 0), stdout: res.stdout ?? '', stderr: res.stderr ?? res.error?.message ?? '' };
+}
+
+/** Widen PATH without clobbering caller-provided overrides. */
+function widenedEnvLike(env = {}) {
+  if (env.PATH !== undefined && env !== process.env) return { ...env };
+  const dir = process.execPath ? process.execPath.slice(0, process.execPath.lastIndexOf('/')) || '/' : null;
+  const parts = [dir, process.env.PATH, env.PATH, '/usr/bin', '/bin', '/usr/local/bin', '/app/bin'].filter(Boolean);
+  return { ...env, PATH: [...new Set(parts)].join(':') };
 }
 
 /** Convenience: derive the required gates for a task via risk.js. */

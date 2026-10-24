@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import {
-  tempDir, cleanup, core, makeRepo,
+  tempDir, cleanup, core, makeRepo, run,
   spawnSync, join, dirname, writeFileSync, readFileSync, mkdirSync,
 } from '../lib/helpers.mjs';
 
@@ -23,7 +23,9 @@ const { TaskStateService, isLegalTransition, legalTargets } = await core.stateMa
 function executeSalvage(plan, cwd) {
   const runs = [];
   for (const c of plan.commands) {
-    const res = spawnSync(c.argv[0], c.argv.slice(1), { cwd, encoding: 'utf8' });
+    // run() widens PATH for bare commands (helpers.mjs CI-hardening), so the
+    // salvage `git` invocations resolve under thin worker PATHs too.
+    const res = run(c.argv[0], c.argv.slice(1), { cwd });
     if (c.capture) {
       mkdirSync(dirname(join(cwd, c.capture)), { recursive: true });
       writeFileSync(join(cwd, c.capture), res.stdout ?? '');
