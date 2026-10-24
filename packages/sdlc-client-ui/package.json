@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-ui",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "type": "module",
   "description": "SDLC orchestrator web UI: config editor, task board, and side-by-side review (sdlc-web profile only).",
   "main": "lib/index.js",
@@ -58,8 +58,8 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-cli": "1.2.6",
-    "@patwoodman/dsh-sdlc-flow-core": "1.2.6",
-    "@patwoodman/dsh-sdlc-flow-guard": "1.2.6"
+    "@patwoodman/dsh-sdlc-flow-cli": "1.2.7",
+    "@patwoodman/dsh-sdlc-flow-core": "1.2.7",
+    "@patwoodman/dsh-sdlc-flow-guard": "1.2.7"
   }
 }

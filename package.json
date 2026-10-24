@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-sdlc",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "private": true,
   "type": "module",
   "description": "Universal SDLC Orchestrator — a DeepSeek Harness plugin suite (spec v3).",

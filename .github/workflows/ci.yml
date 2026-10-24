@@ -38,11 +38,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      # No `version:` here: the version lives in package.json's `packageManager`
-      # field, and specifying both makes pnpm/action-setup fail with
-      # "Multiple versions of pnpm specified".
+      # No version key here: the version lives in package.json's
+      # packageManager field, and specifying both makes pnpm/action-setup
+      # fail with Multiple versions of pnpm specified.
       - uses: pnpm/action-setup@v4
-      - name: cache the pnpm store (offline-safe: keyed on the lockfile)
+      - name: cache the pnpm store
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
@@ -144,9 +144,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.18'
-      # No `version:` here: the version lives in package.json's `packageManager`
-      # field, and specifying both makes pnpm/action-setup fail with
-      # "Multiple versions of pnpm specified".
+      # No version key here: the version lives in package.json's
+      # packageManager field, and specifying both makes pnpm/action-setup
+      # fail with Multiple versions of pnpm specified.
       - uses: pnpm/action-setup@v4
       - name: download the built tree
         uses: actions/download-artifact@v4

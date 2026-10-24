@@ -2,6 +2,23 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.7] — 2026-10-24 — the actual CI killer: invalid YAML in ci.yml
+
+### Fixed
+
+- **Quoted the `name:` values containing `: ` in `ci.yml`.** B13's
+  single-build rework added `- name: cache the pnpm store (offline-safe:
+  keyed on the lockfile)` — a bare `: ` inside a plain scalar, which is a
+  YAML mapping separator. The workflow file failed validation, so every
+  CI run since 1.2.0 died at queue time with zero jobs (`created ==
+  updated`, conclusion `failure`, no steps, no logs) and the Release
+  workflow's CI-green gate could never pass. The `version:`-in-comment
+  lines nearby were reworded defensively at the same time. Validated
+  with a real YAML parser: all 8 jobs parse.
+- **1.2.6's DSH-per-job hardening stands** (each gate/smoke job installs
+  the pinned runtime hermetically; the shared `~/.npm` cache step is
+  gone), it just never got a chance to run behind the broken file.
+
 ## [1.2.6] — 2026-10-24 — CI quiver, part 2: every job installs its own DSH
 
 ### Fixed
