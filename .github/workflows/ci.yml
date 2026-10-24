@@ -87,10 +87,11 @@ jobs:
       # lib/ uses bare cross-package imports (@patwoodman/dsh-sdlc-flow-core, …),
       # which need node_modules to resolve. A fresh checkout has none, so every
       # suite importing such a lib/ file failed on CI while passing locally.
-      # The artifact carries the linked tree; re-run the linker as a
-      # fail-closed check that the links resolve on this runner.
+      # Re-run the linker (idempotent: creates what the artifact lacks, keeps
+      # what it has) so the links resolve on this runner regardless of how
+      # the artifact transport handled symlinks.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs --check
+        run: node scripts/link-workspace.mjs
       - name: presets are in sync with roles.js
         run: node scripts/gen-presets.mjs --check
       - name: the meta-bundle patch is in sync with its members
@@ -121,8 +122,10 @@ jobs:
       # Every job installs its own DSH (hermetic, no cross-job cache):
       # the gate jobs boot the live host, so a missing binary fails them
       # with `dsh not on PATH` instead of silently skipping.
+      # Re-run the linker (idempotent): artifact symlinks do not reliably
+      # survive the upload/download round-trip.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs --check
+        run: node scripts/link-workspace.mjs
       - name: install the pinned DSH runtime (gate:P probes the live host)
         run: |
           set -euo pipefail
@@ -156,9 +159,10 @@ jobs:
       # checkout has none. Without this the linked member deps have no
       # node_modules entries and the live boot probe fails its imports
       # (M0-03/M0-04/M0-12), even though every offline test passes.
-      # The artifact carries the linked tree; re-check rather than rebuild.
+      # Re-run the linker (idempotent): artifact symlinks do not reliably
+      # survive the upload/download round-trip.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs --check
+        run: node scripts/link-workspace.mjs
       - name: install the pinned DSH runtime (M0 boots the probe profile)
         run: |
           set -euo pipefail
@@ -195,9 +199,10 @@ jobs:
           echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
       # Same workspace-link requirement as gate-m0: M1..M8 resolve
       # cross-package lib/ imports through node_modules.
-      # The artifact carries the linked tree; re-check rather than rebuild.
+      # Re-run the linker (idempotent): artifact symlinks do not reliably
+      # survive the upload/download round-trip.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs --check
+        run: node scripts/link-workspace.mjs
       - name: verify all shipped presets and scoped tool execution on the real host
         run: node scripts/verify-tool-runtime.mjs "${SDLC_VERIFY_RUNTIME:?}"
       - name: integration + fault + adversarial layers (L4–L6)
@@ -228,9 +233,10 @@ jobs:
           name: built-tree
       # e2e imports lib/ cross-package modules (mock LLM, core) through
       # node_modules, same as every other job.
-      # The artifact carries the linked tree; re-check rather than rebuild.
+      # Re-run the linker (idempotent): artifact symlinks do not reliably
+      # survive the upload/download round-trip.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs --check
+        run: node scripts/link-workspace.mjs
       - name: the eight §53 acceptance tests (mock provider, no cost)
         run: npm run test:e2e
       - uses: actions/upload-artifact@v4
@@ -275,8 +281,10 @@ jobs:
       # install-smoke rebuilds the tarball from source by design (it ships
       # build-release.mjs output), so it keeps its own build; the downloaded
       # tree only skips the redundant workspace link step's rebuild.
+      # Re-run the linker (idempotent): artifact symlinks do not reliably
+      # survive the upload/download round-trip.
       - name: link the workspace packages into node_modules
-        run: node scripts/link-workspace.mjs --check
+        run: node scripts/link-workspace.mjs
       - name: build the no-clone tarball
         run: node scripts/build-release.mjs
       - name: smoke 1/2 — tarball install from scratch

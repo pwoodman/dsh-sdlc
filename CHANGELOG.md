@@ -2,6 +2,22 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.8] — 2026-10-24 — CI quiver, part 3: idempotent links, valid YAML proven
+
+### Fixed
+
+- **All CI jobs re-run the linker instead of `--check`ing the artifact.**
+  `actions/upload-artifact` does not reliably round-trip the workspace
+  symlinks, so `link-workspace.mjs --check` failed in the `unit` job with
+  missing/stale links even though the build job had created them. The
+  linker is idempotent (repairs what is missing, keeps what resolves),
+  so every consumer job now runs it plainly. Combined with 1.2.6's
+  per-job DSH installs, no CI job depends on another job's filesystem
+  state beyond the `lib/` tree the artifact is actually for.
+- **Proved `ci.yml` parses** (all 8 jobs) with a real YAML parser after
+  the 1.2.7 colon-space fix; the file had been failing validation since
+  B13, which made every CI run die at queue time with zero jobs.
+
 ## [1.2.7] — 2026-10-24 — the actual CI killer: invalid YAML in ci.yml
 
 ### Fixed
