@@ -100,7 +100,7 @@ test('every reconciled task yields at most one transition, whatever the combinat
 
 test('applyReconciliation persists orphaned=1 for dead workers (A1)', async () => {
   const { DatabaseSync } = await import('node:sqlite');
-  const rec = await import('file:///home/patrick/Projects/Apps/dsh-sdlc-flow/packages/sdlc-core/src/recovery.js');
+  const rec = await core.recovery();
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE worker_runs (id TEXT PRIMARY KEY, task_id TEXT, attempt INTEGER, pid INTEGER, finished_at TEXT, orphaned INTEGER DEFAULT 0, worktree_path TEXT)`);
   db.prepare(`INSERT INTO worker_runs(id, task_id, attempt, pid, finished_at, worktree_path) VALUES ('R1','T1',0,4242,NULL,'/w')`).run();
@@ -121,7 +121,7 @@ test('applyReconciliation persists orphaned=1 for dead workers (A1)', async () =
 
 test('markOrphaned returns false for an unknown run (A1)', async () => {
   const { DatabaseSync } = await import('node:sqlite');
-  const rec = await import('file:///home/patrick/Projects/Apps/dsh-sdlc-flow/packages/sdlc-core/src/recovery.js');
+  const rec = await core.recovery();
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE worker_runs (id TEXT PRIMARY KEY, orphaned INTEGER DEFAULT 0)`);
   assert.equal(rec.markOrphaned(db, 'missing'), false);
