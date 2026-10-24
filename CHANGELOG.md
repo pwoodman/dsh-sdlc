@@ -2,6 +2,24 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.6] — 2026-10-24 — CI quiver, part 2: every job installs its own DSH
+
+### Fixed
+
+- **Every CI job installs the pinned DSH runtime itself; the `~/.npm`
+  cache step is gone.** Diagnosing the red pipeline job-by-job (each
+  replicated in a throwaway workflow with results exfiltrated through
+  public check-run annotations) showed everything green — unit (checks +
+  685 + 125), gates (P, M0, tool-runtime, integration, fault,
+  adversarial, M1–M8+Q), e2e (9/0/1) — except `install-smoke`, whose M0
+  failed on `dsh not on PATH`. B13's single-build rework had dropped the
+  inline `npm install -g dsh` from `install-smoke` (restored in 1.2.5);
+  the same rework left `gate-platform` and `gate-m0` without a DSH
+  install while their gates boot the live host, and added an
+  `actions/cache` of `~/.npm` shared across jobs. Now `gate-platform`,
+  `gate-m0` and `install-smoke` each install DSH hermetically; no job
+  depends on another job's install or on cache state.
+
 ## [1.2.5] — 2026-10-24 — CI quiver: restore DSH install in smoke job
 
 ### Fixed

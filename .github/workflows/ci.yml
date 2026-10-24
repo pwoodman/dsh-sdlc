@@ -58,11 +58,6 @@ jobs:
           runtime="$(npm root -g)/@deepseek-ai/dsh"
           test -f "$runtime/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
           echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
-      - name: cache the DSH runtime install
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: dsh-runtime-${{ runner.os }}-${{ env.DSH_VERSION }}
       - name: build (zero-dependency src → lib, incl. UI bundle)
         run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
       - name: upload the built tree (lib/ + workspace links manifest)
@@ -123,10 +118,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: built-tree
-      # DSH was installed + cached by the build job; the artifact restores the
-      # same node_modules links, so no rebuild and no reinstall here.
+      # Every job installs its own DSH (hermetic, no cross-job cache):
+      # the gate jobs boot the live host, so a missing binary fails them
+      # with `dsh not on PATH` instead of silently skipping.
       - name: link the workspace packages into node_modules
         run: node scripts/link-workspace.mjs --check
+      - name: install the pinned DSH runtime (gate:P probes the live host)
+        run: |
+          set -euo pipefail
+          npm install -g @deepseek-ai/dsh@$DSH_VERSION
+          test -f "$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
       - name: gate:P — deterministic platform facts (no model, no network)
         run: node scripts/validate-platform.mjs --json .validation/gate-P.json
       - uses: actions/upload-artifact@v4
@@ -158,6 +159,11 @@ jobs:
       # The artifact carries the linked tree; re-check rather than rebuild.
       - name: link the workspace packages into node_modules
         run: node scripts/link-workspace.mjs --check
+      - name: install the pinned DSH runtime (M0 boots the probe profile)
+        run: |
+          set -euo pipefail
+          npm install -g @deepseek-ai/dsh@$DSH_VERSION
+          test -f "$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
       - name: install profiles + bundles
         run: node scripts/install-local.mjs --yes --skip-build
       - name: gate:M0 — composition + boot hook + guard + schema
