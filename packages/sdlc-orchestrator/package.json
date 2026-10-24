@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "type": "module",
   "description": "DSH SDLC Flow lead-profile bundle: task engine, tools, role presets, and web UI in one install.",
   "main": "lib/index.js",

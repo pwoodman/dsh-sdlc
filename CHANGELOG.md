@@ -2,6 +2,21 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.5] — 2026-10-24 — CI quiver: restore DSH install in smoke job
+
+### Fixed
+
+- **CI `install-smoke` reinstalls the pinned DSH runtime before the M0
+  smoke.** B13's single-build-job rework (1.2.0) dropped the inline
+  `npm install -g @deepseek-ai/dsh` the smoke job previously had, so
+  `M0-00-platform` (PLAT-05/06/07/08/09/11/12) failed with `dsh not on
+  PATH` inside the tarball smoke — red CI, red release gate, zero test
+  failures anywhere. Found by replicating each CI job in a diagnostic
+  workflow and exfiltrating results through public check-run
+  annotations: unit (checks + 685 + 125), gates (P, M0, tool-runtime,
+  integration, fault, adversarial, M1–M8+Q), and e2e (9/0/1) are all
+  green on CI; only the smoke M0 was red.
+
 ## [1.2.4] — 2026-10-24 — the actual CI killer: absolute checkout path in tests
 
 ### Fixed

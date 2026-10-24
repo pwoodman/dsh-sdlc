@@ -253,6 +253,15 @@ jobs:
         with:
           node-version: '22.18'
       - uses: pnpm/action-setup@v4
+      # M0-00 (PLAT-05/06/07/…) asserts a working `dsh` on PATH: the tarball
+      # install below proves profiles install into a DSH home, but dsh itself
+      # must be installed first (v1.1.1 did this inline; B13's single-build
+      # rework dropped it and every M0-00 check failed with `dsh not on PATH`).
+      - name: install the pinned DSH runtime
+        run: |
+          set -euo pipefail
+          npm install -g @deepseek-ai/dsh@$DSH_VERSION
+          test -f "$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js"
       - name: download the built tree
         uses: actions/download-artifact@v4
         with:

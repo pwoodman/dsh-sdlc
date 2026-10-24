@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-cli",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "type": "module",
   "description": "The `sdlc` executable: a deterministic control plane over .sdlc/ (no model calls).",
   "bin": {
@@ -21,7 +21,7 @@
     "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-core": "1.2.4"
+    "@patwoodman/dsh-sdlc-flow-core": "1.2.5"
   },
   "exports": {
     ".": "./lib/cli.mjs",
