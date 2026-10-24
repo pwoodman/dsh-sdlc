@@ -2,6 +2,21 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.4] — 2026-10-24 — the actual CI killer: absolute checkout path in tests
+
+### Fixed
+
+- **No absolute checkout paths in tests.** Two assertions in
+  `tests/unit/recovery-reconcile.test.mjs` imported recovery.js via a
+  hardcoded `/home/patrick/...` `file://` URL — green on the author's
+  machine, `ERR_MODULE_NOT_FOUND` everywhere else (CI failed 2 tests in
+  the very first seconds: 927 pass / 2 fail). Both go through the
+  existing `core.recovery()` helper like every other test in the file.
+  Proven by exfiltrating CI's failure through a public check-run
+  annotation, fixed, and re-verified with the full Release sequence
+  (build-release → tool-runtime → `npm test`) green on CI's Node 22.18
+  before tagging.
+
 ## [1.2.3] — 2026-10-24 — CI green under Node 22 workers
 
 ### Fixed
