@@ -2,6 +2,23 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.2.9] — 2026-10-24 — CI quiver, part 4: the link check itself was broken
+
+### Fixed
+
+- **`statSync` → `lstatSync` in `link-workspace.mjs --check`.**
+  `statSync` follows symlinks, so `isSymbolicLink()` was false for every
+  healthy link and `--check` could never pass. B13 (1.2.0) switched the
+  gate jobs from create-mode to `--check`-mode, which turned this latent
+  bug into a hard CI failure in every downstream job from 1.2.0 on —
+  invisible locally because developers run create-mode. Combined with
+  1.2.8 (plain idempotent `link` in all jobs, no artifact symlinks, no
+  npm cache), no CI step depends on cross-job filesystem state.
+- **1.2.7's YAML fix confirmed load-bearing**: the invalid
+  `- name: cache the pnpm store (offline-safe: ...)` line (bare `: `
+  in a plain scalar) made GitHub reject the whole workflow at queue
+  time — zero jobs, instant `failure`, no logs. Now parses (8 jobs).
+
 ## [1.2.8] — 2026-10-24 — CI quiver, part 3: idempotent links, valid YAML proven
 
 ### Fixed

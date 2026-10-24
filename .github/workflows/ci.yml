@@ -60,7 +60,7 @@ jobs:
           echo "SDLC_VERIFY_RUNTIME=$runtime" >> "$GITHUB_ENV"
       - name: build (zero-dependency src → lib, incl. UI bundle)
         run: node scripts/build.mjs && node scripts/build-ui.mjs && node scripts/fold-meta.mjs
-      - name: upload the built tree (lib/ + workspace links manifest)
+      - name: upload the built tree (lib/ only — links are recreated per job)
         uses: actions/upload-artifact@v4
         with:
           name: built-tree
@@ -69,8 +69,6 @@ jobs:
             scripts/lib/
             tests/lib/
             eval/lib/
-            node_modules/
-            !node_modules/.cache/
   unit:
     needs: build
     runs-on: ubuntu-latest

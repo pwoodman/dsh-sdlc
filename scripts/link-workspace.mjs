@@ -21,7 +21,7 @@
  *   node scripts/link-workspace.mjs --check  # exit 1 if any link is missing
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -48,7 +48,9 @@ if (packages.length === 0) {
 let missing = 0;
 for (const { name, scope, local, dir } of packages) {
   const link = join(NODE_MODULES, scope, local);
-  const ok = existsSync(link) && statSync(link).isSymbolicLink() && existsSync(join(link, 'package.json'));
+  // lstat (not stat): stat follows the link, so isSymbolicLink() would be
+  // false for every healthy link and --check could never pass.
+  const ok = existsSync(link) && lstatSync(link).isSymbolicLink() && existsSync(join(link, 'package.json'));
   if (CHECK) {
     if (!ok) {
       missing += 1;
@@ -57,7 +59,9 @@ for (const { name, scope, local, dir } of packages) {
     continue;
   }
   if (ok) continue;
-  rmSync(link, { force: true }); // a stale file/non-link entry must not block the symlink
+  // A stale file, an extracted real dir (artifact transports do not reliably
+  // round-trip symlinks), or a dangling link must not block the symlink.
+  rmSync(link, { force: true, recursive: true });
   mkdirSync(join(NODE_MODULES, scope), { recursive: true });
   symlinkSync(dir, link, 'dir');
   console.log(`link-workspace: ${name} → ${link}`);
