@@ -2,6 +2,31 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [Unreleased] — GUI run start
+
+### Fixed
+
+- **The goal box reported every successful run as a failure.**
+  `NoProjectRowState` (`panels.jsx`) tested `result.ok !== true`, but
+  `api.startRun` resolves the API envelope `{available, data|reason}` —
+  `ok` lives one level down inside `data`. A successful start therefore
+  rendered "start failed" while the task was created in the database and
+  never shown: the "it runs but shows nothing" symptom. Now reads
+  `result.available`.
+- **`POST /api/sdlc.tasks.run` returned 404 on any fresh workspace.**
+  The route called `root()` directly instead of going through `guarded()`,
+  so it never materialised `.sdlc/` — unlike every other panel route.
+  Starting a flow is typically the first panel touch, so it must bootstrap
+  exactly like `/api/sdlc.status`. The handler still fail-closes to
+  `NO_PROJECT` when setup genuinely fails.
+
+### Added
+
+- `tests/unit/ui-start-run.test.mjs` — pins the envelope contract: the
+  success level, the reload-on-success coupling that makes the created task
+  visible, and a regression case that documents the defect it replaces.
+  The client half of the run path previously had no test at all.
+
 ## [1.2.9] — 2026-10-24 — CI quiver, part 4: the link check itself was broken
 
 ### Fixed
