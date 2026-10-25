@@ -22,11 +22,11 @@
  */
 
 import {
-  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_COMPARE_PATH,
+  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_RUN_PATH, SDLC_COMPARE_PATH,
   SDLC_CONFIG_PATH, SDLC_HOST_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH,
 } from '../routes.js';
 import {
-  handleStatus, handleBoard, handleTask, handleCompare,
+  handleStatus, handleBoard, handleTask, handleTasksRun, handleCompare,
   handleConfigGet, handleConfigPost, handleHostAdopt, handleMetrics,
 } from './handlers.js';
 import { handleFlow } from './flow.js';
@@ -276,6 +276,26 @@ export function registerRoutes(ctx, config = {}) {
     registered.push(`POST ${SDLC_CONFIG_PATH}`);
   } catch (err) {
     if (ctx?.logger?.warn) ctx.logger.warn('sdlc-ui: failed to register POST %s: %s', SDLC_CONFIG_PATH, err?.message ?? err);
+  }
+  try {
+    registerFenced(ctx, {
+      path: SDLC_RUN_PATH,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      // Same auto-bootstrapping fence as every other panel route. Starting a
+      // flow from the goal box is the FIRST touch in a fresh workspace, so it
+      // must materialise `.sdlc/` exactly like /api/sdlc.status does — calling
+      // root() directly skipped bootstrap and 404'd on every new workspace.
+      // The handler still fail-closes to NO_PROJECT if setup genuinely fails.
+      fetch: guarded(async (projectRoot, request) => {
+        const body = await readJson(request);
+        if (!body) return { status: 400, body: { ok: false, error: 'BAD_JSON' } };
+        return handleTasksRun(projectRoot, body);
+      }),
+    }, `sdlc-ui: POST ${SDLC_RUN_PATH} Fetch route`);
+    registered.push(`POST ${SDLC_RUN_PATH}`);
+  } catch (err) {
+    if (ctx?.logger?.warn) ctx.logger.warn('sdlc-ui: failed to register POST %s: %s', SDLC_RUN_PATH, err?.message ?? err);
   }
   try {
     registerFenced(ctx, {

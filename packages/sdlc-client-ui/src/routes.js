@@ -23,6 +23,7 @@
 export const SDLC_STATUS_PATH = '/api/sdlc.status';
 export const SDLC_BOARD_PATH = '/api/sdlc.board';
 export const SDLC_TASK_PATH = '/api/sdlc.task';
+export const SDLC_RUN_PATH = '/api/sdlc.tasks.run';
 export const SDLC_COMPARE_PATH = '/api/sdlc.compare';
 export const SDLC_CONFIG_PATH = '/api/sdlc.config';
 export const SDLC_HOST_PATH = '/api/sdlc.host';
@@ -33,6 +34,7 @@ export const SDLC_FLOW_PATH = '/api/sdlc.flow';
 export const SDLC_STATUS_ROUTE = SDLC_STATUS_PATH.slice(1);
 export const SDLC_BOARD_ROUTE = SDLC_BOARD_PATH.slice(1);
 export const SDLC_TASK_ROUTE = SDLC_TASK_PATH.slice(1);
+export const SDLC_RUN_ROUTE = SDLC_RUN_PATH.slice(1);
 export const SDLC_COMPARE_ROUTE = SDLC_COMPARE_PATH.slice(1);
 export const SDLC_CONFIG_ROUTE = SDLC_CONFIG_PATH.slice(1);
 export const SDLC_HOST_ROUTE = SDLC_HOST_PATH.slice(1);
@@ -106,7 +108,7 @@ export function isConfigWrite(value) {
 }
 
 export default {
-  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_COMPARE_PATH,
+  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_RUN_PATH, SDLC_COMPARE_PATH,
   SDLC_CONFIG_PATH, SDLC_HOST_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH, sdlcReviewAddress, parseSdlcReviewAddress,
   isStatusPayload, isBoardPayload, isConfigPayload, isConfigWrite, isFlowPayload,
 };

@@ -175,9 +175,27 @@ export function appendRequest(worktreePath, request) {
 /**
  * Handlers for the proposal channel. `allowed_paths`/`forbidden_paths` are NOT
  * consulted here — the guard does that; these handlers only shape proposals.
+ *
+ * Lead tools enqueue durable proposals via `runtime` when one is provided
+ * (D22 phase 1: host-side execution path). Without a runtime (worker-side
+ * import, unit tests) they keep the legacy in-memory proposal shape so the
+ * channel stays total.
  */
-export function createHandlers({ worktreePath, runMeta = {} } = {}) {
+export function createHandlers({ worktreePath, runMeta = {}, runtime = null } = {}) {
   const state = { claims: [], requests: [], reported: null };
+
+  // Enqueue through the runtime proposals table when available; otherwise
+  // fall back to the legacy in-memory proposal object.
+  const enqueue = (kind, body) => {
+    if (runtime && typeof runtime.queueLeadProposal === 'function') {
+      try {
+        return runtime.queueLeadProposal({ kind, ...body, actor: runMeta.actor ?? 'lead' });
+      } catch (err) {
+        return { ok: false, error: err?.message ?? String(err) };
+      }
+    }
+    return null;
+  };
 
   return {
     sdlc_report_result(args) {
@@ -204,15 +222,25 @@ export function createHandlers({ worktreePath, runMeta = {} } = {}) {
       return { ok: true, queued: true, blocking: request.blocking };
     },
     sdlc_dispatch_task(args) {
+      const queued = enqueue('dispatch', { task_id: args.task_id, payload: { note: args.note ?? null } });
+      if (queued) return queued;
       return { ok: false, error: 'INVALID_TRANSITION: dispatch is owned by the scheduler', task_id: args.task_id };
     },
     sdlc_approve_transition(args) {
+      const queued = enqueue('approve', { task_id: args.task_id, payload: { to: args.to ?? null, reason: args.reason ?? null } });
+      // Without a runtime the model path stays denied (legacy behaviour);
+      // with a runtime, queueLeadProposal rejects non-human approves itself.
+      if (queued) return queued;
       return { ok: false, error: 'AUTHORITY_DENIED: approvals are user-only (L.1 rule 4)', task_id: args.task_id };
     },
     sdlc_record_decision(args) {
+      const queued = enqueue('decision', { payload: { ...args } });
+      if (queued) return queued;
       return { ok: true, proposal: { kind: 'decision', ...args } };
     },
     sdlc_plan_delta(args) {
+      const queued = enqueue('plan-delta', { payload: { tasks: args.tasks ?? [], reason: args.reason ?? null } });
+      if (queued) return queued;
       return { ok: true, count: (args.tasks ?? []).length, proposal: { kind: 'plan-delta', ...args } };
     },
     _state: state,

@@ -1453,6 +1453,26 @@ button.sdlc-attention-row:hover { background: color-mix(in srgb, var(--sdlc-tone
   overflow-wrap: anywhere;
 }
 .sdlc-empty-command .sdlc-btn { margin-top: 5px; }
+.sdlc-empty-start {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+}
+.sdlc-empty-goal {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--sdlc-border);
+  border-radius: 6px;
+  background: var(--sdlc-card);
+  color: inherit;
+  font-size: 10px;
+}
+.sdlc-empty-goal:focus {
+  outline: 1px solid var(--sdlc-running);
+}
+.sdlc-empty-start .sdlc-btn { white-space: nowrap; }
 .sdlc-empty-workspace {
   width: 100%;
   color: var(--sdlc-muted);

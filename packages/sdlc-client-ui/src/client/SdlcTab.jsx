@@ -115,6 +115,7 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
     setPanel('review');
   };
   const loadFlow = () => stores.loadFlow({ cwd });
+  const startRun = (goal) => stores.startRun(goal, cwd);
   const loadConfig = () => stores.loadConfig(cwd);
   const saveConfig = (path, value) => stores.saveConfig(path, value, cwd);
   const adoptHostModel = () => stores.adoptHostModel(cwd);
@@ -192,6 +193,7 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
             onOpenReview={openReview}
             onReload={loadFlow}
             onShowTasks={showTasks}
+            onStart={startRun}
           />
         )}
         {panel === 'tasks' && (

@@ -130,6 +130,18 @@ export function createSdlcStores(api) {
   }
 
   /**
+   * Start the flow from a goal string (the GUI `/sdlc run`). Posts to the
+   * run route — which ensures the project and persists the first task —
+   * then reloads the flow snapshot from scratch (cursor reset: the new
+   * task row arrives with the fresh payload, not the event delta).
+   */
+  async function startRun(goal, cwd) {
+    const res = await api.startRun(goal, cwd);
+    if (res.available) await loadFlow({ cwd });
+    return res;
+  }
+
+  /**
    * Load the surface a tab switch reveals. Flow and Tasks share the flow
    * snapshot; Review is user-driven (pick two runs); Settings reads config.
    */
@@ -153,7 +165,7 @@ export function createSdlcStores(api) {
 
   return {
     flow, config, review,
-    loadFlow, loadConfig, saveConfig, adoptHostModel, loadCompare, loadPanel, reset, dispose,
+    loadFlow, loadConfig, saveConfig, adoptHostModel, loadCompare, loadPanel, reset, dispose, startRun,
   };
 }
 

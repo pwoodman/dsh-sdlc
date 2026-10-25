@@ -53,12 +53,14 @@ test('route paths are stable and browser-relative forms strip the slash', () => 
   assert.equal(routes.SDLC_STATUS_PATH, '/api/sdlc.status');
   assert.equal(routes.SDLC_BOARD_PATH, '/api/sdlc.board');
   assert.equal(routes.SDLC_TASK_PATH, '/api/sdlc.task');
+  assert.equal(routes.SDLC_RUN_PATH, '/api/sdlc.tasks.run');
   assert.equal(routes.SDLC_COMPARE_PATH, '/api/sdlc.compare');
   assert.equal(routes.SDLC_CONFIG_PATH, '/api/sdlc.config');
   assert.equal(routes.SDLC_METRICS_PATH, '/api/sdlc.metrics');
   assert.equal(routes.SDLC_FLOW_PATH, '/api/sdlc.flow');
   assert.equal(routes.SDLC_FLOW_ROUTE, 'api/sdlc.flow');
   assert.equal(routes.SDLC_STATUS_ROUTE, 'api/sdlc.status');
+  assert.equal(routes.SDLC_RUN_ROUTE, 'api/sdlc.tasks.run');
   assert.ok(routes.sdlcReviewAddress('T-1').startsWith('dsh-resource://sdlc-review/'));
   assert.deepEqual(routes.parseSdlcReviewAddress(routes.sdlcReviewAddress('T-1')), { taskId: 'T-1' });
   assert.equal(routes.parseSdlcReviewAddress('dsh-resource://other/x'), undefined);
@@ -231,9 +233,10 @@ test('plugin registers routes behind the connection fence', async () => {
   // The registration report comes from the pure helper; apply() itself is the
   // loader entry and returns nothing (its return would be read as an effect).
   const report = plugin.registerRoutes(ctx, { projectRoot: tempDir('sdlc-ui-plugin-') });
-  assert.ok(report.length >= 7, `expected 7 routes, got ${report.length}`);
+  assert.ok(report.length >= 8, `expected 8 routes, got ${report.length}`);
   assert.ok(registered.some((r) => r.includes('/api/sdlc.status')));
   assert.ok(registered.some((r) => r.includes('POST /api/sdlc.config')));
+  assert.ok(registered.some((r) => r.includes('POST /api/sdlc.tasks.run')), 'run route is registered');
 
   // No connection fence: registers nothing, throws nothing.
   assert.deepEqual(plugin.registerRoutes({}, {}), []);

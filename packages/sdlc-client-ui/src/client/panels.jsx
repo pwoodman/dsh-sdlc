@@ -987,8 +987,33 @@ function NoProjectState({ t, cwd, onRetry, reason }) {  return (
 }
 
 /** A workspace that IS set up but has no project row yet — the healthy
- *  empty state, distinct from an auto-setup failure. */
-function NoProjectRowState({ t, cwd, onRetry, reason }) {
+ *  empty state, distinct from an auto-setup failure. Includes the goal box:
+ *  typing a goal and starting posts it to the run route, which creates the
+ *  first task — no lead session required. */
+function NoProjectRowState({ t, cwd, onRetry, reason, onStart }) {
+  const [goal, setGoal] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState(null);
+  const start = async () => {
+    const text = goal.trim();
+    if (!text || starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const result = await onStart(text);
+      // `onStart` resolves the API ENVELOPE `{available, data|reason}`, not the
+      // raw host body: success is `available`, and `ok`/`taskId` live one level
+      // down inside `data`. Reading `result.ok` misreported every successful
+      // run as a failure — the task was created but never shown.
+      if (!result || result.available !== true) {
+        setStartError(result?.reason ?? result?.error ?? 'start failed');
+      }
+    } catch (err) {
+      setStartError(err?.message ?? String(err));
+    } finally {
+      setStarting(false);
+    }
+  };
   return (
     <div className="sdlc-flow sdlc-flow-unavailable">
       <EmptyState
@@ -1004,6 +1029,25 @@ function NoProjectRowState({ t, cwd, onRetry, reason }) {
           <div className="sdlc-empty-label">{t('flow.noProjectRowHint')}</div>
           <code>/sdlc run &lt;your goal&gt;</code>
         </div>
+        {onStart && (
+          <form className="sdlc-empty-start" onSubmit={(e) => { e.preventDefault(); start(); }}>
+            <input
+              className="sdlc-empty-goal"
+              type="text"
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder={t('flow.runPlaceholder')}
+              aria-label={t('flow.runPlaceholder')}
+              disabled={starting}
+            />
+            <button type="submit" className="sdlc-btn sdlc-btn-primary" disabled={starting || !goal.trim()}>
+              {starting ? t('flow.starting') : t('flow.startRun')}
+            </button>
+          </form>
+        )}
+        {startError && (
+          <p className="sdlc-empty-reason" role="alert">{startError}</p>
+        )}
         {cwd && (
           <div className="sdlc-empty-workspace">
             {t('flow.workspace')} <code title={cwd}>{cwd}</code>
@@ -1018,10 +1062,10 @@ function NoProjectRowState({ t, cwd, onRetry, reason }) {
   );
 }
 
-function FlowUnavailable({ snapshot, t, cwd, onRetry }) {
+function FlowUnavailable({ snapshot, t, cwd, onRetry, onStart }) {
   const code = snapshot.code;
   if (code === 'NO_PROJECT_ROW') {
-    return <NoProjectRowState t={t} cwd={cwd} onRetry={onRetry} reason={snapshot.reason} />;
+    return <NoProjectRowState t={t} cwd={cwd} onRetry={onRetry} reason={snapshot.reason} onStart={onStart} />;
   }
   if (code === 'NO_PROJECT' || /no SDLC project/i.test(snapshot.reason ?? '')) {
     return <NoProjectState t={t} cwd={cwd} onRetry={onRetry} reason={snapshot.reason} />;
@@ -1063,10 +1107,10 @@ function FlowUnavailable({ snapshot, t, cwd, onRetry }) {
 
 // ── flow panel ─────────────────────────────────────────────────────────────
 
-export function FlowPanel({ snapshot, t, cwd, selectedTask, onSelectTask, onOpenReview, onReload, onShowTasks }) {
+export function FlowPanel({ snapshot, t, cwd, selectedTask, onSelectTask, onOpenReview, onReload, onShowTasks, onStart }) {
   if (snapshot.phase === 'loading') return <PanelLoading label={t('flow.loading')} />;
   if (snapshot.phase === 'missing') {
-    return <FlowUnavailable snapshot={snapshot} t={t} cwd={cwd} onRetry={onReload} />;
+    return <FlowUnavailable snapshot={snapshot} t={t} cwd={cwd} onRetry={onReload} onStart={onStart} />;
   }
   const view = buildFlowView(snapshot.data);
   const attention = buildAttention(view);

@@ -34,7 +34,7 @@ export const SERVICE_METHODS = {
   // B15 wires the dispatch path through the scheduler facade: the ASSIGNED
   // fan-out (dispatchBatch) and its cap (dispatchParallelism) are scheduler
   // operations, so both are exposed here alongside the existing budget guard.
-  scheduler: ['canDispatch', 'guardFor', 'spentTotals', 'dispatchBatch', 'dispatchParallelism'],
+  scheduler: ['canDispatch', 'guardFor', 'spentTotals', 'dispatchBatch', 'dispatchParallelism', 'queueLeadProposal', 'drainLeadProposals', 'listProposals'],
   router: ['route', 'recordModelRun'],
   verifier: ['ingestResult', 'recordTestResults'],
   integration: ['listTasks'],

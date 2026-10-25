@@ -306,4 +306,58 @@ export function handleMetrics(projectRoot) {
   } finally { closeRuntime(runtime); }
 }
 
-export default { handleStatus, handleBoard, handleTask, handleCompare, handleConfigGet, handleConfigPost, handleMetrics };
+/** POST /api/sdlc.tasks.run { goal } — start the flow from a goal string.
+ *
+ * The GUI equivalent of `/sdlc run <goal>`: ensures the project, creates
+ * one BACKLOG task from the goal, queues + drains a `run` proposal in the
+ * same single-writer process, and returns the created task id. The panel
+ * picks it up on its next flow poll — no lead session required.
+ */
+export function handleTasksRun(projectRoot, body = {}) {
+  const goal = typeof body?.goal === 'string' ? body.goal.trim()
+    : typeof body?.input === 'string' ? body.input.trim() : '';
+  if (!goal) return { status: 400, body: { ok: false, error: 'MISSING_GOAL', detail: 'body { goal } is required' } };
+  const dbPath = join(projectRoot, '.sdlc', 'sdlc.db');
+  if (!existsSync(dbPath)) return noProject(projectRoot);
+  const { runtime } = openRuntime(projectRoot);
+  try {
+    let projects = [];
+    try {
+      projects = runtime.db.prepare('SELECT * FROM projects ORDER BY created_at').all();
+    } catch { projects = []; }
+    let project = projects[0] ?? null;
+    if (!project) {
+      try {
+        project = runtime.createProject({ name: 'default', repoPath: projectRoot });
+      } catch (err) {
+        return { status: 409, body: { ok: false, error: 'NO_PROJECT', detail: err?.message ?? 'could not ensure a project row' } };
+      }
+    }
+    const id = `T-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1296).toString(36).toUpperCase().padStart(2, '0')}`;
+    const title = goal.length > 80 ? `${goal.slice(0, 77)}...` : goal;
+    const queued = runtime.queueLeadProposal({
+      kind: 'run',
+      payload: {
+        project_id: project.id,
+        tasks: [{
+          id, title, objective: goal, role: 'business-analyst',
+          acceptance_criteria: [], allowed_paths: [], verification: [],
+        }],
+      },
+      actor: 'lead',
+    });
+    if (!queued?.ok) return { status: 422, body: { ok: false, error: queued?.error ?? 'QUEUE_FAILED' } };
+    const drained = runtime.drainLeadProposals({ actor: 'scheduler' });
+    const created = drained.applied.flatMap((a) => a.tasks ?? []);
+    const task = created.length ? runtime.getTask(created[0]) : runtime.getTask(id);
+    return {
+      status: 200,
+      body: {
+        ok: true, projectId: project.id, taskId: task?.id ?? id,
+        proposalId: queued.proposal.id, drained: drained.applied.length,
+      },
+    };
+  } finally { closeRuntime(runtime); }
+}
+
+export default { handleStatus, handleBoard, handleTask, handleTasksRun, handleCompare, handleConfigGet, handleConfigPost, handleMetrics };

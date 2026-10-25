@@ -107,7 +107,7 @@ test('makeService exposes exactly the documented methods, bound to the runtime',
     const runtime = services.getRuntime({}, { projectRoot: dir });
     const expected = {
       tasks: ['addTask', 'getTask', 'listTasks', 'projectTasks', 'proposeTransition', 'transition'],
-      scheduler: ['canDispatch', 'dispatchBatch', 'dispatchParallelism', 'guardFor', 'spentTotals'],
+      scheduler: ['canDispatch', 'dispatchBatch', 'dispatchParallelism', 'drainLeadProposals', 'guardFor', 'listProposals', 'queueLeadProposal', 'spentTotals'],
       router: ['recordModelRun', 'route'],
       verifier: ['ingestResult', 'recordTestResults'],
       integration: ['listTasks'],

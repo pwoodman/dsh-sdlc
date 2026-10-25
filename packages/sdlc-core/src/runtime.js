@@ -234,6 +234,119 @@ export class Runtime {
     return result;
   }
 
+  // ── lead proposals (D22 phase 1) ─────────────────────────────────────────
+  // Model tools are propose-only (L.1 rule 4): they enqueue a durable row
+  // here; the transition service (or the drain below) applies it. Nothing
+  // in this path grants authority — `approve` from a model actor is
+  // rejected at enqueue time, executably, not by comment.
+
+  static LEAD_PROPOSAL_KINDS = ['dispatch', 'approve', 'decision', 'plan-delta', 'run'];
+
+  queueLeadProposal({ kind, task_id = null, taskId = null, payload = {}, actor = 'lead', decidedBy = null } = {}) {
+    const id = `prop-${randomUUID().slice(0, 8)}`;
+    const ts = this.now();
+    if (!Runtime.LEAD_PROPOSAL_KINDS.includes(kind)) {
+      return { ok: false, error: `UNKNOWN_KIND: ${kind}` };
+    }
+    // L.1 rule 4 (executable): a model approve never enqueues. Either the
+    // top-level decidedBy or payload.decidedBy must attest human authority —
+    // the human command path (slice 3) executes directly, never via drain.
+    const body = payload ?? {};
+    const by = decidedBy ?? body.decidedBy ?? null;
+    if (kind === 'approve' && by !== 'human') {
+      return { ok: false, error: 'AUTHORITY_DENIED: approvals are user-only (L.1 rule 4)', id };
+    }
+    this.db.prepare(
+      `INSERT INTO proposals(id, kind, task_id, payload_json, actor, decided_by, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)`,
+    ).run(id, kind, task_id ?? taskId, JSON.stringify(body), actor, by, ts);
+    this.state.record({ taskId: task_id ?? taskId, actor, action: 'proposal-queued', payload: { kind, proposal: id } });
+    return { ok: true, proposal: { id, kind, status: 'queued' } };
+  }
+
+  listProposals({ status = null } = {}) {
+    const rows = status
+      ? this.db.prepare('SELECT * FROM proposals WHERE status = ? ORDER BY created_at').all(status)
+      : this.db.prepare('SELECT * FROM proposals ORDER BY created_at').all();
+    return rows.map((r) => ({ ...r, payload: safeJson(r.payload_json, {}) }));
+  }
+
+  decideProposal(id, status, reason = null) {
+    const ts = this.now();
+    const res = this.db.prepare(
+      "UPDATE proposals SET status = ?, reason = ?, decided_at = ? WHERE id = ? AND status = 'queued'",
+    ).run(status, reason, ts, id);
+    return res.changes > 0;
+  }
+
+  /**
+   * Drain every queued proposal in FIFO order. Pure single-writer path:
+   * dispatch/approve never transition here (scheduler/human own those);
+   * decision writes the ADR row; plan-delta adds tasks; run boots the flow.
+   */
+  drainLeadProposals({ actor = 'scheduler' } = {}) {
+    const applied = [];
+    const rejected = [];
+    for (const row of this.listProposals({ status: 'queued' })) {
+      const payload = safeJson(row.payload_json, {});
+      try {
+        if (row.kind === 'decision') {
+          this.recordDecision({
+            id: payload.id ?? `adr-${randomUUID().slice(0, 8)}`,
+            project_id: payload.project_id ?? null,
+            question: payload.question ?? '', decision: payload.decision ?? '',
+            reason: payload.reason ?? '', alternatives: payload.alternatives ?? [],
+            consequences: payload.consequences ?? [], tags: payload.tags ?? [],
+          });
+          this.decideProposal(row.id, 'applied', null);
+          applied.push({ id: row.id, kind: row.kind });
+        } else if (row.kind === 'plan-delta' || row.kind === 'run') {
+          // Per-task errors must not poison the batch: collect the ones that
+          // land, and mark the row applied ONLY when every task succeeds.
+          const created = [];
+          const failures = [];
+          for (const t of payload.tasks ?? []) {
+            try {
+              const added = this.addTask({ ...t, project_id: payload.project_id ?? t.project_id ?? null });
+              created.push(added.id);
+            } catch (err) {
+              failures.push({ task: t?.id ?? null, error: err?.message ?? String(err) });
+            }
+          }
+          if (failures.length) {
+            const first = failures[0];
+            const reason = `plan-delta failed for ${first.task ?? 'task'}: ${first.error}`;
+            this.decideProposal(row.id, 'rejected', reason);
+            rejected.push({ id: row.id, kind: row.kind, error: reason, tasks: created, failures });
+          } else {
+            this.decideProposal(row.id, 'applied', null);
+            applied.push({ id: row.id, kind: row.kind, tasks: created });
+          }
+        } else if (row.kind === 'dispatch') {
+          // Scheduler-owned: applying means marking valid-for-dispatch.
+          // The next planStep picks the task up; nothing transitions here.
+          // Caller context is surfaced on the return so the scheduler can act.
+          this.decideProposal(row.id, 'applied', 'scheduler owns dispatch');
+          applied.push({ id: row.id, kind: row.kind, task_id: row.task_id, note: 'scheduler owns dispatch' });
+        } else if (row.kind === 'approve') {
+          // A queued approve never executes via drain: only the human command
+          // path (slice 3) performs transitions (L.1 rule 4). Anything that
+          // reaches the drain queued is rejected fail-closed.
+          this.decideProposal(row.id, 'rejected', 'AUTHORITY_DENIED: approvals are user-only (L.1 rule 4)');
+          rejected.push({ id: row.id, kind: row.kind, error: 'AUTHORITY_DENIED: approvals are user-only (L.1 rule 4)' });
+        } else {
+          this.decideProposal(row.id, 'rejected', `no drain path for kind ${row.kind}`);
+          rejected.push({ id: row.id, kind: row.kind, error: `no drain path for kind ${row.kind}` });
+        }
+      } catch (err) {
+        this.decideProposal(row.id, 'rejected', err?.message ?? String(err));
+        rejected.push({ id: row.id, kind: row.kind, error: err?.message ?? String(err) });
+      }
+    }
+    void actor;
+    return { applied, rejected };
+  }
+
   // ── worker runs ──────────────────────────────────────────────────────────
 
   startWorkerRun({ taskId, attempt, sessionId = null, pid = null, model = null, worktreePath = null, contextManifest = null, nonce = null, id = null }) {

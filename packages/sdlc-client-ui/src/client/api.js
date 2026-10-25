@@ -11,7 +11,7 @@
  */
 
 import {
-  SDLC_STATUS_ROUTE, SDLC_BOARD_ROUTE, SDLC_TASK_ROUTE, SDLC_COMPARE_ROUTE,
+  SDLC_STATUS_ROUTE, SDLC_BOARD_ROUTE, SDLC_TASK_ROUTE, SDLC_RUN_ROUTE, SDLC_COMPARE_ROUTE,
   SDLC_CONFIG_ROUTE, SDLC_HOST_ROUTE, SDLC_METRICS_ROUTE, SDLC_FLOW_ROUTE,
   isStatusPayload, isBoardPayload, isConfigPayload, isFlowPayload,
 } from '../routes.js';
@@ -123,6 +123,16 @@ export async function fetchTask(id, cwd) {
   return getJson(withCwd(`${SDLC_TASK_ROUTE}?id=${encodeURIComponent(id)}`, cwd));
 }
 
+/** Start the flow from a goal string — the GUI equivalent of `/sdlc run <goal>`. */
+export async function startRun(goal, cwd) {
+  const res = await postJson(withCwd(SDLC_RUN_ROUTE, cwd), { goal });
+  if (!res.available) return res;
+  if (!res.data || res.data.ok !== true || typeof res.data.taskId !== 'string') {
+    return { available: false, reason: 'host returned a malformed run payload' };
+  }
+  return res;
+}
+
 export async function fetchCompare(task, a, b, cwd) {
   const q = `task=${encodeURIComponent(task)}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`;
   return getJson(withCwd(`${SDLC_COMPARE_ROUTE}?${q}`, cwd));
@@ -229,7 +239,7 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
  * default export stays for source-level ergonomics; the bundler strips it.
  */
 export const api = {
-  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, adoptHostModel, fetchMetrics, fetchFlow,
+  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, adoptHostModel, fetchMetrics, fetchFlow, startRun,
   clientVersion,
 };
 

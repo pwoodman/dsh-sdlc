@@ -193,6 +193,23 @@ export const DDL = [
      heartbeat_at TEXT
    )`,
 
+  `CREATE TABLE IF NOT EXISTS proposals (
+     id TEXT PRIMARY KEY,
+     kind TEXT NOT NULL CHECK (kind IN (
+       'dispatch','approve','decision','plan-delta','run'
+     )),
+     task_id TEXT,
+     payload_json TEXT,
+     actor TEXT,
+     decided_by TEXT,
+     status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN (
+       'queued','applied','rejected'
+     )),
+     reason TEXT,
+     created_at TEXT,
+     decided_at TEXT
+   )`,
+
   `CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state)`,
   `CREATE INDEX IF NOT EXISTS idx_events_task ON events(task_id)`,
   `CREATE INDEX IF NOT EXISTS idx_model_runs_model ON model_runs(model_id, task_type)`,
@@ -207,7 +224,7 @@ export const DDL = [
 export const TABLES = [
   'projects', 'tasks', 'task_dependencies', 'task_resources', 'worker_runs',
   'test_results', 'artifacts', 'decisions', 'requirements', 'events',
-  'escalations', 'model_runs', 'schema_version', 'instance_lock',
+  'escalations', 'model_runs', 'schema_version', 'instance_lock', 'proposals',
 ];
 
 /**
