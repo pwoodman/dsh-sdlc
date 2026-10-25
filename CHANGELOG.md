@@ -2,7 +2,7 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
-## [Unreleased] — GUI run start
+## [1.2.10] — 2026-10-25 — GUI run start
 
 ### Fixed
 
