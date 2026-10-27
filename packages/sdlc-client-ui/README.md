@@ -3,12 +3,37 @@
 The browser half of the orchestrator: an **SDLC** tab in the web app's right
 sidebar, plus the host routes that feed it.
 
-| Surface | What it shows |
+| Surface | What it does |
 |---|---|
+| Now | the one useful next step, computed from real rows, with the button that does it: start work from a goal (and the worker actually runs), queue backlog, break a task into steps, run a ready task, retry a failure, decide an escalation (and resolve it), or review a change that passed its gates |
 | Flow | live animated DAG, attention queue, progress/state distribution, parallel-worker meter, gates/routing/activity, inline task detail |
 | Tasks | searchable tasks grouped by lifecycle state, with Active/Blocked/Done filters and the same task detail |
 | Review | select a task and two runs; signed deltas, changed gates, collapsed trace path |
 | Settings (gear) | validated `.sdlc/config.yml` editor plus **Use this Harness model** adoption; only changed fields can be saved |
+
+**Now is the point of the panel.** The host computes `nextAction` from the
+live database — an open escalation, a failed task, backlog waiting, or a task
+the scheduler has not been asked to run — and the tab opens there. Every
+button posts to `POST /api/sdlc.action`, which writes through the runtime and
+the state machine. The panel records and proposes; it cannot approve anything,
+and an illegal transition comes back as the state machine's own refusal
+instead of a silent no-op. A workspace with no tasks asks for a goal and
+starts real work from it. Nothing on the tab is sample data.
+
+**The buttons run real work.** `dispatch`, `retry` and the goal box drive the
+host's scheduler tick (`sdlc-core/src/run-loop.js` through
+`server/execution.js`): READY→ASSIGNED→a real `dsh --profile sdlc-worker`
+process in the task's own git worktree, recorded as a `worker_runs` row
+BEFORE the spawn (a crash leaves an orphan recovery can find), the configured
+gates run in a child process so `npm test` never freezes the host, results
+persist to `test_results`, the acceptance decision runs, and accepted R1 work
+is committed and merged into `sdlc/integration` with a
+`sdlc/accepted/<task>` tag. The HTTP answer returns as soon as the workers
+are launched; the panel's polling shows the rest live. R2+ work that passed
+its gates waits in VERIFYING as a **review** — the loop never invents a
+reviewer — and the Now card links straight to the task's runs, diff and gate
+evidence. A `decide` carries the escalation id and a normalized disposition
+so the escalation it answers is resolved, not just recorded.
 
 The **Live map** is a deterministic SVG derived in the browser from the flow
 snapshot — no model call, no generated HTML. Stages are horizontal bands so
@@ -35,9 +60,12 @@ snapshot also carries the host-computed `totals.parallelism` (`configured`,
 guess from `auto`.
 
 Host routes: `/api/sdlc.status`, `/api/sdlc.board`, `/api/sdlc.task`,
-`/api/sdlc.compare`, `/api/sdlc.config` (GET + validated POST),
-`/api/sdlc.host` (POST — adopt the Harness provider/model),
-`/api/sdlc.metrics`, `/api/sdlc.flow` (bounded visualizer snapshot). The routes
+`/api/sdlc.tasks.run` (POST — create the first task from a goal),
+`/api/sdlc.action` (POST — `queue`, `dispatch`, `breakdown`, `decide`,
+`cancel`, `retry`), `/api/sdlc.compare`, `/api/sdlc.config` (GET + validated
+POST), `/api/sdlc.host` (POST — adopt the Harness provider/model),
+`/api/sdlc.metrics`, `/api/sdlc.flow` (bounded visualizer snapshot, including
+`nextAction` and recorded decisions). The routes
 remain part of the host contract; the sidebar itself now reads `flow`, `config`
 and `compare`. Every row is scoped to the open session workspace: a project
 row whose `repo_path` belongs to another checkout is ignored. A workspace with
@@ -48,8 +76,10 @@ actionable reason (the guided state).
 
 The tab is registered as a right-sidebar page with a guide entry, so a new
 session can open it from the guide's **SDLC Flow** capsule. With
-`autoOpen: true` (the shipped default) it also opens once for the first session
-that has an SDLC project; the snapshot is kept as *stale* when a poll fails.
+`autoOpen: true` (the shipped default) it also opens once for the first
+session in any workspace the plugin can bootstrap — a project row is enough,
+zero tasks included, because the goal box IS the entry point of a fresh
+workspace; the snapshot is kept as *stale* when a poll fails.
 
 `lib/client.js` is a prebuilt closure-factory bundle that registers into the
 right-sidebar slot system; it needs no build step on the consumer's machine.

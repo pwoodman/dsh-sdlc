@@ -6,10 +6,10 @@
  * renders data, loading, or the honest `missing: reason` state; nothing is
  * fabricated.
  *
- * The UI is attention-first: Flow answers "is it working / what needs me",
- * Tasks answers "what is the state of every task", Review compares two runs,
- * and Settings is a secondary surface behind the gear. The old Status and
- * Board tabs were duplicates of data already in Flow and Tasks.
+ * The UI is action-first: Now answers "what should I do, and does it", Flow
+ * answers "where does every task stand", Tasks answers "show me one task",
+ * Review compares two runs, and Settings is a secondary surface behind the
+ * gear. Every row comes from the flow snapshot; nothing is fabricated.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -20,7 +20,7 @@ import {
   buildFlowGraph, buildTrace, summarizeParallel, summarizeEfficiency,
   edgeVisualState, svgTitleLines, svgTruncate, formatCompactTokens,
   formatDuration, formatTokens, formatCost, formatDelta, formatCostDelta, formatRelativeTime, shortModel,
-  isActiveState, isBlockedState, isDoneState, stateRank, toneOfState,
+  isActiveState, isBlockedState, isDoneState, stateRank, toneOfState, clientNextAction,
 } from './flow.js';
 
 const INIT_COMMAND = 'sdlc init';
@@ -165,6 +165,387 @@ function SectionHead({ title, meta, children }) {
       {meta && <span className="sdlc-muted">{meta}</span>}
       {children}
     </div>
+  );
+}
+
+// ── now: the one useful action ─────────────────────────────────────────────
+
+/**
+ * Run one action and surface the host's own result. `onAction` resolves the
+ * api envelope `{available, data|reason}`; success detail comes from `data`.
+ */
+function useAction(onAction) {
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const run = async (body) => {
+    if (pending) return null;
+    setPending(true);
+    setNotice(null);
+    try {
+      const result = await onAction(body);
+      if (!result || result.available !== true) {
+        setNotice({ tone: 'bad', text: result?.reason ?? 'not applied' });
+        return result;
+      }
+      setNotice({ tone: 'good', data: result.data });
+      return result;
+    } catch (err) {
+      setNotice({ tone: 'bad', text: err?.message ?? String(err) });
+      return null;
+    } finally {
+      setPending(false);
+    }
+  };
+  return { pending, notice, run };
+}
+
+function ActionNotice({ notice, t }) {
+  if (!notice) return null;
+  if (notice.tone === 'bad') {
+    return <p className="sdlc-empty-reason" role="alert">{fill(t('now.failed'), { reason: notice.text })}</p>;
+  }
+  const data = notice.data ?? {};
+  const detail = data.decision
+    ?? (Array.isArray(data.taskIds) ? data.taskIds.join(', ') : null)
+    ?? data.taskId
+    ?? '';
+  return <p className="sdlc-action-done" role="status">{fill(t('now.done'), { detail })}</p>;
+}
+
+function GoalForm({ t, onStart, submitLabel }) {
+  const [goal, setGoal] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState(null);
+  const start = async () => {
+    const text = goal.trim();
+    if (!text || starting) return;
+    setStarting(true);
+    setError(null);
+    try {
+      const result = await onStart(text);
+      if (!result || result.available !== true) setError(result?.reason ?? 'start failed');
+      else setGoal('');
+    } catch (err) {
+      setError(err?.message ?? String(err));
+    } finally {
+      setStarting(false);
+    }
+  };
+  return (
+    <form className="sdlc-now-form" onSubmit={(event) => { event.preventDefault(); start(); }}>
+      <label className="sdlc-field sdlc-field-wide">
+        <span>{t('now.goalLabel')}</span>
+        <input
+          type="text"
+          value={goal}
+          onChange={(event) => setGoal(event.target.value)}
+          placeholder={t('flow.runPlaceholder')}
+          disabled={starting}
+        />
+      </label>
+      <button type="submit" className="sdlc-btn sdlc-btn-primary" disabled={starting || !goal.trim()}>
+        {starting ? t('flow.starting') : (submitLabel ?? t('flow.startRun'))}
+      </button>
+      {error && <p className="sdlc-empty-reason" role="alert">{error}</p>}
+    </form>
+  );
+}
+
+function DecisionForm({ t, preset, onAction, escalationId = null, taskId = null }) {
+  const { pending, notice, run } = useAction(onAction);
+  const [question, setQuestion] = useState(preset ?? '');
+  const [decision, setDecision] = useState('');
+  const [reason, setReason] = useState('');
+  const [disposition, setDisposition] = useState('approve');
+  // The escalation id + disposition make the decision RESOLVE the escalation
+  // it answers — without them the same decide card would reappear for an
+  // hour-old decision. The free text is the ADR; the disposition is the
+  // normalized outcome the escalation module records.
+  const submit = () => run({
+    action: 'decide',
+    question: question.trim(), decision: decision.trim(), reason: reason.trim(),
+    ...(escalationId ? { escalationId, disposition } : {}),
+    ...(taskId ? { taskId } : {}),
+  });
+  return (
+    <form className="sdlc-now-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+      <label className="sdlc-field sdlc-field-wide">
+        <span>{t('now.questionLabel')}</span>
+        <input type="text" value={question} onChange={(event) => setQuestion(event.target.value)} disabled={pending} />
+      </label>
+      <label className="sdlc-field sdlc-field-wide">
+        <span>{t('now.decisionLabel')}</span>
+        <input type="text" value={decision} onChange={(event) => setDecision(event.target.value)} disabled={pending} />
+      </label>
+      <label className="sdlc-field sdlc-field-wide">
+        <span>{t('now.reasonLabel')}</span>
+        <input type="text" value={reason} onChange={(event) => setReason(event.target.value)} disabled={pending} />
+      </label>
+      {escalationId && (
+        <div className="sdlc-field sdlc-field-wide" role="radiogroup" aria-label={t('now.dispositionLabel')}>
+          <span>{t('now.dispositionLabel')}</span>
+          <div className="sdlc-now-actions">
+            <button
+              type="button"
+              className={`sdlc-btn${disposition === 'approve' ? ' sdlc-btn-primary' : ''}`}
+              aria-pressed={disposition === 'approve'}
+              onClick={() => setDisposition('approve')}
+              disabled={pending}
+            >
+              {t('now.dispositionApprove')}
+            </button>
+            <button
+              type="button"
+              className={`sdlc-btn${disposition === 'reject' ? ' sdlc-btn-bad' : ''}`}
+              aria-pressed={disposition === 'reject'}
+              onClick={() => setDisposition('reject')}
+              disabled={pending}
+            >
+              {t('now.dispositionReject')}
+            </button>
+          </div>
+        </div>
+      )}
+      <button type="submit" className="sdlc-btn sdlc-btn-primary" disabled={pending || !question.trim() || !decision.trim()}>
+        {pending ? t('action.working') : t('action.recordDecision')}
+      </button>
+      <ActionNotice notice={notice} t={t} />
+    </form>
+  );
+}
+
+function BreakdownForm({ t, taskId, onAction }) {
+  const { pending, notice, run } = useAction(onAction);
+  const [steps, setSteps] = useState(['', '']);
+  const edit = (index, value) => setSteps((current) => current.map((step, i) => (i === index ? value : step)));
+  const add = () => setSteps((current) => (current.length >= 8 ? current : [...current, '']));
+  const remove = (index) => setSteps((current) => current.filter((_, i) => i !== index));
+  const filled = steps.map((step) => step.trim()).filter(Boolean);
+  const submit = () => run({ action: 'breakdown', taskId, steps: filled.map((title) => ({ title })) });
+  return (
+    <form className="sdlc-now-form" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+      <p className="sdlc-muted">{t('now.breakdownHint')}</p>
+      {steps.map((step, index) => (
+        <div className="sdlc-now-step" key={index}>
+          <input
+            type="text"
+            value={step}
+            placeholder={t('now.stepPlaceholder')}
+            aria-label={t('now.stepPlaceholder')}
+            onChange={(event) => edit(index, event.target.value)}
+            disabled={pending}
+          />
+          {steps.length > 2 && (
+            <button type="button" className="sdlc-icon-btn" onClick={() => remove(index)} aria-label={t('action.breakdownRemove')}>×</button>
+          )}
+        </div>
+      ))}
+      <div className="sdlc-now-actions">
+        <button type="button" className="sdlc-btn" onClick={add} disabled={pending || steps.length >= 8}>{t('action.breakdownAdd')}</button>
+        <button type="submit" className="sdlc-btn sdlc-btn-primary" disabled={pending || filled.length < 2}>
+          {pending ? t('action.working') : fill(t('action.breakdownSubmit'), { count: filled.length })}
+        </button>
+      </div>
+      <ActionNotice notice={notice} t={t} />
+    </form>
+  );
+}
+
+function NowCard({ t, tone, title, body, children }) {
+  return (
+    <section className={`sdlc-now-card sdlc-tone-${tone}`}>
+      <h3>{title}</h3>
+      {body && <p>{body}</p>}
+      {children}
+    </section>
+  );
+}
+
+function QueueCard({ t, action, backlog, onAction }) {
+  const { pending, notice, run } = useAction(onAction);
+  const [breaking, setBreaking] = useState(false);
+  const queue = () => run({ action: 'queue', taskId: action.taskId });
+  const queueAll = async () => {
+    for (const node of backlog) {
+      const result = await run({ action: 'queue', taskId: node.id });
+      if (!result || result.available !== true) break;
+    }
+  };
+  return (
+    <NowCard t={t} tone="ready" title={t('now.queueTitle')} body={fill(t('now.queueBody'), { title: action.title ?? action.taskId })}>
+      {action.count > 1 && <p className="sdlc-muted">{fill(t('now.queueMore'), { count: action.count - 1 })}</p>}
+      <div className="sdlc-now-actions">
+        <button type="button" className="sdlc-btn sdlc-btn-primary" onClick={queue} disabled={pending}>{pending ? t('action.working') : t('action.queue')}</button>
+        {backlog.length > 1 && (
+          <button type="button" className="sdlc-btn" onClick={queueAll} disabled={pending}>{fill(t('action.queueAll'), { count: backlog.length })}</button>
+        )}
+        <button type="button" className="sdlc-btn" onClick={() => setBreaking((open) => !open)} aria-expanded={breaking}>{t('action.breakdown')}</button>
+      </div>
+      {breaking && <BreakdownForm t={t} taskId={action.taskId} onAction={onAction} />}
+      <ActionNotice notice={notice} t={t} />
+    </NowCard>
+  );
+}
+
+function SingleActionCard({ t, action, onAction }) {
+  const { pending, notice, run } = useAction(onAction);
+  const kind = action.kind;
+  const go = () => run({ action: kind, taskId: action.taskId });
+  const title = kind === 'retry' ? t('now.retryTitle') : t('now.dispatchTitle');
+  const body = fill(kind === 'retry' ? t('now.retryBody') : t('now.dispatchBody'), { title: action.title ?? action.taskId });
+  const label = kind === 'retry' ? t('action.retry') : t('action.dispatch');
+  return (
+    <NowCard t={t} tone={kind === 'retry' ? 'bad' : 'running'} title={title} body={body}>
+      <div className="sdlc-now-actions">
+        <button type="button" className="sdlc-btn sdlc-btn-primary" onClick={go} disabled={pending}>{pending ? t('action.working') : label}</button>
+      </div>
+      <ActionNotice notice={notice} t={t} />
+    </NowCard>
+  );
+}
+
+function BacklogList({ t, nodes, onAction }) {
+  if (nodes.length === 0) return null;
+  return (
+    <section className="sdlc-now-backlog">
+      <h3 className="sdlc-detail-label">{t('now.backlog')} <span className="sdlc-count">{nodes.length}</span></h3>
+      <ul className="sdlc-task-group-list">
+        {nodes.slice(0, 6).map((node) => <BacklogRow key={node.id} node={node} t={t} onAction={onAction} />)}
+      </ul>
+    </section>
+  );
+}
+
+function BacklogRow({ node, t, onAction }) {
+  const { pending, run } = useAction(onAction);
+  const queue = () => run({ action: 'queue', taskId: node.id });
+  const cancel = () => run({ action: 'cancel', taskId: node.id });
+  return (
+    <li className="sdlc-now-row">
+      <span className="sdlc-code">{node.id}</span>
+      <span className="sdlc-now-row-title" title={node.title}>{node.title}</span>
+      <button type="button" className="sdlc-btn sdlc-btn-primary" onClick={queue} disabled={pending}>{t('action.queue')}</button>
+      <button type="button" className="sdlc-btn" onClick={cancel} disabled={pending}>{t('action.cancel')}</button>
+    </li>
+  );
+}
+
+function DecisionList({ t, decisions }) {
+  if (!decisions || decisions.length === 0) return null;
+  const recent = decisions.slice(-4).reverse();
+  return (
+    <section className="sdlc-now-decisions">
+      <h3 className="sdlc-detail-label">{t('now.decisions')}</h3>
+      <ul>
+        {recent.map((item) => (
+          <li key={item.id}>
+            <b>{item.decision}</b>
+            <span className="sdlc-muted">{item.question}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The landing surface. Renders exactly one primary action from the snapshot's
+ * `nextAction`, which the host computed from real rows. Older hosts that omit
+ * it fall through to the same rules on the client, so the panel never shows a
+ * button for work that does not exist.
+ */
+export function NowPanel({ snapshot, t, cwd, onReload, onStart, onAction, onShowFlow, onSelectTask }) {
+  if (snapshot.phase === 'loading') return <PanelLoading label={t('flow.loading')} />;
+  if (snapshot.phase === 'missing') {
+    if (snapshot.code === 'NO_PROJECT_ROW') {
+      return <NoProjectRowState t={t} cwd={cwd} onRetry={onReload} reason={snapshot.reason} onStart={onStart} />;
+    }
+    return <FlowUnavailable snapshot={snapshot} t={t} cwd={cwd} onRetry={onReload} onStart={onStart} />;
+  }
+  const data = snapshot.data ?? {};
+  const nodes = Array.isArray(data.tasks) ? data.tasks : [];
+  const backlog = nodes.filter((node) => node.state === 'BACKLOG');
+  // An older host omits nextAction: the same rules run on the client so the
+  // panel never claims "nothing needs you" while backlog work waits.
+  const next = data.nextAction ?? clientNextAction(data);
+  const decisions = Array.isArray(data.decisions) ? data.decisions : [];
+  const activeRuns = (Array.isArray(data.runs) ? data.runs : []).filter((run) => run.status === 'running');
+  return (
+    <section className="sdlc-now" aria-label={t('now.overline')}>
+      <header className="sdlc-panel-head">
+        <span className="sdlc-overline">{t('now.overline')}</span>
+        <RefreshButton onClick={onReload} t={t} />
+      </header>
+      {next.kind === 'start' && (
+        <NowCard t={t} tone="ready" title={t('now.startTitle')} body={t('now.startBody')}>
+          <GoalForm t={t} onStart={onStart} />
+        </NowCard>
+      )}
+      {next.kind === 'decide' && (
+        <NowCard t={t} tone="warn" title={t('now.decideTitle')} body={t('now.decideBody')}>
+          <DecisionForm t={t} preset={next.question ?? ''} onAction={onAction} escalationId={next.escalationId ?? null} taskId={next.taskId ?? null} />
+        </NowCard>
+      )}
+      {next.kind === 'queue' && <QueueCard t={t} action={next} backlog={backlog} onAction={onAction} />}
+      {(next.kind === 'dispatch' || next.kind === 'retry') && <SingleActionCard t={t} action={next} onAction={onAction} />}
+      {next.kind === 'review' && (
+        <NowCard t={t} tone="verify" title={t('now.reviewTitle')} body={fill(t('now.reviewBody'), { title: next.title ?? next.taskId })}>
+          <div className="sdlc-now-actions">
+            <button
+              type="button"
+              className="sdlc-btn sdlc-btn-primary"
+              onClick={() => { onShowFlow?.(); onSelectTask?.(next.taskId); }}
+            >
+              {t('now.reviewOpen')}
+            </button>
+          </div>
+          <p className="sdlc-muted">{t('now.reviewHint')}</p>
+        </NowCard>
+      )}
+      {next.kind === 'watch' && (
+        <NowCard t={t} tone={activeRuns.length > 0 ? 'running' : 'good'} title={t('now.watchTitle')} body={t('now.watchBody')}>
+          {activeRuns.length > 0 ? (
+            <div className="sdlc-now-inflight">
+              {activeRuns.map((run) => (
+                <InFlightRow key={run.runId} run={run} t={t} onOpen={() => { onShowFlow?.(); onSelectTask?.(run.taskId); }} />
+              ))}
+            </div>
+          ) : null}
+          <button type="button" className="sdlc-btn" onClick={onShowFlow}>{t('panel.flow')}</button>
+        </NowCard>
+      )}
+      {next.kind !== 'start' && activeRuns.length > 0 && next.kind !== 'watch' && (
+        <section className="sdlc-now-inflight" aria-label={t('now.inFlight')}>
+          <h3 className="sdlc-detail-label">{t('now.inFlight')} <span className="sdlc-count">{activeRuns.length}</span></h3>
+          {activeRuns.map((run) => (
+            <InFlightRow key={run.runId} run={run} t={t} onOpen={() => { onShowFlow?.(); onSelectTask?.(run.taskId); }} />
+          ))}
+        </section>
+      )}
+      {next.kind !== 'start' && (
+        <NowCard t={t} tone="idle" title={t('now.startTitle')} body={t('now.startBody')}>
+          <GoalForm t={t} onStart={onStart} />
+        </NowCard>
+      )}
+      <BacklogList t={t} nodes={backlog} onAction={onAction} />
+      <DecisionList t={t} decisions={decisions} />
+    </section>
+  );
+}
+
+/** One live worker run: what is running, for how long, on which model. */
+function InFlightRow({ run, t, onOpen }) {
+  const model = run.modelId ? shortModel(`${run.modelProvider ?? ''}/${run.modelId}`) : null;
+  return (
+    <button type="button" className="sdlc-now-row" onClick={onOpen}>
+      <span className="sdlc-live good" aria-hidden="true" />
+      <span className="sdlc-code">{run.taskId}</span>
+      <span className="sdlc-now-row-title">
+        {run.durationMs != null ? formatDuration(run.durationMs) : t('flow.running')}
+        {model ? ` · ${model}` : ''}
+      </span>
+      <span className="sdlc-attention-go" aria-hidden="true">›</span>
+    </button>
   );
 }
 
@@ -1734,5 +2115,5 @@ export function SettingsPanel({ snapshot, t, cwd, onReload, onSave, onAdoptHostM
 export { CONFIG_FIELDS };
 
 export default {
-  FlowPanel, TasksPanel, ReviewPanel, SettingsPanel, Missing, fill, stateLabel,
+  NowPanel, FlowPanel, TasksPanel, ReviewPanel, SettingsPanel, Missing, fill, stateLabel,
 };

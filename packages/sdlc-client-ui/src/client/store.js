@@ -142,6 +142,17 @@ export function createSdlcStores(api) {
   }
 
   /**
+   * Run one developer action, then reload from scratch. The cursor resets
+   * because the action changes task rows, not just the event tail, and a
+   * delta poll would keep showing the state from before the click.
+   */
+  async function runAction(body, cwd) {
+    const res = await api.postAction(body, cwd);
+    if (res.available) await loadFlow({ cwd });
+    return res;
+  }
+
+  /**
    * Load the surface a tab switch reveals. Flow and Tasks share the flow
    * snapshot; Review is user-driven (pick two runs); Settings reads config.
    */
@@ -165,7 +176,7 @@ export function createSdlcStores(api) {
 
   return {
     flow, config, review,
-    loadFlow, loadConfig, saveConfig, adoptHostModel, loadCompare, loadPanel, reset, dispose, startRun,
+    loadFlow, loadConfig, saveConfig, adoptHostModel, loadCompare, loadPanel, reset, dispose, startRun, runAction,
   };
 }
 

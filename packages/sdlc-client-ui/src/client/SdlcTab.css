@@ -1806,6 +1806,28 @@ button.sdlc-attention-row:hover { background: color-mix(in srgb, var(--sdlc-tone
   70%, 100% { opacity: 0; stroke-width: 3.2; }
 }
 
+/* ── now: the action surface ──────────────────────────────────────────── */
+.sdlc-now { display: flex; flex-direction: column; gap: 12px; }
+.sdlc-now-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border: 1px solid var(--sdlc-line, #2a2f3a); border-radius: 10px;
+  border-left: 3px solid var(--sdlc-tone, #64748b);
+}
+.sdlc-now-card h3 { margin: 0; font-size: 14px; }
+.sdlc-now-card p { margin: 0; }
+.sdlc-now-form { display: flex; flex-direction: column; gap: 8px; }
+.sdlc-now-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sdlc-now-step { display: flex; gap: 6px; align-items: center; }
+.sdlc-now-step input { flex: 1; }
+.sdlc-now-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 6px; align-items: center; padding: 4px 0;
+}
+.sdlc-now-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sdlc-action-done { color: #16a34a; font-weight: 600; }
+.sdlc-now-decisions ul, .sdlc-now-backlog ul { list-style: none; margin: 0; padding: 0; }
+.sdlc-now-decisions li { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+
 /* ── narrow-width tuning ──────────────────────────────────────────────── */
 @container (max-width: 300px) {
   .sdlc-panel-body { padding: 8px 9px 18px; }

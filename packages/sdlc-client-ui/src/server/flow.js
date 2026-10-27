@@ -80,6 +80,54 @@ function tierOf(config, provider, model) {
   return null;
 }
 
+/** Decisions recorded for this project, newest last, bounded. */
+function projectDecisions(runtime, project) {
+  if (!project) return [];
+  try {
+    return runtime.listDecisions(project.id).slice(-12).map((row) => ({
+      id: row.id,
+      question: clip(row.question, 300),
+      decision: clip(row.decision, 300),
+      reason: clip(row.reason, 300),
+      createdAt: row.created_at ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The one thing worth putting in front of the developer.
+ *
+ * Priority is need, not recency: an open escalation beats a failed task,
+ * which beats work sitting in the backlog, which beats a task the scheduler
+ * has already been asked to run. A VERIFYING task whose gates are green but
+ * whose risk class demands an independent review is a `review` — the honest
+ * "a human must look at this" answer, never a fabricated auto-accept.
+ * `watch` is the honest "nothing needs you" answer — it is never fabricated
+ * work.
+ */
+export function nextDeveloperAction({ tasks = [], escalations = [], decisions = [], reviewNeeded = [] } = {}) {
+  const open = escalations.find((item) => !item.resolution);
+  if (open) {
+    return { kind: 'decide', taskId: open.taskId ?? null, escalationId: open.id, question: open.question ?? null, level: open.level ?? null };
+  }
+  const failed = tasks.find((task) => task.state === 'FAILED');
+  if (failed) return { kind: 'retry', taskId: failed.id, title: failed.title ?? failed.id };
+  const backlog = tasks.filter((task) => task.state === 'BACKLOG');
+  if (backlog.length > 0) {
+    return { kind: 'queue', taskId: backlog[0].id, title: backlog[0].title ?? backlog[0].id, count: backlog.length };
+  }
+  const ready = tasks.find((task) => task.state === 'READY');
+  if (ready) return { kind: 'dispatch', taskId: ready.id, title: ready.title ?? ready.id };
+  const review = reviewNeeded[0];
+  if (review) {
+    return { kind: 'review', taskId: review.taskId, title: review.title ?? review.taskId };
+  }
+  if (tasks.length === 0 && decisions.length === 0) return { kind: 'start' };
+  return { kind: 'watch' };
+}
+
 function openRuntime(projectRoot, { quickCheck = false } = {}) {
   const { config } = loadConfig(projectRoot);
   const effective = quickCheck
@@ -285,7 +333,8 @@ export function buildFlowModel(projectRoot, {
       };
     }).filter((event) => project && (event.taskId == null || projectTaskIds.has(event.taskId)));
 
-    // Resource locks and ownership overlap.
+    // Resource locks and ownership overlap. The cap is the same config key
+    // the runtime's dispatchBatch reads — never a guess.
     const active = activeTasks(tasks);
     const holders = new Map();
     for (const task of active) {
@@ -293,12 +342,14 @@ export function buildFlowModel(projectRoot, {
         holders.set(resource, [...(holders.get(resource) ?? []), task.id]);
       }
     }
+    const lockCap = config.scheduling?.maxSharedResourceTasks ?? 1;
     const locks = {
-      cap: 1,
+      cap: lockCap,
+      capSource: config.scheduling?.maxSharedResourceTasks != null ? 'config' : 'default',
       resources: [...holders.entries()].map(([resource, list]) => ({
         resource,
         holders: list,
-        status: list.length > 1 ? 'over-cap' : 'held',
+        status: list.length > lockCap ? 'over-cap' : 'held',
       })),
       pathOwners: active.map((task) => ({ taskId: task.id, patterns: task.allowed_paths ?? [] })),
       violations: checkNoOverlap(tasks),
@@ -371,6 +422,23 @@ export function buildFlowModel(projectRoot, {
     };
     const selected = taskId && byId.has(taskId) ? taskId : null;
 
+    // Work that is VERIFYING with every recorded gate green but a risk class
+    // that demands an independent review: the panel's honest "a human must
+    // look at this" — computed from real rows, never fabricated.
+    const gatesByTask = new Map();
+    for (const gate of gates) {
+      const list = gatesByTask.get(gate.taskId) ?? [];
+      list.push(gate);
+      gatesByTask.set(gate.taskId, list);
+    }
+    const reviewNeeded = tasks
+      .filter((task) => task.state === 'VERIFYING' && task.risk_class && task.risk_class !== 'R1')
+      .filter((task) => {
+        const recorded = gatesByTask.get(task.id) ?? [];
+        return recorded.length > 0 && recorded.every((gate) => gate.result === 'pass');
+      })
+      .map((task) => ({ taskId: task.id, title: task.title, riskClass: task.risk_class }));
+
     // Effective parallelism (B.10): the same min(cores/2, ram/2, provider,
     // configured) rule the scheduler uses. The panel shows this number instead
     // of guessing from the raw "auto" setting; an older host that omits the
@@ -433,6 +501,11 @@ export function buildFlowModel(projectRoot, {
       },
       locks,
       escalations,
+      // The single most useful thing the developer can do right now, computed
+      // from real rows. `kind: 'watch'` means nothing is waiting on them.
+      nextAction: nextDeveloperAction({ tasks, escalations, decisions: projectDecisions(runtime, project), reviewNeeded }),
+      decisions: projectDecisions(runtime, project),
+      reviewNeeded,
       escalationsMeta: {
         available: projectEscalations.length > 0,
         recorded: projectEscalations.length,

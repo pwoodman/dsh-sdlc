@@ -27,6 +27,8 @@ export * as escalation from './escalation.js';
 export * as integration from './integration.js';
 export * as recovery from './recovery.js';
 export * as workerMgr from './worker-mgr.js';
+export * as executor from './executor.js';
+export * as runLoop from './run-loop.js';
 export * as project from './project.js';
 export * as metrics from './metrics.js';
 export * as debug from './debug.js';

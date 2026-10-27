@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 import {
   fetchStatus, fetchBoard, fetchTask, fetchCompare,
-  fetchConfig, writeConfig, fetchMetrics, fetchFlow,
+  fetchConfig, writeConfig, fetchMetrics, fetchFlow, postAction,
 } from '../../packages/sdlc-client-ui/src/client/api.js';
 
 function withFetch(handler, fn) {
@@ -138,4 +138,22 @@ test('every read call carries the session cwd', async () => {
   });
   assert.equal(urls.length, 5);
   assert.ok(urls.every((u) => u.includes('cwd=%2Fw')), JSON.stringify(urls));
+});
+
+test('postAction sends a complete action and never a half-formed one', async () => {
+  const sent = [];
+  await withFetch(async (url, init) => {
+    sent.push({ url: String(url), body: JSON.parse(init.body) });
+    return json({ ok: true, action: 'queue', taskId: 'T1' });
+  }, async () => {
+    const refused = await postAction({ action: 'queue' }, '/w');
+    assert.equal(refused.available, false);
+    assert.match(refused.reason, /incomplete/);
+    const ok = await postAction({ action: 'queue', taskId: 'T1' }, '/w');
+    assert.equal(ok.available, true);
+    assert.equal(ok.data.taskId, 'T1');
+  });
+  assert.equal(sent.length, 1, 'the incomplete action never left the browser');
+  assert.match(sent[0].url, /api\/sdlc\.action\?cwd=/);
+  assert.deepEqual(sent[0].body, { action: 'queue', taskId: 'T1' });
 });

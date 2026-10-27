@@ -12,18 +12,34 @@
  *   GET  /api/sdlc.status                      project + tasks + spend
  *   GET  /api/sdlc.board                       tasks grouped by state + blockers
  *   GET  /api/sdlc.task?id=<id>                one task + events + gates + runs
+ *   POST /api/sdlc.tasks.run                   { goal } → first backlog task
+ *   POST /api/sdlc.action                      one developer action (see below)
  *   GET  /api/sdlc.compare?task=<id>&a=<run>&b=<run>   compareRuns() JSON
  *   GET  /api/sdlc.config                      parsed config + validation + host model
  *   POST /api/sdlc.config                      { path, value } → validate + write
  *   POST /api/sdlc.host                        adopt the Harness provider/model
  *   GET  /api/sdlc.metrics                     Prometheus exposition text
  *   GET  /api/sdlc.flow                        bounded visualizer snapshot
+ *
+ * `POST /api/sdlc.action` body is `{ action, ... }`. The panel proposes and
+ * records; it never grants authority (L.1 rule 4). Accepted actions:
+ *   queue     { taskId }        BACKLOG → READY (scheduler; deps must be done)
+ *   dispatch  { taskId }        record the dispatch proposal AND advance the
+ *                              flow — READY → ASSIGNED → a live worker process
+ *   breakdown { taskId, steps } split one backlog task into real child tasks
+ *   decide    { question, decision, reason?, escalationId?, taskId? }
+ *                              record an ADR and resolve the escalation it
+ *                              answers (matched by id, else by open task)
+ *   cancel    { taskId }        BACKLOG/READY → CANCELLED (human)
+ *   retry     { taskId }        FAILED → READY when the retry budget remains,
+ *                              then the same advance as dispatch
  */
 
 export const SDLC_STATUS_PATH = '/api/sdlc.status';
 export const SDLC_BOARD_PATH = '/api/sdlc.board';
 export const SDLC_TASK_PATH = '/api/sdlc.task';
 export const SDLC_RUN_PATH = '/api/sdlc.tasks.run';
+export const SDLC_ACTION_PATH = '/api/sdlc.action';
 export const SDLC_COMPARE_PATH = '/api/sdlc.compare';
 export const SDLC_CONFIG_PATH = '/api/sdlc.config';
 export const SDLC_HOST_PATH = '/api/sdlc.host';
@@ -35,6 +51,7 @@ export const SDLC_STATUS_ROUTE = SDLC_STATUS_PATH.slice(1);
 export const SDLC_BOARD_ROUTE = SDLC_BOARD_PATH.slice(1);
 export const SDLC_TASK_ROUTE = SDLC_TASK_PATH.slice(1);
 export const SDLC_RUN_ROUTE = SDLC_RUN_PATH.slice(1);
+export const SDLC_ACTION_ROUTE = SDLC_ACTION_PATH.slice(1);
 export const SDLC_COMPARE_ROUTE = SDLC_COMPARE_PATH.slice(1);
 export const SDLC_CONFIG_ROUTE = SDLC_CONFIG_PATH.slice(1);
 export const SDLC_HOST_ROUTE = SDLC_HOST_PATH.slice(1);
@@ -90,6 +107,13 @@ export function isFlowPayload(value) {
   if (!isRecord(value.locks) || !Array.isArray(value.locks.resources) || !Array.isArray(value.locks.violations)) return false;
   const arrays = ['tasks', 'edges', 'runs', 'routing', 'gates', 'events', 'escalations', 'unavailable'];
   if (!arrays.every((key) => Array.isArray(value[key]))) return false;
+  // `decisions` and `nextAction` arrived with the action panel. Older hosts
+  // omit them, so absence is valid; a present-but-wrong shape is not.
+  if ('decisions' in value && !Array.isArray(value.decisions)) return false;
+  if ('nextAction' in value && (!isRecord(value.nextAction) || typeof value.nextAction.kind !== 'string')) return false;
+  // `reviewNeeded` arrived with real execution: VERIFYING work whose gates are
+  // green but whose risk class demands an independent review.
+  if ('reviewNeeded' in value && !Array.isArray(value.reviewNeeded)) return false;
   return value.tasks.every((t) => isRecord(t) && typeof t.id === 'string'
       && typeof t.state === 'string' && typeof t.layer === 'number')
     && value.edges.every((e) => isRecord(e) && typeof e.from === 'string' && typeof e.to === 'string')
@@ -100,6 +124,36 @@ export function isFlowPayload(value) {
     && value.events.every((e) => isRecord(e) && typeof e.id === 'number');
 }
 
+/** Actions the panel may take. `approve` is deliberately absent (L.1 rule 4). */
+export const SDLC_ACTIONS = ['queue', 'dispatch', 'breakdown', 'decide', 'cancel', 'retry'];
+
+/**
+ * Validate an action request. Each action requires the fields the runtime
+ * needs; anything else is rejected so the panel cannot invent a side effect.
+ * `decide` may also carry an `escalationId` (string), a `taskId`, and a
+ * `disposition` ('approve'|'reject') — the normalized outcome that resolves
+ * the escalation; the free-text decision alone never guesses one.
+ */
+export function isActionRequest(value) {
+  if (!isRecord(value) || !SDLC_ACTIONS.includes(value.action)) return false;
+  if (value.action === 'decide') {
+    const hasEscalation = 'escalationId' in value;
+    const hasDisposition = 'disposition' in value;
+    return typeof value.question === 'string' && value.question.trim() !== ''
+      && typeof value.decision === 'string' && value.decision.trim() !== ''
+      && (!hasEscalation || typeof value.escalationId === 'string')
+      && (!('taskId' in value) || typeof value.taskId === 'string')
+      && (!hasDisposition || value.disposition === 'approve' || value.disposition === 'reject');
+  }
+  if (typeof value.taskId !== 'string' || value.taskId.trim() === '') return false;
+  if (value.action === 'breakdown') {
+    return Array.isArray(value.steps) && value.steps.length > 0
+      && value.steps.every((step) => isRecord(step)
+        && typeof step.title === 'string' && step.title.trim() !== '');
+  }
+  return true;
+}
+
 /** Validate a config-write request body. */
 export function isConfigWrite(value) {
   if (!isRecord(value)) return false;
@@ -108,7 +162,8 @@ export function isConfigWrite(value) {
 }
 
 export default {
-  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_RUN_PATH, SDLC_COMPARE_PATH,
+  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_RUN_PATH, SDLC_ACTION_PATH, SDLC_COMPARE_PATH,
   SDLC_CONFIG_PATH, SDLC_HOST_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH, sdlcReviewAddress, parseSdlcReviewAddress,
+  SDLC_ACTIONS, isActionRequest,
   isStatusPayload, isBoardPayload, isConfigPayload, isConfigWrite, isFlowPayload,
 };

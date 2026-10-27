@@ -120,6 +120,26 @@ test('panel loads forward the session workspace to the host', async () => {
   stores.dispose();
 });
 
+test('runAction reloads the flow only after the host accepts it', async () => {
+  const seen = [];
+  const api = {
+    postAction: async (body) => {
+      seen.push(['action', body.action]);
+      return body.action === 'queue'
+        ? { available: true, data: { ok: true, taskId: body.taskId } }
+        : { available: false, reason: 'refused' };
+    },
+    fetchFlow: async () => { seen.push(['flow']); return { available: true, data: { ok: true, tasks: [], events: [] } }; },
+  };
+  const stores = uiStore.createSdlcStores(api);
+  const refused = await stores.runAction({ action: 'approve', taskId: 'T1' }, '/w');
+  assert.equal(refused.available, false);
+  const accepted = await stores.runAction({ action: 'queue', taskId: 'T1' }, '/w');
+  assert.equal(accepted.available, true);
+  assert.deepEqual(seen, [['action', 'approve'], ['action', 'queue'], ['flow']]);
+  stores.dispose();
+});
+
 test('a missing flow route keeps the probe for the diagnostics panel', async () => {
   const probe = { answered: true, statusRoutePresent: true, pluginVersion: '0.4.0-beta.27' };
   const stores = uiStore.createSdlcStores(stubApi({

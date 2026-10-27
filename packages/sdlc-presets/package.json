@@ -1,6 +1,6 @@
 {
   "name": "@patwoodman/dsh-sdlc-flow-presets",
-  "version": "1.2.10",
+  "version": "1.3.0",
   "type": "module",
   "description": "26 dsh-agent-preset rows — one per SDLC role (patch declares them; no host code).",
   "main": "lib/index.js",
@@ -51,6 +51,6 @@
     "url": "https://github.com/pwoodman/dsh-sdlc/issues"
   },
   "dependencies": {
-    "@patwoodman/dsh-sdlc-flow-guard": "1.2.10"
+    "@patwoodman/dsh-sdlc-flow-guard": "1.3.0"
   }
 }

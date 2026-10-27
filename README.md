@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current release: 1.1.1.** Install from this checkout
+> **Current release: 1.3.0.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -93,21 +93,30 @@ node packages/sdlc-cli/bin/sdlc.mjs status
 node packages/sdlc-cli/bin/sdlc.mjs selftest --mock
 ```
 
-## Flow visualizer (right sidebar)
+## The panel: your project's remote control (right sidebar)
 
 While a session is open, the DSH right sidebar contains an **SDLC Flow** entry
-(the guide's capsule, or auto-open on the first session that has an SDLC
-project). It is a live, read-only view of the orchestrator, built around one
-question: **what needs attention?** The old Status and Board tabs were duplicates
-of data already in the flow snapshot, so the panel now has three primary
-surfaces plus settings:
+(the guide's capsule, or auto-open on any workspace the plugin bootstraps). It
+is built around one question: **what needs attention — and which button does
+it?**
 
-- **Flow** — a live **animated task map** (below) plus a “Needs attention” queue
-  first (unresolved escalations, failed tasks, failing gates, orphaned worker
-  runs, path conflicts), a progress ring and state distribution, live workers,
-  and collapsible gates/routing/activity evidence. Click a task node to open its
-  detail: role, risk, tier/model, attempts, resources, runs, gates, dependencies
-  and the latest event, plus **Compare runs**.
+- **Now** — the one useful next step, computed from real rows, with the
+  button that does it. Type a goal and the agents actually start: the goal
+  becomes a task, a real `dsh --profile sdlc-worker` process runs in its own
+  git worktree, the gates run, and (for R1 work) the verified change merges
+  into `sdlc/integration`. Every other state has its own single action:
+  queue backlog work, break a task into steps, run a ready task, retry a
+  failed one, decide an escalation (which resolves it), or review a change
+  that passed its gates. While work runs, the card lists the live workers.
+- **Flow** — a live **animated task map**: a "Needs attention" queue first
+  (unresolved escalations, failed tasks, failing gates, orphaned worker runs,
+  path conflicts), a progress ring and state distribution, live workers, and
+  collapsible gates/routing/activity evidence. Click a task node for its
+  detail: role, risk, tier/model, attempts, resources, runs, gates,
+  dependencies and the latest event, plus **Compare runs**.
+
+The rest of the surfaces:
+
 - **Live map** — a deterministic SVG rendered in the browser from the flow
   snapshot (no model call, no generated diagram). Stages are horizontal bands, so
   parallel branches appear side by side; running nodes glow and stream packets
@@ -122,6 +131,16 @@ surfaces plus settings:
   deltas, changed gates, and a collapsed trace path.
 - **Settings** (gear) — a validated `.sdlc/config.yml` editor grouped by section.
   Only changed fields get a Save button; rejected writes never touch the file.
+
+**Every button does something real.** `POST /api/sdlc.action` writes through
+the runtime and the B.2.1 state machine; `dispatch`, `retry` and the goal box
+drive the scheduler tick that launches actual worker processes, records
+`worker_runs`, runs the configured gates and persists `test_results`.
+Illegal transitions come back as the state machine's own refusal, never a
+silent no-op, and there is no `approve` action anywhere — approvals are
+user-only. R2+ work that passed its gates waits in VERIFYING as a **review**
+(the panel links to the evidence) instead of being auto-accepted: evidence
+owns acceptance, and the loop does not invent a reviewer.
 
 All surfaces share one `/api/sdlc.flow` snapshot and one config snapshot. Polling
 is adaptive — 2.5 s while a task or worker is in flight, 8 s when quiet — and

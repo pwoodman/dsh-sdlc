@@ -67,7 +67,13 @@ export function apply(ctx, config = {}) {
         // The host is not session-scoped: without cwd it reads the Harness
         // profile directory under the Desktop app and finds no project.
         const status = await api.fetchStatus(currentSessionCwd(ctx));
-        if (status.available && status.data.tasks.total > 0) {
+        // A PROJECT is enough to open — not just existing tasks. The whole
+        // point of the Now panel is the fresh workspace: zero tasks is the
+        // goal-box state, and the tab was invisible exactly when it mattered
+        // most. Auto-bootstrap materialises the project on the first touch.
+        const projectReady = status.available
+          && (Array.isArray(status.data?.projects) ? status.data.projects.length > 0 : false);
+        if (status.available && (projectReady || status.data?.tasks?.total > 0)) {
           opened = true;
           try { ctx.sidebarRight.openTab(SDLC_KIND); } catch { /* no surface yet */ }
         }

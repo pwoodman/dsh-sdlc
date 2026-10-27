@@ -22,14 +22,15 @@
  */
 
 import {
-  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_RUN_PATH, SDLC_COMPARE_PATH,
+  SDLC_STATUS_PATH, SDLC_BOARD_PATH, SDLC_TASK_PATH, SDLC_RUN_PATH, SDLC_ACTION_PATH, SDLC_COMPARE_PATH,
   SDLC_CONFIG_PATH, SDLC_HOST_PATH, SDLC_METRICS_PATH, SDLC_FLOW_PATH,
 } from '../routes.js';
 import {
-  handleStatus, handleBoard, handleTask, handleTasksRun, handleCompare,
+  handleStatus, handleBoard, handleTask, handleTasksRun, handleAction, handleCompare,
   handleConfigGet, handleConfigPost, handleHostAdopt, handleMetrics,
 } from './handlers.js';
 import { handleFlow } from './flow.js';
+import { createExecutionService } from './execution.js';
 import { ensureProject } from '../../../sdlc-core/src/project.js';
 import { resolveHostModel } from '../../../sdlc-core/src/host-model.js';
 import { readPackageVersion } from '../../../sdlc-guard/src/package-version.js';
@@ -240,8 +241,30 @@ export function registerRoutes(ctx, config = {}) {
         },
       });
     }
-    return statusResponse(await invoke(projectRoot, request, hostModel));
+    // A THROWING handler (broken config.yml, unreadable DB) resolves into a
+    // 500 envelope with the real message instead of rejecting the fetch —
+    // the missing-state machinery only works when errors arrive as data.
+    try {
+      return statusResponse(await invoke(projectRoot, request, hostModel));
+    } catch (err) {
+      return statusResponse({
+        status: 500,
+        body: {
+          ok: false,
+          error: 'HANDLER_FAILED',
+          detail: err?.message ?? String(err),
+          root: projectRoot,
+          pluginVersion: pkgVersion(),
+        },
+      });
+    }
   };
+
+  // The panel's scheduler tick: one execution service per host process, so a
+  // poll or a double click can never launch the same task twice. A row-config
+  // `spawn` (tests) replaces the host adapter.
+  const execution = createExecutionService({ ctx, spawn: config.spawn ?? null });
+  const deps = { advance: execution.advance };
 
   const routes = [
     [SDLC_STATUS_PATH, guarded((r) => handleStatus(r))],
@@ -283,19 +306,38 @@ export function registerRoutes(ctx, config = {}) {
       methods: ['POST'],
       requestBody: 'buffered',
       // Same auto-bootstrapping fence as every other panel route. Starting a
-      // flow from the goal box is the FIRST touch in a fresh workspace, so it
-      // must materialise `.sdlc/` exactly like /api/sdlc.status does — calling
-      // root() directly skipped bootstrap and 404'd on every new workspace.
-      // The handler still fail-closes to NO_PROJECT if setup genuinely fails.
+      // flow is the FIRST touch in a fresh workspace, so it must materialise
+      // `.sdlc/` exactly like /api/sdlc.status does — and it ADVANCES: the
+      // created task is queued, dispatched and executed by the same tick the
+      // goal box promises.
       fetch: guarded(async (projectRoot, request) => {
         const body = await readJson(request);
         if (!body) return { status: 400, body: { ok: false, error: 'BAD_JSON' } };
-        return handleTasksRun(projectRoot, body);
+        return handleTasksRun(projectRoot, body, deps);
       }),
     }, `sdlc-ui: POST ${SDLC_RUN_PATH} Fetch route`);
     registered.push(`POST ${SDLC_RUN_PATH}`);
   } catch (err) {
     if (ctx?.logger?.warn) ctx.logger.warn('sdlc-ui: failed to register POST %s: %s', SDLC_RUN_PATH, err?.message ?? err);
+  }
+  try {
+    registerFenced(ctx, {
+      path: SDLC_ACTION_PATH,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      // Same fence as the run route: the first action in a fresh workspace
+      // must materialise `.sdlc/`. Dispatch and retry now also drive the real
+      // scheduler tick via the injected execution service; unknown tasks and
+      // illegal transitions still come back with the runtime's own refusal.
+      fetch: guarded(async (projectRoot, request) => {
+        const body = await readJson(request);
+        if (!body) return { status: 400, body: { ok: false, error: 'BAD_JSON' } };
+        return handleAction(projectRoot, body, deps);
+      }),
+    }, `sdlc-ui: POST ${SDLC_ACTION_PATH} Fetch route`);
+    registered.push(`POST ${SDLC_ACTION_PATH}`);
+  } catch (err) {
+    if (ctx?.logger?.warn) ctx.logger.warn('sdlc-ui: failed to register POST %s: %s', SDLC_ACTION_PATH, err?.message ?? err);
   }
   try {
     registerFenced(ctx, {

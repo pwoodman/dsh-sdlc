@@ -44,7 +44,7 @@ test('every static t() key used by the shell and panels exists in both dictionar
     for (const match of source.matchAll(/\bt\('([^']+)'\)/g)) used.add(match[1]);
   }
   // Dynamic key families.
-  for (const panel of ['flow', 'tasks', 'review', 'settings']) used.add(`panel.${panel}`);
+  for (const panel of ['now', 'flow', 'tasks', 'review', 'settings']) used.add(`panel.${panel}`);
   for (const state of ['BACKLOG', 'READY', 'ASSIGNED', 'IN_PROGRESS', 'VERIFYING', 'ACCEPTED', 'MERGING', 'DONE', 'FAILED', 'ESCALATED', 'BLOCKED', 'CANCELLED', 'UNKNOWN']) {
     used.add(`state.${state}`);
   }

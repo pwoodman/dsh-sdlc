@@ -1,7 +1,8 @@
 /**
  * packages/sdlc-client-ui/src/client/SdlcTab.jsx — the SDLC sidebar tab body.
  *
- * Three primary surfaces plus settings:
+ * Four primary surfaces plus settings:
+ *   Now     — the one thing worth doing, with the button that does it
  *   Flow    — attention, progress, stages, task detail and evidence
  *   Tasks   — searchable task list grouped by lifecycle state
  *   Review  — compare two runs of one task
@@ -18,11 +19,11 @@
  */
 
 import { useState, useSyncExternalStore, useEffect } from 'react';
-import { FlowPanel, TasksPanel, ReviewPanel, SettingsPanel } from './panels.jsx';
+import { NowPanel, FlowPanel, TasksPanel, ReviewPanel, SettingsPanel } from './panels.jsx';
 import { buildFlowView, buildAttention } from './flow.js';
 
-const PANELS = ['flow', 'tasks', 'review'];
-const TABS = ['flow', 'tasks', 'review', 'settings'];
+const PANELS = ['now', 'flow', 'tasks', 'review'];
+const TABS = ['now', 'flow', 'tasks', 'review', 'settings'];
 // Poll faster while workers run, slower when the graph is quiet. Combined with
 // the event cursor in the store this keeps the live feel without paying for a
 // full event page on every tick.
@@ -53,7 +54,7 @@ function scrollTaskDetailIntoView() {
 }
 
 export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) {
-  const [panel, setPanel] = useState('flow');
+  const [panel, setPanel] = useState('now');
   const [selectedTask, setSelectedTask] = useState(null);
   // A "Compare runs" click opens Review with that task already selected.
   const [reviewTask, setReviewTask] = useState(null);
@@ -110,6 +111,14 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
 
   const selectPanel = (next) => setPanel(next);
   const showTasks = () => setPanel('tasks');
+  const showFlow = () => setPanel('flow');
+  // The Now card's deep links (review a change, open a live run) select the
+  // task and jump to the Flow panel where the evidence lives.
+  const selectTaskFromNow = (taskId) => {
+    setSelectedTask(taskId ?? null);
+    setPanel('flow');
+    requestAnimationFrame(scrollTaskDetailIntoView);
+  };
   const openReview = (taskId) => {
     setReviewTask(taskId ?? null);
     setPanel('review');
@@ -120,6 +129,7 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
   const saveConfig = (path, value) => stores.saveConfig(path, value, cwd);
   const adoptHostModel = () => stores.adoptHostModel(cwd);
   const loadCompare = (task, a, b) => stores.loadCompare(task, a, b, cwd);
+  const runAction = (body) => stores.runAction(body, cwd);
   const toggleTask = (taskId) => setSelectedTask((current) => (
     current === taskId ? null : taskId
   ));
@@ -183,6 +193,18 @@ export function SdlcTab({ stores, t, sessionId, useSessions: useSessionsProp }) 
         id={`sdlc-panel-${panel}`}
         aria-labelledby={`sdlc-tab-${panel}`}
       >
+        {panel === 'now' && (
+          <NowPanel
+            snapshot={flow}
+            t={t}
+            cwd={cwd}
+            onReload={loadFlow}
+            onStart={startRun}
+            onAction={runAction}
+            onShowFlow={showFlow}
+            onSelectTask={selectTaskFromNow}
+          />
+        )}
         {panel === 'flow' && (
           <FlowPanel
             snapshot={flow}

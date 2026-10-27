@@ -715,9 +715,40 @@ export function buildFlowView(data) {
   };
 }
 
+/**
+ * The client-side mirror of the server's nextDeveloperAction — used ONLY when
+ * an older host omits `nextAction`. Same priority, same honesty: a backlog
+ * task is a queue action, a failed task a retry, a READY task a dispatch,
+ * green-but-unreviewed VERIFYING work a review; never a fabricated "nothing
+ * needs you" while work waits.
+ */
+export function clientNextAction(data) {
+  const nodes = Array.isArray(data?.tasks) ? data.tasks : [];
+  const escalations = Array.isArray(data?.escalations) ? data.escalations : [];
+  const open = escalations.find((item) => !item.resolution);
+  if (open) {
+    return { kind: 'decide', taskId: open.taskId ?? null, escalationId: open.id, question: open.question ?? null, level: open.level ?? null };
+  }
+  const failed = nodes.find((node) => node.state === 'FAILED');
+  if (failed) return { kind: 'retry', taskId: failed.id, title: failed.title ?? failed.id };
+  const backlog = nodes.filter((node) => node.state === 'BACKLOG');
+  if (backlog.length > 0) {
+    return { kind: 'queue', taskId: backlog[0].id, title: backlog[0].title ?? backlog[0].id, count: backlog.length };
+  }
+  const ready = nodes.find((node) => node.state === 'READY');
+  if (ready) return { kind: 'dispatch', taskId: ready.id, title: ready.title ?? ready.id };
+  const reviewNeeded = Array.isArray(data?.reviewNeeded) ? data.reviewNeeded : [];
+  if (reviewNeeded.length > 0) {
+    return { kind: 'review', taskId: reviewNeeded[0].taskId, title: reviewNeeded[0].title ?? reviewNeeded[0].taskId };
+  }
+  if (nodes.length === 0) return { kind: 'start' };
+  return { kind: 'watch' };
+}
+
 export default {
   buildFlowView, buildAttention, attentionForTask, buildTaskDetail, reviewOptions,
   summarizeNodes, buildFlowGraph, edgeVisualState, buildTrace, summarizeParallel, summarizeEfficiency,
+  clientNextAction,
   svgTitleLines, svgTruncate, GRAPH_DEFAULTS,
   formatDuration, formatTokens, formatCompactTokens, formatCost, formatDelta, formatCostDelta,
   formatRelativeTime, shortModel, isActiveState, isBlockedState, isDoneState,

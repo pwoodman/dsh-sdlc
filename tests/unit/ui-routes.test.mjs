@@ -54,6 +54,8 @@ test('route paths are stable and browser-relative forms strip the slash', () => 
   assert.equal(routes.SDLC_BOARD_PATH, '/api/sdlc.board');
   assert.equal(routes.SDLC_TASK_PATH, '/api/sdlc.task');
   assert.equal(routes.SDLC_RUN_PATH, '/api/sdlc.tasks.run');
+  assert.equal(routes.SDLC_ACTION_PATH, '/api/sdlc.action');
+  assert.equal(routes.SDLC_ACTION_ROUTE, 'api/sdlc.action');
   assert.equal(routes.SDLC_COMPARE_PATH, '/api/sdlc.compare');
   assert.equal(routes.SDLC_CONFIG_PATH, '/api/sdlc.config');
   assert.equal(routes.SDLC_METRICS_PATH, '/api/sdlc.metrics');
@@ -612,5 +614,181 @@ test('no memo: a deleted .sdlc is re-bootstrapped by the very next request', asy
     const third = await handlersByKey.get('GET /api/sdlc.status')(new Request(url));
     assert.equal(third.status, 200);
     assert.ok(existsSync(join(dir, '.sdlc', 'sdlc.db')), 'the missing DB was repaired');
+  } finally { cleanup(dir); }
+});
+
+test('the action route changes real rows and refuses what it must not do', async () => {
+  const dir = scaffold();
+  const advances = [];
+  const deps = { advance: async (opts) => { advances.push(opts); return { report: { dispatched: [{ taskId: 'T-DO' }], skipped: [] } }; } };
+  try {
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      runtime.createProject({ id: 'P1', name: 'ui', repoPath: dir });
+      runtime.addTask({ id: 'T-WAIT', project_id: 'P1', title: 'blocked by a dependency', depends_on: ['T-MISSING'] });
+      runtime.addTask({ id: 'T-DO', project_id: 'P1', title: 'do the work' });
+      runtime.addTask({ id: 'T-BAD', project_id: 'P1', title: 'already failed', budgets: { max_attempts: 1 } });
+      runtime.transition('T-BAD', 'READY', 'scheduler', { depStates: {} });
+      runtime.transition('T-BAD', 'ASSIGNED', 'scheduler', { available: true });
+      runtime.transition('T-BAD', 'IN_PROGRESS', 'worker-mgr', {});
+      runtime.transition('T-BAD', 'FAILED', 'worker-mgr', { hardFailure: true });
+    } finally {
+      runtime.close({ releaseLock: false });
+    }
+
+    // A backlog task with an unfinished dependency cannot be queued.
+    const blocked = await handlers.handleAction(dir, { action: 'queue', taskId: 'T-WAIT' });
+    assert.equal(blocked.status, 409, blocked.body.detail);
+
+    // A free backlog task moves to READY, and the flow snapshot says so.
+    const queued = await handlers.handleAction(dir, { action: 'queue', taskId: 'T-DO' });
+    assert.equal(queued.status, 200);
+    assert.equal(queued.body.to, 'READY');
+
+    // Dispatch records the proposal AND drives the injected scheduler tick.
+    const dispatched = await handlers.handleAction(dir, { action: 'dispatch', taskId: 'T-DO' }, deps);
+    assert.equal(dispatched.status, 200, JSON.stringify(dispatched.body));
+    assert.equal(dispatched.body.action, 'dispatch');
+    assert.equal(dispatched.body.advanced.dispatched, 1);
+    assert.equal(advances.length, 1);
+    assert.equal(advances[0].projectId, 'P1');
+    // Without the tick (an older host), dispatch still records the proposal.
+    const bare = await handlers.handleAction(dir, { action: 'dispatch', taskId: 'T-DO' });
+    assert.equal(bare.status, 200);
+    assert.equal(bare.body.advanced, null);
+
+    // Breaking a task down cancels it and creates the steps the user wrote.
+    const split = await handlers.handleAction(dir, {
+      action: 'breakdown', taskId: 'T-WAIT',
+      steps: [{ title: 'first step' }, { title: 'second step' }],
+    });
+    assert.equal(split.status, 200, JSON.stringify(split.body));
+    assert.equal(split.body.count, 2);
+
+    // A decision lands as a real ADR, and approval is not an action at all.
+    const decided = await handlers.handleAction(dir, { action: 'decide', question: 'Which store?', decision: 'SQLite' });
+    assert.equal(decided.status, 200);
+    const refused = await handlers.handleAction(dir, { action: 'approve', taskId: 'T-DO' });
+    assert.equal(refused.status, 400);
+
+    // A failed task goes back to READY only because the state machine agrees —
+    // and a retry runs it again through the same scheduler tick.
+    const retried = await handlers.handleAction(dir, { action: 'retry', taskId: 'T-BAD' }, deps);
+    assert.equal(retried.status, 200);
+    assert.equal(retried.body.to, 'READY');
+    assert.equal(retried.body.advanced.dispatched, 1);
+    // Spend the budget, fail again, and the same action is now refused.
+    const again = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    again.open();
+    try {
+      again.db.prepare('UPDATE tasks SET attempt = retry_budget WHERE id = ?').run('T-BAD');
+      again.transition('T-BAD', 'ASSIGNED', 'scheduler', { available: true });
+      again.transition('T-BAD', 'IN_PROGRESS', 'worker-mgr', {});
+      again.transition('T-BAD', 'FAILED', 'worker-mgr', { hardFailure: true });
+    } finally { again.close({ releaseLock: false }); }
+    const exhausted = await handlers.handleAction(dir, { action: 'retry', taskId: 'T-BAD' }, deps);
+    assert.equal(exhausted.status, 409);
+
+    const check = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    check.open();
+    try {
+      assert.equal(check.getTask('T-DO').state, 'READY');
+      assert.equal(check.getTask('T-WAIT').state, 'CANCELLED');
+      assert.equal(check.getTask('T-BAD').state, 'FAILED', 'an exhausted retry budget keeps the task failed');
+      const children = check.listTasks().filter((task) => task.title === 'first step' || task.title === 'second step');
+      assert.equal(children.length, 2);
+      assert.equal(children.find((task) => task.title === 'second step').depends_on.length, 1);
+      const decisions = check.listDecisions('P1');
+      assert.equal(decisions.length, 1);
+      assert.equal(decisions[0].decision, 'SQLite');
+    } finally {
+      check.close({ releaseLock: false });
+    }
+  } finally { cleanup(dir); }
+});
+
+test('a decision resolves the escalation it answers — the decide card cannot loop', async () => {
+  const dir = scaffold();
+  try {
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      runtime.createProject({ id: 'P1', name: 'ui', repoPath: dir });
+      runtime.addTask({ id: 'T-ES', project_id: 'P1', title: 'escalated work' });
+      runtime.transition('T-ES', 'ESCALATED', 'recovery', {});
+      runtime.recordEscalation({
+        id: 'ESC-1', taskId: 'T-ES', level: 'task',
+        packet: { question: 'Which database?', options: [] },
+      });
+    } finally {
+      runtime.close({ releaseLock: false });
+    }
+
+    const decided = await handlers.handleAction(dir, {
+      action: 'decide', question: 'Which database?', decision: 'PostgreSQL',
+      reason: 'managed service', escalationId: 'ESC-1', taskId: 'T-ES',
+      disposition: 'approve',
+    });
+    assert.equal(decided.status, 200, JSON.stringify(decided.body));
+    assert.equal(decided.body.escalationId, 'ESC-1', 'the escalation is resolved, not just recorded');
+    assert.equal(decided.body.resolutionError, null, 'a failed resolution is visible, never swallowed');
+
+    // Free text with NO disposition records the ADR but resolves nothing: the
+    // panel must not invent approval authority from a sentence.
+    runtime.open();
+    try {
+      runtime.recordEscalation({ id: 'ESC-2', taskId: 'T-ES', level: 'task', packet: { question: 'Second question?' } });
+    } finally { runtime.close({ releaseLock: false }); }
+    const undecisive = await handlers.handleAction(dir, {
+      action: 'decide', question: 'Second question?', decision: 'do both',
+    });
+    assert.equal(undecisive.status, 200);
+    assert.equal(undecisive.body.escalationId, null, 'no disposition means no guessed resolution');
+
+    const check = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    check.open();
+    try {
+      const escalation = check.getEscalations().find((row) => row.id === 'ESC-1');
+      assert.ok(escalation.resolution, 'the escalation row carries the human decision');
+      assert.equal(escalation.resolved_by, 'human');
+      assert.equal(check.listDecisions('P1').length, 2, 'both decisions are recorded as ADRs');
+    } finally { check.close({ releaseLock: false }); }
+  } finally { cleanup(dir); }
+});
+
+test('the run route creates THIS workspace’s task and advances it — never a foreign project’s', async () => {
+  const dir = scaffold();
+  const advances = [];
+  const deps = { advance: async (opts) => { advances.push(opts); return { report: { dispatched: [], skipped: [] } }; } };
+  try {
+    const config = cfgMod.deepMerge(cfgMod.DEFAULT_CONFIG, {});
+    // A stale row from ANOTHER checkout — the old black hole.
+    const runtime = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    runtime.open();
+    try {
+      runtime.createProject({ id: 'P-FOREIGN', name: 'old checkout', repoPath: '/tmp/somewhere-else' });
+    } finally { runtime.close({ releaseLock: false }); }
+
+    const started = await handlers.handleTasksRun(dir, { goal: 'ship the thing' }, deps);
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    assert.equal(started.body.projectId !== 'P-FOREIGN', true, 'the task attaches to THIS workspace, not the stale row');
+    assert.equal(started.body.state, 'READY', 'the goal task is queued for the scheduler');
+    assert.ok(started.body.advanced, 'the run advances through the injected tick');
+    assert.equal(advances.length, 1);
+
+    const check = new runtimeMod.Runtime({ projectRoot: dir, config, useLock: false });
+    check.open();
+    try {
+      const task = check.getTask(started.body.taskId);
+      assert.ok(task, 'the task exists');
+      assert.equal(task.state, 'READY');
+      assert.equal(task.project_id, started.body.projectId);
+      assert.deepEqual(task.allowed_paths, ['**'], 'a goal task scopes to the whole repo until it is broken down');
+      const visible = check.projectTasks(started.body.projectId);
+      assert.equal(visible.length, 1, 'the new task is visible in this workspace');
+    } finally { check.close({ releaseLock: false }); }
   } finally { cleanup(dir); }
 });

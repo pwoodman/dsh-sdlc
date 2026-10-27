@@ -11,9 +11,9 @@
  */
 
 import {
-  SDLC_STATUS_ROUTE, SDLC_BOARD_ROUTE, SDLC_TASK_ROUTE, SDLC_RUN_ROUTE, SDLC_COMPARE_ROUTE,
+  SDLC_STATUS_ROUTE, SDLC_BOARD_ROUTE, SDLC_TASK_ROUTE, SDLC_RUN_ROUTE, SDLC_ACTION_ROUTE, SDLC_COMPARE_ROUTE,
   SDLC_CONFIG_ROUTE, SDLC_HOST_ROUTE, SDLC_METRICS_ROUTE, SDLC_FLOW_ROUTE,
-  isStatusPayload, isBoardPayload, isConfigPayload, isFlowPayload,
+  isStatusPayload, isBoardPayload, isConfigPayload, isFlowPayload, isActionRequest,
 } from '../routes.js';
 
 /**
@@ -121,6 +121,19 @@ export async function fetchBoard(cwd) {
 
 export async function fetchTask(id, cwd) {
   return getJson(withCwd(`${SDLC_TASK_ROUTE}?id=${encodeURIComponent(id)}`, cwd));
+}
+
+/**
+ * Take one developer action. The body is validated before it leaves the
+ * browser, so a malformed click never becomes a round trip; the host
+ * validates again. Returns the envelope, never a thrown error.
+ */
+export async function postAction(body, cwd) {
+  if (!isActionRequest(body)) return { available: false, reason: 'incomplete action — nothing was sent' };
+  const res = await postJson(withCwd(SDLC_ACTION_ROUTE, cwd), body);
+  if (!res.available) return res;
+  if (!res.data || res.data.ok !== true) return { available: false, reason: 'host returned a malformed action payload' };
+  return res;
 }
 
 /** Start the flow from a goal string — the GUI equivalent of `/sdlc run <goal>`. */
@@ -239,7 +252,7 @@ export async function fetchFlow({ task = null, events = 100, after = 0, cwd = un
  * default export stays for source-level ergonomics; the bundler strips it.
  */
 export const api = {
-  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, adoptHostModel, fetchMetrics, fetchFlow, startRun,
+  fetchStatus, fetchBoard, fetchTask, fetchCompare, fetchConfig, writeConfig, adoptHostModel, fetchMetrics, fetchFlow, startRun, postAction,
   clientVersion,
 };
 

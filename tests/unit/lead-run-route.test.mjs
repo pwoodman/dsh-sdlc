@@ -33,19 +33,21 @@ test('missing goal is a 400, not a throw', async (t) => {
   const root = tempWorkspace(t);
   // Minimal project so the handler reaches validation, not setup.
   seedWorkspace(root);
-  const res = handleTasksRun(root, {});
+  const res = await handleTasksRun(root, {});
   assert.equal(res.status, 400);
   assert.equal(res.body.error, 'MISSING_GOAL');
 });
 
-test('run creates a project row and a BACKLOG task, drained', async (t) => {
+test('run creates a project row and a READY task — the goal advances, not just lands', async (t) => {
   const root = tempWorkspace(t);
   seedWorkspace(root);
-  const res = handleTasksRun(root, { goal: 'add JWT auth with refresh tokens' });
+  const res = await handleTasksRun(root, { goal: 'add JWT auth with refresh tokens' });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.ok, true);
   assert.ok(res.body.taskId);
   assert.ok(res.body.projectId);
+  // Without an injected scheduler tick the advance is honestly absent…
+  assert.equal(res.body.advanced, null);
   const { Runtime: RT } = await core.runtime();
   const { loadConfig } = await core.config();
   const { config } = loadConfig(root);
@@ -54,16 +56,19 @@ test('run creates a project row and a BACKLOG task, drained', async (t) => {
   try {
     const task = runtime.getTask(res.body.taskId);
     assert.ok(task);
-    assert.equal(task.state, 'BACKLOG');
+    // …but the task is already queued: the user said DO it.
+    assert.equal(task.state, 'READY');
     assert.match(task.objective, /JWT auth/);
+    // A goal task scopes to the whole repo until it is broken down.
+    assert.deepEqual(task.allowed_paths, ['**']);
   } finally { runtime.close(); }
 });
 
 test('two runs create two tasks (conversation adds work)', async (t) => {
   const root = tempWorkspace(t);
   seedWorkspace(root);
-  const a = handleTasksRun(root, { goal: 'first goal' });
-  const b = handleTasksRun(root, { goal: 'second goal' });
+  const a = await handleTasksRun(root, { goal: 'first goal' });
+  const b = await handleTasksRun(root, { goal: 'second goal' });
   assert.equal(a.status, 200);
   assert.equal(b.status, 200);
   assert.notEqual(a.body.taskId, b.body.taskId);
@@ -72,7 +77,7 @@ test('two runs create two tasks (conversation adds work)', async (t) => {
 test('run without a project tree fails closed with NO_PROJECT', async (t) => {
   const root = tempWorkspace(t);
   // No initProject: no .sdlc/sdlc.db at all.
-  const res = handleTasksRun(root, { goal: 'hello' });
+  const res = await handleTasksRun(root, { goal: 'hello' });
   assert.equal(res.status, 404);
   assert.equal(res.body.error, 'NO_PROJECT');
 });

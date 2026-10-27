@@ -12,7 +12,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { core, tempDir, cleanup } from '../lib/helpers.mjs';
-import { handleFlow, buildFlowModel } from '../../packages/sdlc-client-ui/src/server/flow.js';
+import { handleFlow, buildFlowModel, nextDeveloperAction } from '../../packages/sdlc-client-ui/src/server/flow.js';
 import { handleStatus, handleTask, handleCompare } from '../../packages/sdlc-client-ui/src/server/handlers.js';
 
 const routes = await core.uiRoutes();
@@ -125,9 +125,12 @@ test('the model is pure over an explicit limit and rejects malformed payloads', 
     const model = buildFlowModel(dir, { taskLimit: 1, runsPerTask: 1, eventLimit: 5 });
     assert.equal(model.tasks.length, 1);
     assert.equal(model.totals.tasksTruncated, true);
+    assert.equal(typeof model.nextAction?.kind, 'string');
+    assert.ok(Array.isArray(model.decisions));
     assert.equal(routes.isFlowPayload(model), true);
     assert.equal(routes.isFlowPayload({ ...model, gateSummary: undefined }), false);
     assert.equal(routes.isFlowPayload({ ...model, tasks: 'nope' }), false);
+    assert.equal(routes.isFlowPayload({ ...model, nextAction: { kind: 5 } }), false);
   } finally { cleanup(dir); }
 });
 
@@ -228,4 +231,55 @@ test('a DB with only a foreign project answers NO_PROJECT_ROW, not foreign rows'
     assert.equal(handleTask(dir, { id: 'DEMO-001' }).status, 404, 'a foreign task is not readable');
     assert.equal(handleCompare(dir, { task: 'DEMO-001', a: 'A', b: 'B' }).status, 404, 'a foreign task is not comparable');
   } finally { cleanup(dir); }
+});
+
+test('nextDeveloperAction picks the single most useful real thing', () => {
+  const task = (id, state) => ({ id, state, title: id });
+  // An open escalation outranks everything else.
+  assert.equal(nextDeveloperAction({
+    tasks: [task('T1', 'FAILED'), task('T2', 'BACKLOG')],
+    escalations: [{ id: 'E1', taskId: 'T1', resolution: null, question: 'Ship it?' }],
+  }).kind, 'decide');
+  // A resolved escalation does not count.
+  assert.equal(nextDeveloperAction({
+    tasks: [task('T1', 'FAILED')],
+    escalations: [{ id: 'E1', resolution: 'approved' }],
+  }).kind, 'retry');
+  assert.equal(nextDeveloperAction({ tasks: [task('T1', 'BACKLOG'), task('T2', 'BACKLOG')] }).kind, 'queue');
+  assert.equal(nextDeveloperAction({ tasks: [task('T1', 'READY')] }).kind, 'dispatch');
+  assert.equal(nextDeveloperAction({ tasks: [task('T1', 'IN_PROGRESS')] }).kind, 'watch');
+  assert.equal(nextDeveloperAction({ tasks: [] }).kind, 'start');
+  // Decisions already exist, so "start" would be a lie.
+  assert.equal(nextDeveloperAction({ tasks: [], decisions: [{ id: 'D1' }] }).kind, 'watch');
+});
+
+// ── client-side next action (the older-host fallback) ──────────────────────
+
+import { clientNextAction } from '../../packages/sdlc-client-ui/src/client/flow.js';
+
+test('clientNextAction mirrors the server rules — never "nothing needs you" while work waits', () => {
+  const node = (id, state, extra = {}) => ({ id, title: id, state, ...extra });
+  // Escalation first.
+  assert.equal(clientNextAction({
+    tasks: [node('T1', 'BACKLOG')],
+    escalations: [{ id: 'E1', resolution: null, taskId: 'T9', question: 'q' }],
+  }).kind, 'decide');
+  // Failed beats backlog.
+  assert.equal(clientNextAction({ tasks: [node('T1', 'FAILED'), node('T2', 'BACKLOG')] }).kind, 'retry');
+  // Backlog beats READY.
+  assert.equal(clientNextAction({ tasks: [node('T2', 'BACKLOG'), node('T3', 'READY')] }).kind, 'queue');
+  // READY beats review.
+  assert.equal(clientNextAction({
+    tasks: [node('T3', 'READY')],
+    reviewNeeded: [{ taskId: 'T4' }],
+  }).kind, 'dispatch');
+  // Green-but-unreviewed work is a REVIEW, not a fabricated "watch".
+  assert.equal(clientNextAction({
+    tasks: [node('T4', 'VERIFYING')],
+    reviewNeeded: [{ taskId: 'T4', title: 'the change' }],
+  }).kind, 'review');
+  // Empty workspace: the goal box.
+  assert.equal(clientNextAction({ tasks: [] }).kind, 'start');
+  // Busy otherwise.
+  assert.equal(clientNextAction({ tasks: [node('T5', 'IN_PROGRESS')] }).kind, 'watch');
 });

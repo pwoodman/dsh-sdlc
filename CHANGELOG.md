@@ -2,6 +2,141 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.3.0] — 2026-10-26 — the flow actually runs
+
+The release the panel always promised: a goal typed into the **Now** box now
+becomes a task, a real `dsh --profile sdlc-worker` process in its own git
+worktree, gate evidence from real commands, an acceptance decision, and —
+for R1 work — a real `git merge --no-ff` into `sdlc/integration`. Every
+number on the panel (runs, tokens, cost, gates, durations) comes from rows
+those processes wrote. Before this release, `worker_runs`, `test_results` and
+`model_runs` had **no production writer at all**: the panel was a live view of
+tables nothing could ever fill.
+
+### Fixed
+
+- **Nothing ever executed work — the flagship dispatch button was a no-op.**
+  `dispatch` queued a proposal; `drainLeadProposals` marked it `applied` with
+  the note "scheduler owns dispatch"; no scheduler existed anywhere, so the
+  task stayed READY forever while the panel recommended the same click again.
+  The new run loop (`packages/sdlc-core/src/run-loop.js`, `advanceFlow`) is
+  the missing caller: planStep's BACKLOG→READY moves, `dispatchBatch`'s
+  READY→ASSIGNED batch, `executeTask` per task, `runVerification` +
+  `decideAcceptance` + the verifier's transition, and the integration-mgr's
+  real merge — applied in waves until the DAG reaches a fixed point. The
+  panel's dispatch/retry buttons and the goal box drive it through the new
+  execution service (`server/execution.js`) with a caller-owned in-flight
+  registry, so a poll or a double click can never launch the same task twice.
+- **The worker's result was never read back — every real run would have been
+  RESULT_MALFORMED.** The prompt told the worker to write
+  `.sdlc/task-outbox.json`; `executeTask` passed `outboxRaw: null` and never
+  read the file, so `resolveClaims` saw no outbox and no fenced block and the
+  verifier rejected the run. The executor now reads the outbox after the
+  process exits (and removes it, so a stale outbox can never be ingested as a
+  later attempt's claims), and the prompt carries the run identity
+  (runId/attempt/nonce) so the outbox can actually validate. The
+  ```sdlc-result fenced block remains the no-identity fallback and is now
+  documented in the prompt itself.
+- **The merge merged nothing.** The worker's changes were uncommitted in the
+  worktree; `git merge --no-ff` of a branch with no new commits exits 0 with
+  "Already up to date", so the loop would have tagged and marked DONE with
+  the work left behind in the worktree. `integrateTask` now commits the
+  worktree's diff on the task branch first (a clean tree means the worker
+  committed; a failed commit fails the merge honestly as
+  INTEGRATION_COMMIT_FAILED), then merges, tags `sdlc/accepted/<id>` and
+  lands DONE through the integration-mgr's own rows.
+- **Goal tasks could never pass scope.** `POST /api/sdlc.tasks.run` created
+  tasks with `allowed_paths: []`, and the scope verdict is fail-closed: every
+  file a worker touched was a SCOPE_VIOLATION. A goal-level task now scopes to
+  the whole repo (`['**']`) — the worker still runs inside its worktree, and
+  the verdict still fails closed for anything outside it. Breakdown children
+  inherit the parent's scope.
+- **A spawn failure inside provisioning threw instead of persisting.**
+  `ensureWorktree`'s git calls let a throwing `spawn` escape; the run was
+  never recorded and the loop died. Spawn errors are now described failures
+  (`runArgv` catches), provisioning failure persists a failed
+  `worker_runs` row with the reason and settles the task FAILED — retryable
+  through the scheduler's own row. (This was the one red executor test.)
+- **`executeTask` never moved the lifecycle.** It stopped at ASSIGNED: the
+  worker-mgr's own matrix rows (ASSIGNED→IN_PROGRESS "first worker event",
+  IN_PROGRESS→VERIFYING "WorkerResult received", IN_PROGRESS→FAILED
+  hardFailure) were performed by nothing. The executor now owns them, and a
+  task that finishes a real run is VERIFYING — the verifier owns the next
+  transition, never the executor.
+- **The goal box could attach the task to a foreign project.**
+  `handleTasksRun` picked `projects[0]` unfiltered; with any stale row in the
+  DB (a moved checkout, the old demo seed) the goal "succeeded" (200) and the
+  task was invisible forever. The route now scopes like every other handler
+  (`workspaceScopes`) and creates THIS workspace's project row when none
+  matches.
+- **A throwing handler rejected the fetch.** `guarded()` only try-caught
+  bootstrap, so a broken `config.yml` (YamlError) escaped as a transport
+  error and the panel rendered "network" instead of the real reason. Handler
+  throws now resolve into a 500 `HANDLER_FAILED` envelope with the message.
+  The handlers' `openRuntime` also stops hard-failing on a failed DB
+  quick-check (same policy the flow route always had).
+- **The decide card looped forever.** Recording a decision wrote an ADR but
+  never resolved the escalation it answered, so the identical card reappeared
+  after every poll. `decide` now carries the escalation id (matched by id,
+  else by open task) and a normalized disposition (`approve`/`reject` — the
+  escalation module's own vocabulary; free text alone never guesses one), and
+  `resolveEscalation` runs with `decidedBy: 'human'`. A failed resolution is
+  returned as `resolutionError`, never swallowed.
+- **The client next-action fallback contradicted its own comment.** An older
+  host omitting `nextAction` fell through to `start`/`watch` while backlog
+  work waited — "Nothing needs you" over a queue of tasks. The client now
+  mirrors the server rules (`clientNextAction`): escalation → decide, FAILED
+  → retry, BACKLOG → queue, READY → dispatch, green-unreviewed → review.
+- **The tab was invisible exactly when it mattered.** Auto-open required
+  `tasks.total > 0`, so a fresh workspace — the one place the Now panel's
+  goal box is the entire point — never opened the tab. A bootstrapped
+  project row is now enough.
+- **The lock cap on the panel was a hardcoded 1.** `locks.cap` now reads
+  `scheduling.maxSharedResourceTasks` — the same key `dispatchBatch` applies —
+  and labels its source.
+
+### Added
+
+- **`packages/sdlc-core/src/run-loop.js` — `advanceFlow`, the production
+  scheduler tick.** Waves of: planStep BACKLOG→READY moves (BLOCKED proposals
+  are deliberately NOT applied — the matrix's BLOCKED→BACKLOG row belongs to
+  the escalation-mgr, so applying them would strand the task), the capped
+  dispatch batch, `executeTask` chains, idempotent verification of VERIFYING
+  tasks whose run finished without recorded gates (crash resume), and the
+  real merge of ACCEPTED work. Returns fast (first dispatch + launches) with
+  a `completion` promise for the full drain, so the HTTP handler answers
+  while work runs in the background.
+- **Green-but-unreviewed work is a REVIEW, not a failure.** `decideAcceptance`
+  demands an independent review above R1; the loop does not fabricate a
+  reviewer and does not burn the retry budget either — the task stays
+  VERIFYING, `advanceFlow` reports `awaitingReview`, the flow snapshot
+  computes `reviewNeeded` from real gate rows, and the Now panel renders a
+  review card that deep-links to the task's runs, diff and gate evidence.
+  Unreviewed work is never merged.
+- **Gates run in a child process** (`gates-child.mjs`): `runVerification`'s
+  runner is synchronous by design, and running `npm test` synchronously in
+  the host would freeze the panel for minutes. The loop keeps the host's
+  event loop free while gate evidence stays real, fail-fast and logged.
+- **Real routing history and honest cost.** One `model_runs` row per attempt
+  (the row shape the router ranks by), and when a worker reports tokens but
+  no `costUsd`, the user's authored price table produces the same estimate
+  the router would — an unknown price stays null and the panel renders "—",
+  never a fabricated zero.
+- **Live run cards on the Now panel.** While work runs, the watch state (and
+  any other action state) lists the in-flight worker runs — task id, live
+  duration, model — each deep-linking to the flow detail.
+- `server/spawn-adapter.js` — prefers `ctx.subprocess.spawn` (P25) with a
+  normalized handle contract, falls back to `node:child_process` (the env is
+  already credential-scrubbed by `buildWorkerEnv`, E5). A missing binary is
+  a described failure on the handle, not a host-crashing error event.
+- `tests/unit/run-loop.test.mjs` — the end-to-end pin: a READY task through
+  a real worker process, a real worktree, real gates in the real child, the
+  real acceptance decision and the real merge to DONE; dependency waves;
+  R2 review-holding; honest gate/worker failures; in-flight dedupe.
+  `tests/unit/ui-execution.test.mjs` — the spawn adapter against real child
+  processes (both service and fallback branches) and the execution service
+  through a real Runtime. 11/11 release gates pass.
+
 ## [1.2.10] — 2026-10-25 — GUI run start
 
 ### Fixed
