@@ -53,6 +53,14 @@ For the **Desktop app**, update through **Plugins → Add plugin** and restart.
 app-owned `desktop` profile. The panel shows the panel/host builds and a
 **Copy diagnostics** action for support.
 
+> **Within 24 hours of a release, pin the exact version in the Desktop app.**
+> The Desktop's bundled pnpm defaults to a 24-hour minimum release age: a bare
+> package name (or `@latest`) installs the **previous** version for the first
+> day after a publish, even when the preview shows the newest one. Paste the
+> versioned spec instead — `@patwoodman/dsh-sdlc-flow@1.3.0` — or wait a day,
+> then verify the build the panel reports. The CLI installer is unaffected: it
+> resolves `latest` from the registry itself and pins the exact version.
+
 The panel also reads the **open session's workspace**, not the Harness process
 directory, so the Desktop app shows the project you are actually working in.
 
