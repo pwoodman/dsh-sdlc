@@ -4,8 +4,7 @@
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
-> limitations and [PROOF_REPORT.md](PROOF_REPORT.md) for measured evidence. No
-> confirmatory developer-productivity claim is supported yet.
+> limitations.
 
 A DeepSeek Harness plugin suite that turns a requirement into a verified,
 merged change: it plans a task DAG, dispatches role-preset workers into isolated
@@ -18,8 +17,8 @@ git worktrees, verifies against risk-appropriate gates, and integrates.
 | [universal_sdlc_orchestrator_dsh_spec_v3.md](universal_sdlc_orchestrator_dsh_spec_v3.md) | the normative specification |
 | [SDLC_V3_IMPLEMENTATION_VALIDATION_REPORT.md](SDLC_V3_IMPLEMENTATION_VALIDATION_REPORT.md) | gate results, test pyramid, defects found |
 | [SDLC_IMPLEMENTATION_NOTES.md](SDLC_IMPLEMENTATION_NOTES.md) | deviations D0–D7, fixes, what is not implemented |
-| [EVAL_PROTOCOL.md](EVAL_PROTOCOL.md) | pre-registered A/B design proving the plugin beats plain DSH |
-| [IMPROVEMENT_AUDIT.md](IMPROVEMENT_AUDIT.md) | honest audit: what was fixed, measured, or deliberately left |
+| [EVAL_PROTOCOL.md](EVAL_PROTOCOL.md) | pre-registered A/B evaluation design — study not yet run |
+| [IMPROVEMENT_AUDIT.md](IMPROVEMENT_AUDIT.md) | honest audit: what was fixed and what was deliberately left |
 
 ## Tool startup troubleshooting
 
