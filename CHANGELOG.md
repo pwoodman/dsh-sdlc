@@ -2,6 +2,46 @@
 
 All notable changes to the DSH SDLC Flow plugin suite.
 
+## [1.3.1] — 2026-10-28 — the eval report survives a third arm
+
+A latent crash in the A/B evaluation report (`eval/report.mjs`):
+`pairDifferences` hardcoded the `control`/`treatment` pair, so any records set
+carrying a third arm — the protocol's placebo arm C is the designed example —
+threw `Cannot read properties of undefined (reading 'set')`. The report is now
+TOTAL over arm names: it pairs `control × treatment` per `(task, repeat)` and
+discloses every other arm per pair instead of crashing on it or silently
+dropping it.
+
+### Fixed
+
+- **A third arm crashed the report (`Cannot read properties of undefined
+  (reading 'set')`).** `pairDifferences` bucketed records into a hardcoded
+  `{control, treatment}` map and dereferenced `r.arm` unconditionally. Records
+  are now grouped per `(task, repeat)` pair keyed by whatever arm name they
+  carry, and only pairs carrying BOTH analysed arms (`ANALYSIS_ARMS`) produce
+  paired differences — arbitrary arm names can never reach the crash site.
+  Reproduced with the committed fixture
+  `tests/fixtures/eval-third-arm-records.jsonl`; the five regression tests in
+  `tests/unit/eval-report.test.mjs` fail on the old code with the exact
+  reported error and pass post-fix.
+- **A third arm silently vanished from a records file.** The file path
+  (`readRecords`) rejected schema-invalid lines wholesale, so `report.mjs`
+  printed `N malformed record line(s) ignored` and the placebo arm left no
+  trace of what was excluded. Records whose ONLY offense is an arm outside the
+  record enum are now carried into the report and disclosed; anything else
+  malformed is still ignored, and the write-side schema (`appendRecord`,
+  `merge.mjs`) still refuses to produce or merge them.
+
+### Added
+
+- **`Pairing disclosure` — per-pair provenance for the paired numbers.**
+  `pairingDisclosure()` feeds `summary.pairing` (`pairsTotal`, `pairsAnalysed`,
+  `unknownArms`, `recordsOutsidePair`, one row per affected pair) and a
+  markdown section that names, per `(task, repeat)` pair, the arms present,
+  whether the `control × treatment` pair completed, and what was excluded from
+  every paired number and the acceptance counts. Clean pairs are counted, not
+  listed.
+
 ## [1.3.0] — 2026-10-26 — the flow actually runs
 
 The release the panel always promised: a goal typed into the **Now** box now

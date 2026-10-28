@@ -1,6 +1,6 @@
 # dsh-sdlc-flow — DSH SDLC Flow (DeepSeek Harness plugin suite)
 
-> **Current release: 1.3.0.** Install from this checkout
+> **Current release: 1.3.1.** Install from this checkout
 > (`npm run install:local`), or the registry form
 > (`npx -y @patwoodman/dsh-sdlc-flow@latest dsh-sdlc-install`) — see
 > [Install](#install). See [CHANGELOG.md](CHANGELOG.md) for scope and known
@@ -56,7 +56,7 @@ app-owned `desktop` profile. The panel shows the panel/host builds and a
 > The Desktop's bundled pnpm defaults to a 24-hour minimum release age: a bare
 > package name (or `@latest`) installs the **previous** version for the first
 > day after a publish, even when the preview shows the newest one. Paste the
-> versioned spec instead — `@patwoodman/dsh-sdlc-flow@1.3.0` — or wait a day,
+> versioned spec instead — `@patwoodman/dsh-sdlc-flow@1.3.1` — or wait a day,
 > then verify the build the panel reports. The CLI installer is unaffected: it
 > resolves `latest` from the registry itself and pins the exact version.
 
