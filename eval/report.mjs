@@ -7,15 +7,55 @@
  * The report refuses to summarise `simulate` records unless `--allow-simulate`
  * is passed, because those records are a plumbing placebo and would otherwise be
  * read as evidence about DSH.
+ *
+ * The report is TOTAL over arm names: it pairs control × treatment per
+ * (task, repeat) and discloses any other arm per pair (`pairingDisclosure`)
+ * instead of crashing on it — `pairDifferences` used to hardcode the two arms
+ * and threw `Cannot read properties of undefined (reading 'set')` the moment a
+ * records file carried a third arm (see
+ * `tests/fixtures/eval-third-arm-records.jsonl`).
  */
 
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { readRecords, isRecordValid, findDuplicateRunIds, recordSeeds } from './lib/records.mjs';
+import { readRecords, validateRecord, isRecordValid, findDuplicateRunIds, recordSeeds } from './lib/records.mjs';
 import { loadTasks } from './lib/manifest.mjs';
 import { mean, median, bootstrapCI, wilcoxonSignedRank, pairedDominance, cohensDz, holmBonferroni, pairedSampleSize } from './lib/stats.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
+
+/**
+ * The two arms the paired analysis compares. The report is TOTAL over arm
+ * names: any other arm (e.g. the protocol's placebo arm C) is disclosed per
+ * (task, repeat) pair and excluded from every paired number — it must never
+ * crash the report and must never silently vanish from it.
+ */
+export const ANALYSIS_ARMS = ['control', 'treatment'];
+
+/** The arm name as the report sees it; a record with no usable arm is still disclosed. */
+function armName(rec) {
+  return typeof rec.arm === 'string' && rec.arm.length > 0 ? rec.arm : '(missing arm)';
+}
+
+/**
+ * Group records into (task, repeat) pairs, each pair holding its records keyed
+ * by whatever arm name they carry. Later records win within one (pair, arm).
+ */
+function groupByPair(records) {
+  const order = [];
+  const byKey = new Map();
+  for (const r of records) {
+    const key = `${r.taskId}\u0000${r.repeat}`;
+    let pair = byKey.get(key);
+    if (!pair) {
+      pair = { taskId: r.taskId, repeat: r.repeat, arms: new Map() };
+      byKey.set(key, pair);
+      order.push(pair);
+    }
+    pair.arms.set(armName(r), r);
+  }
+  return order;
+}
 
 /** Direction of "better" per metric. `null` = informational, never an endpoint. */
 export const METRIC_ORIENTATION = {
@@ -63,31 +103,68 @@ export function extractQuantities(rec) {
   return out;
 }
 
-/** Build oriented per-metric paired differences: positive always means BETTER. */
+/**
+ * Build oriented per-metric paired differences: positive always means BETTER.
+ *
+ * Only pairs that carry BOTH analysed arms (`ANALYSIS_ARMS`) produce
+ * differences. Any other arm is ignored here on purpose — the report discloses
+ * it per pair via `pairingDisclosure` instead of crashing on it (this function
+ * used to hardcode `{control, treatment}` and threw
+ * `Cannot read properties of undefined (reading 'set')` on a third arm).
+ */
 export function pairDifferences(records) {
-  const byTask = new Map();
-  for (const r of records) {
-    if (!byTask.has(r.taskId)) byTask.set(r.taskId, { control: new Map(), treatment: new Map() });
-    byTask.get(r.taskId)[r.arm].set(r.repeat, r);
-  }
   const diffs = new Map(); // metric → [{taskId, repeat, improvement, control, treatment}]
-  for (const [taskId, arms] of byTask) {
-    for (const [repeat, ctrl] of arms.control) {
-      const trt = arms.treatment.get(repeat);
-      if (!trt) continue;
-      const cq = extractQuantities(ctrl);
-      const tq = extractQuantities(trt);
-      for (const metric of Object.keys(METRIC_ORIENTATION)) {
-        if (!(metric in cq) || !(metric in tq)) continue;
-        const dir = orientation(metric);
-        if (dir === null) continue;
-        const improvement = dir ? tq[metric] - cq[metric] : cq[metric] - tq[metric];
-        if (!diffs.has(metric)) diffs.set(metric, []);
-        diffs.get(metric).push({ taskId, repeat, improvement, control: cq[metric], treatment: tq[metric] });
-      }
+  for (const { taskId, repeat, arms } of groupByPair(records)) {
+    const ctrl = arms.get(ANALYSIS_ARMS[0]);
+    const trt = arms.get(ANALYSIS_ARMS[1]);
+    if (!ctrl || !trt) continue;
+    const cq = extractQuantities(ctrl);
+    const tq = extractQuantities(trt);
+    for (const metric of Object.keys(METRIC_ORIENTATION)) {
+      if (!(metric in cq) || !(metric in tq)) continue;
+      const dir = orientation(metric);
+      if (dir === null) continue;
+      const improvement = dir ? tq[metric] - cq[metric] : cq[metric] - tq[metric];
+      if (!diffs.has(metric)) diffs.set(metric, []);
+      diffs.get(metric).push({ taskId, repeat, improvement, control: cq[metric], treatment: tq[metric] });
     }
   }
   return diffs;
+}
+
+/**
+ * Disclose, per (task, repeat) pair, what the paired analysis could see and
+ * what fell outside it: every pair that carries an arm other than
+ * `ANALYSIS_ARMS` (or lacks one of them) gets its own row naming the arms, so a
+ * third arm is visible per pair rather than crashing or vanishing. Clean pairs
+ * (exactly the two analysed arms, both present) need no row and are counted.
+ */
+export function pairingDisclosure(records) {
+  const unknownArms = new Set();
+  const disclosedPairs = [];
+  let pairsTotal = 0;
+  let pairsAnalysed = 0;
+  for (const { taskId, repeat, arms } of groupByPair(records)) {
+    pairsTotal += 1;
+    const present = [...arms.keys()].sort();
+    const unknown = present.filter((a) => !ANALYSIS_ARMS.includes(a));
+    const missing = ANALYSIS_ARMS.filter((a) => !arms.has(a));
+    const paired = missing.length === 0;
+    if (paired) pairsAnalysed += 1;
+    for (const a of unknown) unknownArms.add(a);
+    if (unknown.length > 0 || !paired) {
+      disclosedPairs.push({ taskId, repeat, arms: present, paired, missingArms: missing, unknownArms: unknown });
+    }
+  }
+  return {
+    analysedArms: [...ANALYSIS_ARMS],
+    pairsTotal,
+    pairsAnalysed,
+    pairsDisclosed: disclosedPairs.length,
+    unknownArms: [...unknownArms].sort(),
+    recordsOutsidePair: records.filter((r) => !ANALYSIS_ARMS.includes(armName(r))).length,
+    disclosedPairs,
+  };
 }
 
 export function buildReport({ records, tasks = [], alpha = 0.05, seed = 0xC0FFEE, bootstrapB = 10000, allowSimulate = false, allowInvalid = false, allowMixedSeeds = false, allowDuplicates = false } = {}) {
@@ -115,6 +192,7 @@ export function buildReport({ records, tasks = [], alpha = 0.05, seed = 0xC0FFEE
     throw new Error(`records contain ${invalidRecords.length} INVALID run(s) where the executor failed; pass allowInvalid to report around them (a failed run is not evidence)`);
   }
   const valid = deduped.filter(isRecordValid);
+  const pairing = pairingDisclosure(valid);
   const diffs = pairDifferences(valid);
   const metrics = [];
   for (const [metric, rows] of [...diffs.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
@@ -177,6 +255,7 @@ export function buildReport({ records, tasks = [], alpha = 0.05, seed = 0xC0FFEE
     integrity: { ok: valid.length, invalid: invalidRecords.length, invalidRunIds: invalidRecords.map((r) => r.runId) },
     tasks: [...new Set(valid.map((r) => r.taskId))].length,
     arms: [...new Set(valid.map((r) => r.arm))].sort(),
+    pairing,
     model: [...new Set(valid.map((r) => r.model ?? 'unspecified'))],
     providers: [...new Set(valid.map((r) => r.modelProvider ?? 'unspecified'))],
     repeatsPerArm: [...new Set(valid.map((r) => r.repeat))].length,
@@ -244,6 +323,24 @@ export function renderMarkdown(summary, tasks = []) {
   lines.push('');
   lines.push('_`dz` is Cohen\'s dz for the paired improvement. A metric whose improvement CI contains 0 is not distinguishable from noise at this n._');
   lines.push('');
+  lines.push('## Pairing disclosure');
+  lines.push('');
+  const pk = summary.pairing;
+  if (pk.pairsDisclosed === 0) {
+    lines.push(`Every (task, repeat) pair carried exactly ${pk.analysedArms.join(' × ')} (**${pk.pairsAnalysed}/${pk.pairsTotal}** paired); nothing fell outside the paired analysis.`);
+  } else {
+    lines.push(`The paired analysis compares **${pk.analysedArms.join(' × ')}** on each (task, repeat) pair: **${pk.pairsAnalysed}/${pk.pairsTotal}** pairs complete.${pk.recordsOutsidePair > 0 ? ` **${pk.recordsOutsidePair}** record(s) carry an arm outside that pair (${pk.unknownArms.join(', ')}) — excluded from every paired number and from the acceptance counts, disclosed per pair below.` : ''}`);
+    lines.push('');
+    lines.push('| Pair (task × repeat) | Arms present | Control × treatment | Outside the pair |');
+    lines.push('|---|---|---|---|');
+    for (const d of pk.disclosedPairs) {
+      const pairState = d.paired ? 'complete' : `missing ${d.missingArms.join(', ')}`;
+      lines.push(`| ${d.taskId} × ${d.repeat} | ${d.arms.join(', ')} | ${pairState} | ${d.unknownArms.length ? d.unknownArms.join(', ') : '—'} |`);
+    }
+    lines.push('');
+    lines.push('_Only pairs that could not complete the control × treatment pair or carry extra arms are listed; arms outside the pair are disclosed, never analysed._');
+  }
+  lines.push('');
   lines.push('## Threats to validity (must be read with the numbers)');
   lines.push('');
   lines.push('1. A small n makes the exact Wilcoxon test the only defensible one; the approximation is flagged per row.');
@@ -268,8 +365,26 @@ function main() {
   const allowMixedSeeds = argv.includes('--allow-mixed-seeds');
   const allowDuplicates = argv.includes('--allow-duplicates');
   const alpha = Number(flag('--alpha', 0.05));
-  const { records, malformed } = readRecords(recordsPath);
-  if (malformed.length) process.stderr.write(`eval: ${malformed.length} malformed record line(s) ignored\n`);
+  const { records: schemaRecords, malformed } = readRecords(recordsPath);
+  // A line the schema rejects ONLY for an arm outside the record enum is still
+  // a run record the report must disclose per pair — before this, a third arm
+  // either crashed `pairDifferences` outright or vanished into the malformed
+  // count with no per-pair trace of what was dropped. Anything else malformed
+  // stays ignored.
+  const unknownArmRecords = [];
+  let ignoredLines = 0;
+  for (const m of malformed) {
+    const salvageable = m.doc && typeof m.doc === 'object'
+      && typeof m.doc.arm === 'string' && m.doc.arm.length > 0 && !ANALYSIS_ARMS.includes(m.doc.arm)
+      && validateRecord({ ...m.doc, arm: ANALYSIS_ARMS[0] }).ok;
+    if (salvageable) unknownArmRecords.push(m.doc);
+    else ignoredLines += 1;
+  }
+  if (ignoredLines) process.stderr.write(`eval: ${ignoredLines} malformed record line(s) ignored\n`);
+  if (unknownArmRecords.length) {
+    process.stderr.write(`eval: ${unknownArmRecords.length} record line(s) carry an arm outside the record schema's arm enum; carried into the report and disclosed per pair\n`);
+  }
+  const records = [...schemaRecords, ...unknownArmRecords];
   const { tasks } = loadTasks(join(ROOT, 'eval', 'tasks'));
   try {
     const { summary, markdown } = buildReport({ records, tasks, alpha, allowSimulate, allowInvalid, allowMixedSeeds, allowDuplicates });
@@ -289,4 +404,4 @@ function main() {
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
 
-export default { buildReport, pairDifferences, extractQuantities, METRIC_ORIENTATION, PRIMARY_METRICS };
+export default { buildReport, pairDifferences, pairingDisclosure, extractQuantities, METRIC_ORIENTATION, PRIMARY_METRICS, ANALYSIS_ARMS };

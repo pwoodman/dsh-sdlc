@@ -113,7 +113,12 @@ export function appendRecord(path, rec) {
   return rec;
 }
 
-/** Read JSONL records, reporting malformed lines instead of throwing. */
+/**
+ * Read JSONL records, reporting malformed lines instead of throwing. A rejected
+ * line keeps its parsed `doc` (when it is JSON at all) so a caller can decide
+ * what an out-of-schema record means to it — the report, for example, discloses
+ * records with an unknown arm instead of letting them vanish into a count.
+ */
 export function readRecords(path) {
   if (!existsSync(path)) return { records: [], malformed: [] };
   const records = [];
@@ -125,7 +130,7 @@ export function readRecords(path) {
       const doc = JSON.parse(t);
       const v = validateRecord(doc);
       if (v.ok) records.push(doc);
-      else malformed.push({ line: t.slice(0, 200), problems: v.problems });
+      else malformed.push({ line: t.slice(0, 200), problems: v.problems, doc });
     } catch (err) {
       malformed.push({ line: t.slice(0, 200), problems: [err.message] });
     }

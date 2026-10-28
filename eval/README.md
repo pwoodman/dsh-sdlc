@@ -75,6 +75,11 @@ Why the invocation looks like that:
 - **A failed run is `status:"invalid"`.** It carries no metrics, the live study
   aborts at the first one, and `report.mjs` refuses the records unless
   `--allow-invalid` is passed. A run that never happened is not a data point.
+- **The report is total over arm names.** It pairs `control × treatment` per
+  (task, repeat); any other arm (e.g. the protocol's placebo arm) is excluded
+  from every paired number and disclosed *per pair* in the report's
+  `Pairing disclosure` section instead of crashing `pairDifferences` (the
+  regression fixture is `tests/fixtures/eval-third-arm-records.jsonl`).
 - `--dsh-home <dir>` points the run at a different DSH home (useful to keep a
   study's session state isolated, or to run inside a sandbox that cannot write
   `~/.dsh`). `--seed` prints the study seed, which also fixes the randomised arm
