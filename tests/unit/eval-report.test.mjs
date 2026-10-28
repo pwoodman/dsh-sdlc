@@ -3,12 +3,32 @@
  *
  * Synthetic records with a KNOWN effect, so the report must find it — and must
  * not manufacture significance where the effect is null.
+ *
+ * Also the regression suite for the third-arm crash: `pairDifferences` used to
+ * hardcode `control`/`treatment` and threw
+ * `Cannot read properties of undefined (reading 'set')` on any records carrying
+ * another arm. `tests/fixtures/eval-third-arm-records.jsonl` is the fixture
+ * that reproduces it.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { buildReport, pairDifferences, extractQuantities } from '../../eval/report.mjs';
+// Namespace import so this file still LOADS against the pre-fix module: the
+// regression must fail on the crash it reproduces, not on a missing export.
+import * as evalReport from '../../eval/report.mjs';
 import { RECORD_VERSION } from '../../eval/lib/records.mjs';
+
+const ROOT = join(import.meta.dirname, '..', '..');
+const THIRD_ARM_FIXTURE = join(ROOT, 'tests', 'fixtures', 'eval-third-arm-records.jsonl');
+
+/** The fixture parsed as raw records — the crash input, nothing filtered. */
+function thirdArmRecords() {
+  return readFileSync(THIRD_ARM_FIXTURE, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+}
 
 function rec(taskId, arm, repeat, values, extra = {}) {
   const metrics = {};
@@ -165,4 +185,82 @@ test('acceptance discloses skipped (unmeasurable) checks alongside the rate', ()
   const { summary } = buildReport({ records });
   assert.equal(summary.acceptance.control.skipped, 2);
   assert.equal(summary.acceptance.treatment.skipped, 2);
+});
+
+// ── regression: a third arm used to crash pairDifferences ───────────────────
+
+test('REGRESSION: a records set with a third arm must not crash the report', () => {
+  const records = thirdArmRecords();
+  assert.equal(records.filter((r) => r.arm === 'placebo').length, 2, 'the fixture must carry a third arm');
+  const oldError = "Cannot read properties of undefined (reading 'set')";
+  assert.doesNotThrow(() => pairDifferences(records), `pairDifferences threw ${oldError} on a third arm`);
+  assert.doesNotThrow(() => buildReport({ records }), `buildReport threw ${oldError} on a third arm`);
+  // Total over ANY arm name, not just the fixture's `placebo`.
+  assert.doesNotThrow(() => pairDifferences([...records, { ...records[0], runId: 'x', taskId: 'task-delta', repeat: 0, arm: 'sideways' }]));
+  assert.doesNotThrow(() => buildReport({ records: [...records, { ...records[0], runId: 'x', taskId: 'task-delta', repeat: 0, arm: 'sideways' }] }));
+  assert.deepEqual(evalReport.pairingDisclosure(records).unknownArms, ['placebo']);
+});
+
+test('an unknown arm is disclosed per (task, repeat) pair, never analysed', () => {
+  const records = thirdArmRecords();
+  const { summary } = buildReport({ records });
+  const p = summary.pairing;
+  assert.deepEqual(p.analysedArms, ['control', 'treatment']);
+  assert.deepEqual(p.unknownArms, ['placebo']);
+  assert.equal(p.pairsTotal, 3);
+  assert.equal(p.pairsAnalysed, 2);
+  assert.equal(p.recordsOutsidePair, 2, 'both placebo records must be counted as outside the pair');
+
+  // task-alpha × 0: a complete control × treatment pair PLUS the third arm.
+  const alpha = p.disclosedPairs.find((d) => d.taskId === 'task-alpha');
+  assert.ok(alpha, 'the pair carrying the third arm must be disclosed PER PAIR');
+  assert.equal(alpha.repeat, 0);
+  assert.deepEqual(alpha.arms, ['control', 'placebo', 'treatment']);
+  assert.deepEqual(alpha.unknownArms, ['placebo']);
+  assert.equal(alpha.paired, true);
+  assert.deepEqual(alpha.missingArms, []);
+
+  // task-gamma × 0: ONLY the third arm — disclosed, not silently dropped.
+  const gamma = p.disclosedPairs.find((d) => d.taskId === 'task-gamma');
+  assert.ok(gamma);
+  assert.equal(gamma.paired, false);
+  assert.deepEqual(gamma.missingArms, ['control', 'treatment']);
+  assert.deepEqual(gamma.unknownArms, ['placebo']);
+
+  // task-beta × 0 is a clean pair: no disclosure row.
+  assert.equal(p.disclosedPairs.some((d) => d.taskId === 'task-beta'), false, 'a clean pair needs no disclosure');
+});
+
+test('the third arm changes no paired number (control × treatment only)', () => {
+  const records = thirdArmRecords();
+  const { summary } = buildReport({ records });
+  const dup = summary.metrics.find((m) => m.metric === 'duplication');
+  assert.equal(dup.n, 2, 'only the two complete pairs produce differences');
+  // fixture values are dyadic, so these assertions are exact:
+  // alpha 0.5→0.125 (improvement 0.375), beta 0.375→0.25 (improvement 0.125).
+  assert.equal(dup.controlMedian, 0.4375);
+  assert.equal(dup.treatmentMedian, 0.1875);
+  const rows = pairDifferences(records).get('duplication')
+    .map((d) => [d.taskId, d.control, d.treatment]).sort((a, b) => a[0].localeCompare(b[0]));
+  // Exactly the two control × treatment pairs — the placebo's 0.875 (alpha) and
+  // 0.75 (gamma) appear nowhere, so the third arm entered no paired value.
+  assert.deepEqual(rows, [['task-alpha', 0.5, 0.125], ['task-beta', 0.375, 0.25]]);
+});
+
+test('the markdown report discloses the third arm per pair', () => {
+  const { markdown } = buildReport({ records: thirdArmRecords() });
+  assert.ok(markdown.includes('## Pairing disclosure'), 'the report needs a pairing disclosure section');
+  assert.match(markdown, /\| task-alpha × 0 \| control, placebo, treatment \| complete \| placebo \|/);
+  assert.match(markdown, /\| task-gamma × 0 \| placebo \| missing control, treatment \| placebo \|/);
+  assert.equal(/\| task-beta × 0 \|/.test(markdown), false, 'a clean pair carries no disclosure row');
+});
+
+test('a records FILE with a third arm reports per-pair disclosure end-to-end (regression)', () => {
+  const res = spawnSync(process.execPath, [join(ROOT, 'eval', 'report.mjs'), '--records', THIRD_ARM_FIXTURE], { encoding: 'utf8' });
+  assert.equal(res.status, 0, `the report must not fail on a third arm (stderr: ${res.stderr})`);
+  assert.ok(!res.stderr.includes('TypeError'), `the report must not crash (stderr: ${res.stderr})`);
+  assert.match(res.stderr, /carry an arm outside the record schema/, 'the salvaged records must be noted on stderr');
+  assert.ok(res.stdout.includes('## Pairing disclosure'), 'the file path must disclose, not silently drop');
+  assert.match(res.stdout, /\| task-alpha × 0 \| control, placebo, treatment \| complete \| placebo \|/);
+  assert.match(res.stdout, /\| task-gamma × 0 \| placebo \| missing control, treatment \| placebo \|/);
 });
